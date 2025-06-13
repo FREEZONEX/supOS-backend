@@ -14,10 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -31,13 +28,12 @@ public class MQTTMetricsController {
     @GetMapping(value = "/inter-api/supos/mqtt/metrics", produces = "application/json")
     public String metrics(@RequestParam(name = "f", required = false) Integer fetchSize,
                           @RequestParam(name = "w", required = false) Integer maxWaitMills,
-                          @RequestParam(name = "sd", required = false) Boolean sendTopic,
                           @RequestParam(name = "env", required = false) Boolean showEnv,
                           @RequestParam(name = "sys", required = false) Boolean showSys
     ) {
         JSONObject json = new JSONObject();
         json.put("clientId", mqttAdapter.getClientId());
-        json.put("throughput", mqttAdapter.statisticsThroughput());
+        json.put("throughput", messageConsumer.statisticsThroughput());
         json.put("queueHead", messageConsumer.getQueueHead());
         json.put("queueHeadIndex", messageConsumer.getQueueFrontIndex());
         json.put("queueTailIndex", messageConsumer.getQueueTailIndex());
@@ -48,12 +44,11 @@ public class MQTTMetricsController {
         json.put("calc.published", messageConsumer.getPublishedCalcSize());
         json.put("calc.arrived", messageConsumer.getArrivedCalcSize());
         json.put("merged.published", messageConsumer.getPublishedMergedSize());
-        json.put("lastMsg", mqttAdapter.getLastMessage());
+        json.put("lastMsg", messageConsumer.getLastMessage());
         json.put("connectLoss", mqttAdapter.getConnectionLossRecord());
         json.put("startTime", startTime);
         json.put("fetchSize", UnsMessageConsumer.FETCH_SIZE);
         json.put("maxWaitMills", UnsMessageConsumer.MAX_WAIT_MILLS);
-        json.put("sendTopic", messageConsumer.isSendTopic());
         if (showEnv != null && showEnv) {
             json.put("System_env", System.getenv());
         }
@@ -66,24 +61,22 @@ public class MQTTMetricsController {
         if (maxWaitMills != null && maxWaitMills > 0) {
             UnsMessageConsumer.MAX_WAIT_MILLS = maxWaitMills;
         }
-        if (sendTopic != null) {
-            messageConsumer.setSendTopic(sendTopic);
-        }
         return json.toJSONString();
     }
 
     @GetMapping(value = "/inter-api/supos/mqtt/topics", produces = "application/json")
-    public String topicDefinitions(@RequestParam(name = "t", required = false) String topic,
+    public String topicDefinitions(@RequestParam(name = "t", required = false) Long id,
                                    @RequestParam(name = "k", required = false) String key
     ) {
         LinkedHashMap<String, Object> json = new LinkedHashMap<>();
         json.put("startTime", startTime);
-        if (StringUtils.hasText(topic)) {
-            TopicDefinition definition = messageConsumer.getTopicDefinitionMap().get(topic);
+        Map<Long, TopicDefinition> map = messageConsumer.getTopicDefinitionMap();
+        if (id != null) {
+            TopicDefinition definition = map.get(id);
             json.put("definition", definition);
         } else {
             if (StringUtils.hasText(key)) {
-                List<String> topicTableMap = messageConsumer.getTopicDefinitionMap().values().stream()
+                List<String> topicTableMap = map.values().stream()
                         .filter(t -> t.getTopic().contains(key))
                         .map(t -> t.getTopic() + " : " + t.getTable()).collect(Collectors.toList());
                 json.put("topicTables", topicTableMap);
@@ -91,7 +84,7 @@ public class MQTTMetricsController {
             Collection<String> subscribeTopics = mqttAdapter.getSubscribeTopics();
             json.put("subscribes", subscribeTopics);
             if (subscribeTopics.size() < 2) {
-                json.put("topics", new TreeSet<>(messageConsumer.getTopicDefinitionMap().keySet()));
+                json.put("topics", new TreeSet<>(map.keySet()));
             }
         }
         return JsonUtil.toJsonUseFields(json);

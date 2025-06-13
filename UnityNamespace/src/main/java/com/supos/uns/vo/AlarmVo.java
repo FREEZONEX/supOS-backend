@@ -19,9 +19,15 @@ public class AlarmVo {
     private String ruleName;
 
     /**
-     * 报警规则topic
+     * 报警规则 id
      */
-    private String topic;
+    private Long uns;
+
+    /**
+     * uns 路径
+     */
+    private String unsPath;
+
 
     /**
      * 关联的实例信息

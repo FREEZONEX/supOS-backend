@@ -7,6 +7,8 @@ import java.util.List;
 
 @Data
 public class TimeseriesInstanceSearchResult {
-    String topic;
+    String id;
+    String name;
+    String path;
     List<FieldDefineVo> fields;
 }

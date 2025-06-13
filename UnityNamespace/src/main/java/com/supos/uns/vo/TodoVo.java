@@ -11,12 +11,12 @@ public class TodoVo {
     private Long id;
 
     /**
-     * 用户ID
+     * 接收人用户ID
      */
     private String userId;
 
     /**
-     * 用户名
+     * 接收人用户名
      */
     private String username;
 

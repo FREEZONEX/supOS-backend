@@ -8,7 +8,7 @@ import com.supos.common.SrcJdbcType;
 import com.supos.common.adpater.StreamHandler;
 import com.supos.common.adpater.TimeSequenceDataStorageAdapter;
 import com.supos.common.dto.BaseResult;
-import com.supos.common.dto.PageDto;
+import com.supos.common.dto.PageResultDTO;
 import com.supos.common.dto.StreamInfo;
 import com.supos.common.exception.BuzException;
 import com.supos.uns.dao.mapper.UnsMapper;
@@ -37,7 +37,7 @@ public class UnsStreamService {
     UnsMapper unsMapper;
 
 
-    @Transactional
+    @Transactional(timeout = 300)
     public PaginationSearchResult<List<StreamDetail>> listStreams(String keyword, int pageNumber, int pageSize) {
         if ("".equals(keyword)) {
             keyword = null;
@@ -48,8 +48,8 @@ public class UnsStreamService {
             pageNumber = 1;
         }
         final int offset = (pageNumber - 1) * pageSize;
-        PageDto page = new PageDto();
-        page.setPage(pageNumber);
+        PageResultDTO page = new PageResultDTO();
+        page.setPageNo(pageNumber);
         page.setTotal(total);
         page.setPageSize(pageSize);
         PaginationSearchResult<List<StreamDetail>> result = new PaginationSearchResult<>();
@@ -82,7 +82,7 @@ public class UnsStreamService {
                         }
                         log.debug("existsTopics: {}", existsTopics);
                         ArrayList<String> delTopics = new ArrayList<>(poSize);
-                        List<String> toDelIds = poList.stream().filter(po -> !existsTopics.contains(po.getPath())).map(po -> {
+                        List<Long> toDelIds = poList.stream().filter(po -> !existsTopics.contains(po.getId())).map(po -> {
                             delTopics.add(po.getPath());
                             return po.getId();
                         }).collect(Collectors.toList());
@@ -138,7 +138,7 @@ public class UnsStreamService {
         return detail;
     }
 
-    @Transactional
+    @Transactional(timeout = 300)
     public BaseResult deleteStream(String namespace) {
         UnsPo po = getUnsStreamPO(namespace);
         if (po == null) {
@@ -175,12 +175,7 @@ public class UnsStreamService {
         if (StringUtils.isEmpty(namespace)) {
             throw new BuzException("uns.topic.empty");
         }
-        String path = namespace;
-        if (path.charAt(path.length() - 1) == '/') {
-            path = path.substring(0, path.length() - 1);
-        }
-        String id = UnsManagerService.genIdForPath(path);
-        UnsPo po = unsMapper.selectById(id);
+        UnsPo po = unsMapper.selectOne(new QueryWrapper<UnsPo>().eq("alias", namespace));
         return po;
     }
 

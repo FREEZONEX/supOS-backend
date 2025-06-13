@@ -13,7 +13,6 @@ import lombok.Data;
 @Data
 public class ExportNode {
     private UnsPo unsPo;
-    private ExportNode parent;
     private ExportImportUtil.RowWrapper rowWrapper;
 
     public ExportNode(UnsPo unsPo) {

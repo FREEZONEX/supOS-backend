@@ -1,6 +1,7 @@
 package com.supos.uns.service.exportimport.core;
 
-import com.supos.uns.service.exportimport.core.dto.ExcelUnsWrapDto;
+import com.supos.common.dto.excel.ExcelUnsWrapDto;
+import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.uns.vo.CreateTemplateVo;
 import lombok.Getter;
 
@@ -9,7 +10,7 @@ import java.util.*;
 /**
  * @author sunlifang
  * @version 1.0
- * @description: TODO
+ * @description: ExcelImportContext
  * @date 2025/4/22 19:23
  */
 @Getter
@@ -34,6 +35,13 @@ public class ExcelImportContext {
 
     private Set<String> checkTemplateAlias = new HashSet<>();
     private Set<String> checkLabels = new HashSet<>();
+    private Set<String> checkReferPaths = new HashSet<>();
+    private Set<String> checkReferAliass = new HashSet<>();
+
+    /**导入时用于临时存放从DB查询到的alias*/
+    private Set<String> tempAliasFromDb  = new HashSet<>();
+
+    private ExcelTypeEnum  activeExcelType = ExcelTypeEnum.Explanation;
 
     public ExcelImportContext(String file) {
         this.file = file;
@@ -77,6 +85,20 @@ public class ExcelImportContext {
         checkLabels.add(label);
     }
 
+    public void addCheckReferPath(String path) {
+        checkReferPaths.add(path);
+    }
+
+    public void addCheckReferAlias(String alias) {
+        checkReferAliass.add(alias);
+    }
+
+    public void setActiveExcelType(ExcelTypeEnum currentExcelType) {
+        if (activeExcelType == ExcelTypeEnum.Explanation) {
+            activeExcelType = currentExcelType;
+        }
+    }
+
     public void clear() {
         templateVoList.clear();
         labels.clear();
@@ -85,5 +107,6 @@ public class ExcelImportContext {
 
         checkTemplateAlias.clear();
         checkLabels.clear();
+        checkReferPaths.clear();
     }
 }

@@ -3,6 +3,7 @@ package com.supos.uns.service.exportimport.core.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.utils.JsonUtil;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -32,6 +33,7 @@ public class ExcelTemplateDto {
      */
     int index = -1;
     @NotEmpty
+    @Size(max = 63)
     String name;//主题
 
     String alias;//别名

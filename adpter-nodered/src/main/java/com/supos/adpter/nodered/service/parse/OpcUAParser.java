@@ -8,14 +8,14 @@ import com.supos.adpter.nodered.dao.mapper.NodeServerMapper;
 import com.supos.adpter.nodered.enums.DataType;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
-import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.protocol.OpcUAConfigDTO;
 import com.supos.common.enums.FieldType;
 import com.supos.common.enums.IOTProtocol;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * 解析时序模型对应的node-red模版文件
@@ -57,6 +57,9 @@ public class OpcUAParser extends ParserApi {
 
         String clientId = getClientIdByServerId(fullNodes, serverId);
         String jsonFlowStr = tpl;
+
+        Map<String, ?> ms = buildMapping(uns.getFields(), uns.getUnsTopic());
+
         if (clientId == null) {
             // 替换节点id
             clientId = UUID.randomUUID().toString().replaceAll("-", "");
@@ -67,12 +70,9 @@ public class OpcUAParser extends ParserApi {
                     .replaceAll("\\$id_opcua_server", serverId);
             // 替换opcua-server endpoint
             jsonFlowStr = jsonFlowStr.replace("$opcua_server_addr", opcuaConfig.getServer().getEndpoint());
-            // 替换模型数据 json字符串
-            jsonFlowStr = jsonFlowStr.replace("$schema_json_string", uns.getUnsJsonString());
             // 替换采集频率 单位是秒
             jsonFlowStr = jsonFlowStr.replace("$pollRate", opcuaConfig.getPollRate().getSeconds() + "");
-            Map<String, ?> ms = buildMapping(uns.getFields(), uns.getUnsTopic(), false);
-            jsonFlowStr = jsonFlowStr.replace("$mapping_string", JSON.toJSONString(ms).replace("\"", "\\\""));
+
         }
         JSONArray jsonArr = JSON.parseArray(jsonFlowStr);
         // 设置整体流程高度
@@ -84,6 +84,11 @@ public class OpcUAParser extends ParserApi {
                 y += highSpace;
             }
             jsonArr.getJSONObject(i).put("y", y);
+            String nodeType = jsonArr.getJSONObject(i).getString("type");
+            if ("supmodel".equals(nodeType)) {
+                jsonArr.getJSONObject(i).put("mappings", ms);
+                jsonArr.getJSONObject(i).put("model", uns.getModel());
+            }
         }
         // 根据uns配置的字段属性， 动态添加inject和opcua-item节点
         JSONArray dynamicNodes = handleDynamicNode(uns, jsonArr, clientId, baseHeight);
@@ -95,20 +100,6 @@ public class OpcUAParser extends ParserApi {
             }
         }
         fullNodes.addAll(dynamicNodes);
-    }
-
-    public Map<String, ?> buildMapping(List<FieldDefine> fields, String topic, boolean isArray) {
-        // key=node  value=topic
-        Map<String, Set<String>> mapping = new HashMap<>();
-        for (FieldDefine f : fields) {
-            Set<String> ls = mapping.get(f.getIndex());
-            if (ls == null) {
-                ls = new HashSet<>();
-            }
-            ls.add(topic + ":" + f.getName());
-            mapping.put(f.getIndex(), ls);
-        }
-        return mapping;
     }
 
     private JSONObject getMqttBrokerNode(JSONArray fullNodes) {
@@ -145,7 +136,6 @@ public class OpcUAParser extends ParserApi {
                         String injectNodeJsonTpl = node.toString();
                         injectNodeJsonTpl = injectNodeJsonTpl.replace("$id_inject", injectNodeId);
                         injectNodeJsonTpl = injectNodeJsonTpl.replace("$id_opcua_item", opcuaItemNodeId);
-                        injectNodeJsonTpl = injectNodeJsonTpl.replaceAll("\\$model_topic", uns.getUnsTopic());
                         JSONObject newInjectNode = JSON.parseObject(injectNodeJsonTpl);
                         newInjectNode.put("y", baseHeight + 40 * j);
                         itemNodeArr.add(newInjectNode);

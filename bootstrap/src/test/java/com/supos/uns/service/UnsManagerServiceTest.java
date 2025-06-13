@@ -4,13 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.supos.common.dto.AlarmRuleDefine;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.multicaster.StatusAwareApplicationEventMultiCaster;
-import com.supos.common.utils.JsonUtil;
 import com.supos.conf.TestCaseInitConfiguration;
 import com.supos.uns.dao.mapper.AlarmMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.AlarmPo;
-import com.supos.uns.dao.po.UnsPo;
-import com.supos.uns.vo.TopicTreeResult;
 import org.junit.Test;
 import org.junit.jupiter.api.Order;
 import org.junit.runner.RunWith;
@@ -54,10 +51,10 @@ public class UnsManagerServiceTest {
 
     @Test
     public void test_alarmCount() {
-        List<AlarmPo> alarmPos = alarmMapper.selectList(new QueryWrapper<AlarmPo>().select(AlarmRuleDefine.FIELD_TOPIC, "count(1) as currentValue").groupBy(AlarmRuleDefine.FIELD_TOPIC)
-                .in(AlarmRuleDefine.FIELD_TOPIC, Arrays.asList("/$alarm/baojing01_df8ac4c6fdb443c99c70", "/$alarm/baojing01_abcdfef488e149ab9b4f")));
+        List<AlarmPo> alarmPos = alarmMapper.selectList(new QueryWrapper<AlarmPo>().select(AlarmRuleDefine.FIELD_UNS_ID, "count(1) as currentValue").groupBy(AlarmRuleDefine.FIELD_UNS_ID)
+                .in(AlarmRuleDefine.FIELD_UNS_ID, Arrays.asList("/$alarm/baojing01_df8ac4c6fdb443c99c70", "/$alarm/baojing01_abcdfef488e149ab9b4f")));
         for (AlarmPo po : alarmPos) {
-            System.out.println(po.getTopic() + " : " + po.getCurrentValue().longValue());
+            System.out.println(po.getUns() + " : " + po.getCurrentValue().longValue());
         }
     }
 

@@ -1,5 +1,7 @@
 package com.supos.adpter.nodered.vo;
 
+import com.supos.common.dto.protocol.MappingDTO;
+import com.supos.common.dto.protocol.SimpleModelDTO;
 import com.supos.common.enums.IOTProtocol;
 import com.supos.common.dto.FieldDefine;
 import lombok.Data;
@@ -31,6 +33,8 @@ public class BatchImportRequestVO implements Serializable {
 
         private String unsTopic;
 
+        private String alias;
+
         private List<FieldDefine> fields;
 
         private boolean mockData;
@@ -39,6 +43,8 @@ public class BatchImportRequestVO implements Serializable {
          * 模型实例化数据-json格式
          */
         private String jsonExample;
+
+        private boolean mockData;
 
         /**
          * 需要根据具体协议自动生成对应客户端
@@ -55,7 +61,7 @@ public class BatchImportRequestVO implements Serializable {
          */
         private Object protocolBean;
 
-        private String unsJsonString;
+        private SimpleModelDTO model;
 
     }
 

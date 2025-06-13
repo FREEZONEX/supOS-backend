@@ -33,5 +33,8 @@ public class SqlserverTypeUtils {
         dbType2FieldTypeMap.put("datetime", FieldType.DATETIME.name);
         dbType2FieldTypeMap.put("datetime2", FieldType.DATETIME.name);
         dbType2FieldTypeMap.put("datetimeoffset", FieldType.DATETIME.name);
+
+        dbType2FieldTypeMap.put("binary", FieldType.BLOB.name);
+        dbType2FieldTypeMap.put("varbinary", FieldType.BLOB.name);
     }
 }

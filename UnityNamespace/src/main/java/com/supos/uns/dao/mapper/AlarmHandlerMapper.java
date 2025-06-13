@@ -14,13 +14,13 @@ import java.util.List;
 public interface AlarmHandlerMapper extends BaseMapper<AlarmHandlerPo> {
 
 
-    @Insert("<script> INSERT INTO uns_alarms_handler (topic,user_id,username,create_at) VALUES" +
+    @Insert("<script> INSERT INTO uns_alarms_handler (uns_id,user_id,username,create_at) VALUES" +
             " <foreach collection=\"beans\" item=\"db\" separator=\",\">" +
-            "     (#{topic},#{db.id},#{db.preferredUsername},CURRENT_TIMESTAMP)" +
+            "     (#{unsId},#{db.id},#{db.preferredUsername},CURRENT_TIMESTAMP)" +
             " </foreach> " +
             "</script>")
-    int saveBatch(@Param("topic")String topic,@Param("beans") List<UserManageVo> list);
+    int saveBatch(@Param("unsId") Long unsId, @Param("beans") List<UserManageVo> list);
 
-    @Select("select * from uns_alarms_handler where topic = #{topic}")
-    List<AlarmHandlerPo> getByTopic(@Param("topic")String topic);
+    @Select("select * from uns_alarms_handler where uns_id = #{unsId}")
+    List<AlarmHandlerPo> getByUnsId(@Param("unsId") Long unsId);
 }

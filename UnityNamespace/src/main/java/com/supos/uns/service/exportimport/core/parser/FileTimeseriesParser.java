@@ -3,13 +3,14 @@ package com.supos.uns.service.exportimport.core.parser;
 import cn.hutool.core.bean.BeanUtil;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.excel.ExcelNameSpaceDto;
+import com.supos.common.dto.excel.ExcelUnsWrapDto;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import com.supos.uns.service.exportimport.core.data.ExportImportData;
-import com.supos.uns.service.exportimport.core.dto.ExcelNameSpaceDto;
-import com.supos.uns.service.exportimport.core.dto.ExcelUnsWrapDto;
+import com.supos.uns.service.exportimport.core.parser.AbstractParser;
 import com.supos.uns.service.exportimport.json.data.FileTimeseries;
 import jakarta.validation.ConstraintViolation;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +38,6 @@ public class FileTimeseriesParser extends AbstractParser {
         ExcelNameSpaceDto excelNameSpaceDto = BeanUtil.copyProperties(dataMap, ExcelNameSpaceDto.class);
         excelNameSpaceDto.setBatch(batch);
         excelNameSpaceDto.setIndex(index);
-        excelNameSpaceDto.setAlias(StringUtils.isNotBlank(excelNameSpaceDto.getAlias()) ? excelNameSpaceDto.getAlias() : PathUtil.generateAlias(excelNameSpaceDto.getPath(),2));
         String batchIndex = excelNameSpaceDto.gainBatchIndex();
         {
             StringBuilder er = null;
@@ -53,7 +53,7 @@ public class FileTimeseriesParser extends AbstractParser {
                 return;
             }
         }
-
+        excelNameSpaceDto.setAlias(StringUtils.isNotBlank(excelNameSpaceDto.getAlias()) ? excelNameSpaceDto.getAlias() : PathUtil.generateAlias(excelNameSpaceDto.getPath(),2));
         CreateTopicDto createTopicDto = excelNameSpaceDto.createTopic();
         ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(batchIndex, createTopicDto);
 
@@ -67,13 +67,6 @@ public class FileTimeseriesParser extends AbstractParser {
             context.addError(batchIndex, I18nUtils.getMessage("uns.alias.has.exist"));
             return;
         }
-
-        Boolean mockData = getBoolean(dataMap, "mockData", false);
-        if (mockData == null) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.excel.mockData.invalid"));
-            return;
-        }
-        createTopicDto.setAddFlow(mockData);
 
         Boolean autoDashboard = getBoolean(dataMap, "autoDashboard", false);
         if (autoDashboard == null) {
@@ -118,7 +111,7 @@ public class FileTimeseriesParser extends AbstractParser {
             }
         }
 
-        //createTopicDto.setPathType(2);
+        createTopicDto.setPathType(2);
         createTopicDto.setDataType(excelType.getDataType());
 
         context.getUnsList().add(wrapDto);
@@ -137,7 +130,6 @@ public class FileTimeseriesParser extends AbstractParser {
         ExcelNameSpaceDto excelNameSpaceDto = BeanUtil.copyProperties(fileTimeseries, ExcelNameSpaceDto.class);
         excelNameSpaceDto.setBatch(batch);
         excelNameSpaceDto.setIndex(index);
-        excelNameSpaceDto.setAlias(StringUtils.isNotBlank(excelNameSpaceDto.getAlias()) ? excelNameSpaceDto.getAlias() : PathUtil.generateAlias(excelNameSpaceDto.getPath(),2));
         String batchIndex = excelNameSpaceDto.gainBatchIndex();
         {
             StringBuilder er = null;
@@ -153,7 +145,7 @@ public class FileTimeseriesParser extends AbstractParser {
                 return;
             }
         }
-
+        excelNameSpaceDto.setAlias(StringUtils.isNotBlank(excelNameSpaceDto.getAlias()) ? excelNameSpaceDto.getAlias() : PathUtil.generateAlias(excelNameSpaceDto.getPath(),2));
         CreateTopicDto createTopicDto = excelNameSpaceDto.createTopic();
         ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(batchIndex, createTopicDto);
 
@@ -167,13 +159,6 @@ public class FileTimeseriesParser extends AbstractParser {
             context.addError(batchIndex, I18nUtils.getMessage("uns.alias.has.exist"));
             return;
         }
-
-        Boolean mockData = parseBoolean(fileTimeseries.getMockData(), false);
-        if (mockData == null) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.excel.mockData.invalid"));
-            return;
-        }
-        createTopicDto.setAddFlow(mockData);
 
         Boolean autoDashboard = parseBoolean(fileTimeseries.getAutoDashboard(), false);
         if (autoDashboard == null) {
@@ -218,7 +203,7 @@ public class FileTimeseriesParser extends AbstractParser {
             }
         }
 
-        //createTopicDto.setPathType(2);
+        createTopicDto.setPathType(2);
         createTopicDto.setDataType(excelType.getDataType());
 
         context.getUnsList().add(wrapDto);

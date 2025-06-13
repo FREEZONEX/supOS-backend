@@ -1,0 +1,18 @@
+{
+  "alias": "_jisuan_abs_5611486c7fdf4024acb6",
+  "dataType": 3,
+  "topic": "/计算/abs",
+  "fields": [
+    {
+      "name": "sum1",
+      "type": "double"
+    }
+  ],
+  "expression": "ABS(a1)",
+  "refers": [
+    {
+      "topic": "/dhbimport2/tag1",
+      "field": "pro1"
+    }
+  ]
+}

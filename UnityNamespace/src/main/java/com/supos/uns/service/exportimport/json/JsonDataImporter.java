@@ -8,7 +8,7 @@ import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.exception.BuzException;
 import com.supos.uns.service.exportimport.core.DataImporter;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
-import com.supos.uns.service.exportimport.core.data.ExportImportData;
+import com.supos.uns.service.exportimport.core.data.*;
 import com.supos.uns.service.exportimport.json.data.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -39,6 +39,11 @@ public class JsonDataImporter extends DataImporter {
         try {
             JsonMapper jsonMapper = new JsonMapper();
             jsonWraper = jsonMapper.readValue(file, JsonWraper.class);
+        } catch (Exception e) {
+            log.error("解析json文件失败", e);
+            throw new BuzException("uns.import.json.error");
+        }
+        try {
             handleTemplate(jsonWraper);
             handleLabel(jsonWraper);
             handleFolder(jsonWraper);
@@ -47,7 +52,8 @@ public class JsonDataImporter extends DataImporter {
             log.info("import running time:{}s", getStopWatch().getTotalTimeSeconds());
             log.info(getStopWatch().prettyPrint());
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("导入失败", e);
+            throw new BuzException("uns.import.error");
         }
     }
 
@@ -128,7 +134,7 @@ public class JsonDataImporter extends DataImporter {
             }
             jsonGenerator.writeEndArray();
 
-/*            jsonGenerator.writeFieldName(ExcelTypeEnum.FILE_CALCULATE.getCode());
+            jsonGenerator.writeFieldName(ExcelTypeEnum.FILE_CALCULATE.getCode());
             jsonGenerator.writeStartArray();
             List<FileCalculate> fileCalculateDataList = jsonWraper.getFileCalculateDataList();
             if (CollectionUtils.isNotEmpty(fileCalculateDataList)) {
@@ -165,7 +171,7 @@ public class JsonDataImporter extends DataImporter {
                     jsonGenerator.writePOJO(fileReference);
                 }
             }
-            jsonGenerator.writeEndArray();*/
+            jsonGenerator.writeEndArray();
 
             jsonGenerator.writeEndObject();
             jsonGenerator.close();
@@ -231,12 +237,12 @@ public class JsonDataImporter extends DataImporter {
                     dataList = jsonWraper.getFileTimeseriesDataList();break;
                 case FILE_RELATION:
                     dataList = jsonWraper.getFileRelationDataList();break;
-/*                case FILE_CALCULATE:
+                case FILE_CALCULATE:
                     dataList = jsonWraper.getFileCalculateDataList();break;
                 case FILE_AGGREGATION:
                     dataList = jsonWraper.getFileAggregationDataList();break;
                 case FILE_REFERENCE:
-                    dataList = jsonWraper.getFileReferenceDataList();break;*/
+                    dataList = jsonWraper.getFileReferenceDataList();break;
                 default:
                     break;
             }

@@ -40,9 +40,9 @@
         "id": "$id_model_selector",
         "type": "supmodel",
         "z": "",
-        "selectedModel": "$model_topic",
-        "modelSchema": "$schema_json_string",
-        "modelMapping": "",
+        "protocol": "icmp",
+        "models": [],
+        "mappings": "",
         "x": 760,
         "y": 240,
         "wires": [

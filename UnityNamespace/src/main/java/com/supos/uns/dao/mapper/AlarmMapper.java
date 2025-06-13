@@ -20,25 +20,21 @@ import java.util.List;
 public interface AlarmMapper extends BaseMapper<AlarmPo> {
 
 
-    @Select("<script>select count(1) from " +AlarmPo.TABLE_NAME+
-            " where topic = #{topic} and read_status = false</script>")
-    long countByTopicNoRead(@Param("topic") String topic);
-
     IPage<AlarmVo> pageList(Page<?> page, AlarmQueryVo params);
 
     @Delete("<script> delete from " + AlarmPo.TABLE_NAME +
-            " where topic in " +
-            "  <foreach collection=\"topics\" item=\"topic\" index=\"index\" open=\"(\" close=\")\" separator=\",\"> " +
-            "      #{topic}" +
+            " where uns in " +
+            "  <foreach collection=\"unsIds\" item=\"unsId\" index=\"index\" open=\"(\" close=\")\" separator=\",\"> " +
+            "      #{unsId}" +
             "  </foreach>" +
             "</script>")
-    void deleteByTopics(@Param("topics") Collection<String> topics);
+    void deleteByUnsIds(@Param("unsIds") Collection<Long> unsIds);
 
-    @Select("select * from "+ AlarmPo.TABLE_NAME + " where topic = #{topic} and read_status is null")
-    List<AlarmPo> getNoReadListByTopic(@Param("topic") String topic);
+    @Select("select * from "+ AlarmPo.TABLE_NAME + " where uns = #{unsId} and (read_status IS NULL OR read_status = false)")
+    List<AlarmPo> getNoReadListByUnsId(@Param("unsId") Long unsId);
 
 
-    @Select("SELECT a.* from uns_alarms_data a LEFT JOIN uns_alarms_handler b on a.topic = b.topic " +
-            "where a.topic = #{topic} and b.user_id = #{userId} and read_status is null ")
-    List<AlarmPo> getNoReadListByTopicAndUserId(@Param("topic") String topic,@Param("userId") String userId);
+    @Select("SELECT a.* from uns_alarms_data a LEFT JOIN uns_alarms_handler b on a.uns = b.uns_id " +
+            "where a.uns = #{unsId} and b.user_id = #{userId} and read_status = false ")
+    List<AlarmPo> getNoReadListByUnsIdAndUserId(@Param("unsId") Long unsId,@Param("userId") String userId);
 }

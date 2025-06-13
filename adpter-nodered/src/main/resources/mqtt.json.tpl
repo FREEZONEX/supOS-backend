@@ -25,9 +25,9 @@
             "id": "$id_model_selector",
             "type": "supmodel",
             "z": "",
-            "selectedModel": "$model_topic",
-            "modelSchema": "$schema_json_string",
-            "modelMapping": "",
+            "protocol": "mqtt",
+            "models": [],
+            "mappings": "",
             "x": 550,
             "y": 180,
             "wires": [

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.supos.uns.dao.mapper.TodoMapper" >
+
+
+    <select id="pageList" resultType="com.supos.uns.dao.po.TodoPo" parameterType="com.supos.common.dto.TodoQuery">
+        SELECT * from supos_todo a where 1 = 1
+
+        <if test="params.moduleCode != null and params.moduleCode != ''">
+            AND a.module_code = #{params.moduleCode}
+        </if>
+        <if test="params.status != null">
+            AND a.status = #{params.status}
+        </if>
+        <if test="params.todoMsg != null and params.todoMsg !=''">
+            AND a.todo_msg ILIKE CONCAT('%', #{params.todoMsg}, '%')
+        </if>
+        <if test="params.myTodo != null and params.myTodo == true and params.handlerUsername != ''">
+            AND a.handler_username = #{params.handlerUsername}
+        </if>
+        <if test="params.username != null and params.username !=''">
+            AND a.username = #{params.username}
+        </if>
+        <if test="params.startTime != null">
+            AND a.create_at &gt;= #{params.startTime}::timestamp
+        </if>
+        <if test="params.endTime != null">
+            AND a.create_at &lt; #{params.endTime}::timestamp
+        </if>
+        ORDER BY
+            a.create_at ,module_code ASC
+    </select>
+</mapper>

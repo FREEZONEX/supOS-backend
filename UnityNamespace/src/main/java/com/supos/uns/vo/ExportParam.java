@@ -20,4 +20,6 @@ public class ExportParam {
 
     private List<String> models;
     private List<String> instances;
+
+    private String fileFlag;
 }

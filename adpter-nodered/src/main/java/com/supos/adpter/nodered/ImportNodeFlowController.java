@@ -1,17 +1,15 @@
 package com.supos.adpter.nodered;
 
-import com.alibaba.fastjson2.JSON;
 import com.supos.adpter.nodered.service.ImportNodeRedFlowService;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
-import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.annotation.Description;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.SimpleUnsInstance;
 import com.supos.common.enums.FieldType;
 import com.supos.common.enums.IOTProtocol;
 import com.supos.common.event.BatchCreateTableEvent;
-import com.supos.common.event.BatchUpdateTableEvent;
 import com.supos.common.event.RemoveTopicsEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,49 +58,44 @@ public class ImportNodeFlowController {
         Map<SrcJdbcType, String> firstTopicNameMap = new HashMap<>(event.topics.size());
         for (Map.Entry<SrcJdbcType, CreateTopicDto[]> entry : event.topics.entrySet()) {
             for (CreateTopicDto topic : entry.getValue()) {
-                Integer flags = topic.getFlags();
-                /*if (flags == null || !Constants.withFlow(flags)) {
-                    log.info("{} skip create flows, because addFlow is false", topic.getTopic());
-                    continue;
-                }*/
+                boolean addFlow = topic.getAddFlow();
+                // 批量导入的只判断第一个值
+                if (!addFlow) {
+                    log.info("{} skip create flows, because flag is {}", topic.getTopic(), topic.getFlags());
+                    return;
+                }
                 if (!firstTopicNameMap.containsKey(entry.getKey())) {
                     firstTopicNameMap.put(entry.getKey(), topic.getTopic());
                 }
                 BatchImportRequestVO.UnsVO uns = new BatchImportRequestVO.UnsVO();
                 uns.setUnsTopic(topic.getTopic());
-                Map<String, Object> protocolMap = topic.getProtocol();
-                Object proto = protocolMap != null ? protocolMap.get("protocol") : null;
-                String protocol = proto != null ? proto.toString() : null;
-                if (protocol == null || "relation".equals(protocol)) {
-                    uns.setProtocol(IOTProtocol.RELATION.getName());
-                    uns.setJsonExample(genMockData(topic.getFields()));
-                    uns.setMockData(Constants.withFlow(flags));
-                    unsList.add(uns);
-                }
+                String mockJsonData = genMockData(topic.getFields());
+                uns.setProtocol(IOTProtocol.RELATION.getName());
+                uns.setJsonExample(mockJsonData);
+                uns.setAlias(topic.getAlias());
+                unsList.add(uns);
             }
         }
 
-        if (unsList.isEmpty()) {
-            log.info("导入数据为空，跳过创建流程");
-            return;
-        }
-        if (event.fromImport) {
-            request.setName(event.flowName);
-        } else {
-            for (String name : firstTopicNameMap.values()) {
-                firstTopicName.append(name).append(";");
+        if (!unsList.isEmpty()) {
+            if (event.fromImport) {
+                request.setName(event.flowName);
+            } else {
+                for (String name : firstTopicNameMap.values()) {
+                    firstTopicName.append(name).append(";");
+                }
+                request.setName(firstTopicName.substring(0, firstTopicName.length() - 1));
             }
-            request.setName(firstTopicName.substring(0, firstTopicName.length() - 1));
+            request.setUns(unsList);
+            importNodeRedFlowService.importFlowFromUns(request);
         }
-        request.setUns(unsList);
-        importNodeRedFlowService.importFlowFromUns(request);
         log.info("<=== 批量导入成功 {}", unsList.size());
     }
 
     private List<FieldDefine> filterSystemField(FieldDefine[] fs) {
         List<FieldDefine> newFs = new ArrayList<>();
         for (FieldDefine f : fs) {
-            if (!f.getName().startsWith(Constants.SYSTEM_FIELD_PREV)) {
+            if (!f.isSystemField()) {
                 newFs.add(f);
             }
         }
@@ -126,7 +119,7 @@ public class ImportNodeFlowController {
             log.info("<==skip delete flows, because topics is empty");
             return;
         }
-        importNodeRedFlowService.deleteFlows(event.topics.keySet());
+        importNodeRedFlowService.deleteFlows(event.topics.values().stream().map(SimpleUnsInstance::getAlias).collect(Collectors.toSet()));
         log.info("<== 批量删除成功");
 
     }
@@ -134,7 +127,7 @@ public class ImportNodeFlowController {
     private String genMockData(FieldDefine[] fields) {
         StringBuffer sb = new StringBuffer();
         for (FieldDefine field : fields) {
-            if (field.getName().startsWith(Constants.SYSTEM_FIELD_PREV)) {
+            if (field.isSystemField()) {
                 continue;// 忽略系统自动生成的字段
             }
             FieldType t = field.getType();

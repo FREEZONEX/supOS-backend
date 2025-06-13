@@ -1,0 +1,12 @@
+{
+  "alias": "mg_refer_3",
+  "dataType": 6,
+  "topic": "/mg/refer/3",
+  "addDashBoard": false,
+  "addFlow": false,
+  "frequency": "10s",
+  "referTopics": [
+     "/hk/seq","/ddx/5","/lwltest/table1"
+  ]
+}
+

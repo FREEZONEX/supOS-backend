@@ -1,37 +1,40 @@
 package com.supos.uns;
 
-import com.supos.common.adpater.TimeSequenceDataStorageAdapter;
+import com.supos.common.adpater.historyquery.HistoryQueryParams;
+import com.supos.common.adpater.historyquery.HistoryQueryResult;
+import com.supos.uns.service.DataStorageServiceHelper;
+import com.supos.uns.service.UnsDataService;
 import io.swagger.v3.oas.annotations.Hidden;
-import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.context.event.EventListener;
-import org.springframework.core.annotation.Order;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
+import org.springframework.util.CollectionUtils;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 public class TimeSequenceQueryController {
 
-    private TimeSequenceDataStorageAdapter timeSequenceDataStorageAdapter;
+    private @Autowired DataStorageServiceHelper storageServiceHelper;
+    @Autowired
+    UnsDataService unsDataService;
 
     @PostMapping("/open-api/supos/rest/sql")
     @ResponseBody
     @Hidden
     public String executeSql(@RequestParam(value = "tz", required = false) String tz, @RequestParam(value = "req_id", required = false) String reqId,
                              @RequestParam(value = "row_with_meta", required = false) String rowWithMeta, HttpEntity<String> requestEntity) throws Exception {
-        return timeSequenceDataStorageAdapter.execSQL(requestEntity.getBody());
+        return storageServiceHelper.getSequenceDbEnabled().execSQL(requestEntity.getBody());
     }
 
-    @EventListener(ContextRefreshedEvent.class)
-    @Order
-    void init(ContextRefreshedEvent event) {
-        Map<String, TimeSequenceDataStorageAdapter> adapterMap = event.getApplicationContext().getBeansOfType(TimeSequenceDataStorageAdapter.class);
-        if (!adapterMap.isEmpty()) {
-            timeSequenceDataStorageAdapter = adapterMap.values().iterator().next();
+
+    @PostMapping("/inter-api/supos/rest/hist")
+    @ResponseBody
+    public HistoryQueryResult queryHistory(@RequestBody HistoryQueryParams params,
+                                           @RequestParam(value = "setBlob", required = false) boolean setBlob) {
+        HistoryQueryResult rs = storageServiceHelper.getSequenceDbEnabled().queryHistory(params);
+        if (setBlob && !CollectionUtils.isEmpty(rs.getResults())) {
+            unsDataService.filterBlobLBlobs(rs.getResults());
         }
+        return rs;
     }
+
 }

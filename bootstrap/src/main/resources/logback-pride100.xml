@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<included>
+    <property name="file.path" value="/logs"/>
+    <property name="pattern" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %C{1}.%M %msg%n"/>
+
+
+    <!-- 控制台输出 -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${pattern}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 定义滚动文件Appender -->
+    <appender name="TOPOLOGY_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- 日志文件名称和路径，但注意这个会被滚动策略覆盖 -->
+        <file>${file.path}/topology.log</file>
+
+        <!-- 滚动策略配置 -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- 日志文件名称模式，包含日期和索引 -->
+            <fileNamePattern>${file.path}/topology.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <!-- 单个日志文件的最大大小 -->
+            <maxFileSize>50MB</maxFileSize>
+            <!-- 保留的日志文件的最大历史天数 -->
+            <maxHistory>3</maxHistory>
+            <!-- 所有日志文件的总大小限制 -->
+            <totalSizeCap>300MB</totalSizeCap>
+        </rollingPolicy>
+
+        <!-- 日志编码器配置 -->
+        <encoder>
+            <!-- 日志输出的格式 -->
+            <pattern>${pattern}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 设置根日志记录器的级别为INFO -->
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+    <!-- 为特定包设置日志级别 -->
+    <logger name="com.supos" level="DEBUG"/>
+    <logger name="com.supos.uns" level="DEBUG"/>
+    <logger name="com.supos.adapter" level="DEBUG"/>
+    <logger name="com.supos.adapter.mqtt" level="DEBUG"/>
+    <logger name="org.springframework.jdbc.datasource.init" level="DEBUG"/>
+    <logger name="org.apache.ibatis.logging" level="INFO"/>
+    <logger name="com.supos.uns.dao.mapper" level="DEBUG"/>
+    <logger name="com.supos.app.dao.mapper" level="DEBUG"/>
+    <logger name="com.supos.uns.dao.mapper.UnsTopologyMapper" level="WARN"/>
+    <logger name="com.supos.uns.dao.mapper.AlarmMapper" level="WARN"/>
+
+    <logger name="topology" level="info" additivity="false">
+        <appender-ref ref="TOPOLOGY_FILE"/>
+    </logger>
+</included>

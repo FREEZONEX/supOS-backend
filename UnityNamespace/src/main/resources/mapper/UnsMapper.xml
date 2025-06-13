@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.supos.uns.dao.mapper.UnsMapper">
+
+    <!-- 通用字段映射，包含 JSONB 的自定义处理器 -->
+    <resultMap id="unsResultMap" type="com.supos.uns.dao.po.UnsPo">
+        <result property="id" column="id"/>
+        <result property="layRec" column="lay_rec"/>
+        <result property="name" column="name"/>
+        <result property="path" column="path"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="modelId" column="model_id"/>
+        <result property="alias" column="alias"/>
+        <result property="parentAlias" column="parent_alias"/>
+        <result property="pathType" column="path_type"/>
+        <result property="dataSrcId" column="data_src_id"/>
+        <result property="dataType" column="data_type"/>
+        <result property="dataPath" column="data_path"/>
+        <result property="fields" column="fields" typeHandler="com.supos.uns.config.FieldsTypeHandler"/>
+        <result property="description" column="description"/>
+        <result property="protocol" column="protocol"/>
+        <result property="withFlags" column="with_flags"/>
+        <result property="createAt" column="create_at"/>
+        <result property="updateAt" column="update_at"/>
+        <result property="protocolType" column="protocol_type"/>
+        <result property="refUns" column="ref_uns" typeHandler="com.supos.uns.config.JsonMapLongIntTypeHandler"/>
+        <result property="refers" column="refers" typeHandler="com.supos.uns.config.InstanceFieldsHandler"/>
+        <result property="expression" column="expression"/>
+        <result property="tableName" column="table_name"/>
+        <result property="numberFields" column="number_fields"/>
+        <result property="extend" column="extend" typeHandler="com.supos.uns.config.JsonMapTypeHandler"/>
+        <result property="countChildren" column="count_children"/>
+        <result property="countDirectChildren" column="count_direct_children"/>
+    </resultMap>
+
+    <sql id="labelJoinSql">
+        LEFT JOIN uns_label_ref b ON a.id = b.uns_id
+        LEFT JOIN uns_label c ON c.id = b.label_id
+    </sql>
+
+    <sql id="countChildrenJoinSql">
+            LEFT JOIN (
+                SELECT parent_id, COUNT(1) AS count_children
+                FROM uns_namespace
+                GROUP BY parent_id
+                ) c ON a.id = c.parent_id
+    </sql>
+
+    <sql id="commonWhereConditions">
+        WHERE a.status = 1 AND (a.data_type != 5 OR a.data_type IS NULL)
+        <if test="params.parentId == 0">
+            AND a.parent_id IS NULL
+        </if>
+
+        <if test="params.parentId != null and params.parentId != 0">
+            AND a.parent_id = #{params.parentId}
+        </if>
+
+        <choose>
+            <when test="params.pathType != null">
+                AND a.path_type = #{params.pathType}
+            </when>
+            <otherwise>
+                AND (a.path_type = 0 OR a.path_type = 2)
+            </otherwise>
+        </choose>
+        <if test="params.keyword != null and params.keyword != ''">
+            AND (a.path ILIKE CONCAT('%', #{params.keyword}, '%') OR a.alias LIKE CONCAT('%', #{params.keyword}, '%'))
+        </if>
+        <if test="params.alias != null and params.alias != ''">
+            AND a.alias = #{params.alias}
+        </if>
+        <if test="params.parentAlias != null and params.parentAlias != '' and params.parentAlias != 'NULL'">
+            AND a.parent_alias = #{params.parentAlias}
+        </if>
+        <if test="params.parentAlias == 'NULL'">
+            AND (a.parent_alias IS NULL OR a.parent_alias = '')
+        </if>
+        <if test="params.parentAliasList != null and params.parentAliasList.size() &gt; 0">
+            and a.parent_alias in
+            <foreach item="parentAlias" index="index" collection="params.parentAliasList" open="(" separator="," close=")">
+                #{parentAlias}
+            </foreach>
+        </if>
+        <if test="params.aliasList != null and params.aliasList.size() &gt; 0">
+            and a.alias in
+            <foreach item="alias" index="index" collection="params.aliasList" open="(" separator="," close=")">
+                #{alias}
+            </foreach>
+        </if>
+        <if test="params.path != null and params.path != ''">
+            AND a.path LIKE CONCAT('%', #{params.path}, '%')
+        </if>
+        <if test="params.pathList != null and params.pathList.size() &gt; 0">
+            and a.path in
+            <foreach item="path" index="index" collection="params.pathList" open="(" separator="," close=")">
+                #{path}
+            </foreach>
+        </if>
+        <if test="params.layRec != null and params.layRec != ''">
+            AND a.lay_rec LIKE CONCAT('%', #{params.layRec}, '%')
+        </if>
+        <if test="params.name != null and params.name != ''">
+            AND a.name = #{params.name}
+        </if>
+        <if test="params.displayName != null and params.displayName != ''">
+            AND a.display_name LIKE CONCAT('%', #{params.displayName}, '%')
+        </if>
+        <if test="params.description != null and params.description != ''">
+            AND a.description LIKE CONCAT('%', #{params.description}, '%')
+        </if>
+        <if test="params.dataType != null">
+            AND a.data_type = #{params.dataType}
+        </if>
+        <if test="params.templateName != null and params.templateName != ''">
+            AND (a.path_type = 1 AND a.path = #{params.templateName})
+        </if>
+        <if test="params.templateAlias != null and params.templateAlias != ''">
+            AND (t.alias = #{params.templateAlias})
+        </if>
+        <if test="params.updateStartTime != null">
+            AND a.update_at &gt;= #{params.updateStartTime}::timestamp
+        </if>
+        <if test="params.updateEndTime != null">
+            AND a.update_at &lt; #{params.updateEndTime}::timestamp
+        </if>
+        <if test="params.createStartTime != null">
+            AND a.create_at &gt;= #{params.createStartTime}::timestamp
+        </if>
+        <if test="params.createEndTime != null">
+            AND a.create_at &lt; #{params.createEndTime}::timestamp
+        </if>
+        <if test="params.labelName != null and params.labelName != ''">
+            AND c.label_name LIKE CONCAT('%', #{params.labelName}, '%')
+        </if>
+        <if test="params.extend != null and params.extend.size() > 0">
+            <foreach collection="params.extend" item="val" index="key">
+                AND a.extend->>#{key} = #{val}
+            </foreach>
+        </if>
+        ORDER BY a.id ASC
+    </sql>
+
+    <!-- 原始条件查询，已支持复用 -->
+    <select id="listByConditions" parameterType="com.supos.common.dto.UnsSearchCondition" resultMap="unsResultMap">
+        SELECT a.*
+        FROM uns_namespace a
+        <if test="params.labelName != null and params.labelName != ''">
+            <include refid="labelJoinSql"/>
+        </if>
+        <include refid="commonWhereConditions"/>
+    </select>
+
+    <select id="pageListByConditions" parameterType="com.supos.common.dto.UnsSearchCondition" resultMap="unsResultMap">
+        SELECT a.* , t.name AS template_name,t.alias AS template_alias,
+               (SELECT COUNT(*) FROM uns_namespace c WHERE c.parent_id = a.id) AS count_direct_children,
+        (SELECT COALESCE(string_agg(l.label_name,','),'') FROM uns_label_ref r LEFT JOIN uns_label l ON r.label_id = l.id WHERE r.uns_id = a.id) AS labels
+        FROM uns_namespace a
+        LEFT JOIN uns_namespace t ON a.model_id = t.id
+        LEFT JOIN uns_label_ref b ON a.id = b.uns_id
+        LEFT JOIN uns_label c ON c.id = b.label_id
+        <include refid="commonWhereConditions"/>
+    </select>
+
+    <select id="pageListByLazy" parameterType="com.supos.common.dto.UnsSearchCondition" resultMap="unsResultMap">
+        SELECT a.* ,t.name AS template_name,t.alias AS template_alias
+        FROM uns_namespace a
+        LEFT JOIN uns_namespace t ON a.model_id = t.id
+<!--        <include refid="countChildrenJoinSql"/>-->
+        <include refid="commonWhereConditions"/>
+    </select>
+
+    <select id="selectByLayRecPrefixes" parameterType="java.util.Set" resultMap="unsResultMap">
+        SELECT *
+        FROM uns_namespace a
+        WHERE a.status = 1 AND (a.data_type != 5 OR a.data_type IS NULL)
+          and a.path_type = 0
+        <if test="prefixes != null and prefixes.size() &gt; 0">
+            AND (
+            <foreach collection="prefixes" item="prefix" separator=" OR ">
+                a.lay_rec LIKE CONCAT(#{prefix}, '%')
+            </foreach>
+            )
+        </if>
+    </select>
+
+</mapper>

@@ -1,5 +1,6 @@
 package com.supos.uns.service.exportimport.excel;
 
+import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import com.alibaba.excel.EasyExcel;
@@ -48,7 +49,7 @@ public class ExcelDataExporter extends DataExporter {
     }
 
     @Override
-    public String exportData(ExcelExportContext context, List<ExportNode> exportFolderList, List<ExportNode> exportFileList, List<UnsLabelPo> labels) {
+    public String exportData(ExcelExportContext context) {
         try {
             String datePath = DateUtil.format(new Date(), "yyyyMMddHHmmss");
             String path = String.format("%s%s%s", Constants.EXCEL_ROOT, datePath, Constants.EXCEL_OUT_PATH);
@@ -56,75 +57,46 @@ public class ExcelDataExporter extends DataExporter {
             FileUtil.touch(targetPath);
 
             ExcelWriter excelWriter = EasyExcel.write(targetPath).withTemplate(new ClassPathResource(Constants.EXCEL_TEMPLATE_PATH).getInputStream()).build();
-            //unsExcelService.writeExplanationRow(excelWriter);
+            //  写说明页
+            unsExcelService.writeExplanationRow(excelWriter);
 
+            ExcelTypeEnum activeExcelType = ExcelTypeEnum.Explanation;
             // 导出模板
             if (MapUtils.isNotEmpty(context.getTemplateMap())) {
                 List<ExportImportData> templateDatas = context.getTemplateMap().values().stream().map(template -> ExportImportUtil.createRow(template, context).getExportImportData()).collect(Collectors.toList());
                 writeRow(excelWriter, ExcelTypeEnum.Template, templateDatas);
+                activeExcelType = getActiveExcelType(activeExcelType, ExcelTypeEnum.Template);
             }
 
             // 导出标签
-            if (CollectionUtils.isNotEmpty(labels)) {
-                List<ExportImportData> labelDatas = labels.stream().map(label -> ExportImportUtil.createRow(label).getExportImportData()).collect(Collectors.toList());
+            Map<Long, UnsLabelPo> labels = context.getLabelMap();
+            if (MapUtils.isNotEmpty(labels)) {
+                List<ExportImportData> labelDatas = labels.values().stream().map(label -> ExportImportUtil.createRow(label).getExportImportData()).collect(Collectors.toList());
                 writeRow(excelWriter, ExcelTypeEnum.Label, labelDatas);
+                activeExcelType = getActiveExcelType(activeExcelType, ExcelTypeEnum.Label);
             }
 
 
-            if (CollectionUtils.isNotEmpty(exportFolderList) || CollectionUtils.isNotEmpty(exportFileList)) {
-                Map<ExcelTypeEnum, Set<String>> excelTypeItemMap = new HashMap<>();
-                Map<ExcelTypeEnum, AtomicInteger> sheetRowMap = new HashMap<>();
+            List<ExportNode> exportFileList = context.getExportFileList();
+            if (CollectionUtils.isNotEmpty(exportFileList)) {
                 // 导出文件
-                for (ExportNode file : exportFileList) {
-                    UnsPo unsPo = file.getUnsPo();
-                    ExportImportUtil.RowWrapper rowWrapper = ExportImportUtil.createRow(unsPo, context);
-                    file.setRowWrapper(rowWrapper);
-                }
-
-/*                Map<Long, UnsPo> referFileIdMap = new HashMap<>();
-                Map<String, UnsPo> referFileAliadMap = new HashMap<>();
-                if (CollectionUtils.isNotEmpty(context.getRefers())) {
-                    Set<Long> referFileIds = context.getRefers().stream().filter(f -> f.getId() != null).map(InstanceField::getId).collect(Collectors.toSet());
-                    Set<String> referFileAliass = context.getRefers().stream().filter(f -> f.getAlias() != null).map(InstanceField::getAlias).collect(Collectors.toSet());
-
-                    if (CollectionUtils.isNotEmpty(referFileIds)) {
-                        List<UnsPo> referFilesByIds =unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).in(UnsPo::getId, referFileIds));
-
-                        referFileIdMap.putAll(referFilesByIds.stream().collect(Collectors.toMap(UnsPo::getId, Function.identity(), (k1, k2) -> k2)));
-                    }
-                    if (CollectionUtils.isNotEmpty(referFileAliass)) {
-                        List<UnsPo> referFilesByAliass =unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).in(UnsPo::getAlias, referFileAliass));
-
-                        referFileAliadMap.putAll(referFilesByAliass.stream().collect(Collectors.toMap(UnsPo::getAlias, Function.identity(), (k1, k2) -> k2)));
-                    }
-                }*/
-
-                Map<ExcelTypeEnum, List<ExportImportUtil.RowWrapper>> rowWrapperMap = exportFileList.stream().map(file -> {
-                    ExportImportUtil.RowWrapper rowWrapper = file.getRowWrapper();
-                    //rowWrapper.handleRefer(referFileIdMap, referFileAliadMap);
-                    return rowWrapper;
-                }).collect(Collectors.groupingBy(ExportImportUtil.RowWrapper::getExcelType));
+                Map<ExcelTypeEnum, List<ExportImportUtil.RowWrapper>> rowWrapperMap = exportFileList.stream().map(file -> ExportImportUtil.createRow(file.getUnsPo(), context)).collect(Collectors.groupingBy(ExportImportUtil.RowWrapper::getExcelType));
                 for (Map.Entry<ExcelTypeEnum, List<ExportImportUtil.RowWrapper>> e : rowWrapperMap.entrySet()) {
-                    writeRow(excelWriter, e.getKey(), e.getValue().stream().map(ExportImportUtil.RowWrapper::getExportImportData).collect(Collectors.toList()));
-                }
-
-                // 导出文件夹
-                if (CollectionUtils.isNotEmpty(exportFolderList)) {
-                    List<ExportImportData> folderDatas = exportFolderList.stream().map(folder -> ExportImportUtil.createRow(folder.getUnsPo(), context).getExportImportData()).collect(Collectors.toList());
-                    writeRow(excelWriter, ExcelTypeEnum.Folder, folderDatas);
-                }
-
-/*                List<ExcelTypeEnum> sortedExcelType = ExcelTypeEnum.sort();
-                for (ExcelTypeEnum excelType : sortedExcelType) {
-                    if (excelType.getIndex() < 0) {
-                        continue;
+                    if (CollectionUtils.isNotEmpty(e.getValue())) {
+                        writeRow(excelWriter, e.getKey(), e.getValue().stream().map(ExportImportUtil.RowWrapper::getExportImportData).collect(Collectors.toList()));
+                        activeExcelType = getActiveExcelType(activeExcelType, e.getKey());
                     }
-                    if (CollectionUtils.isNotEmpty(excelTypeItemMap.get(excelType))) {
-                        excelWriter.getWorkbook().setActiveSheet(excelType.getIndex());
-                        break;
-                    }
-                }*/
+                }
             }
+            List<ExportNode> exportFolderList = context.getExportFolderList();
+            // 导出文件夹
+            if (CollectionUtils.isNotEmpty(exportFolderList)) {
+                List<ExportImportData> folderDatas = exportFolderList.stream().map(folder -> ExportImportUtil.createRow(folder.getUnsPo(), context).getExportImportData()).collect(Collectors.toList());
+                writeRow(excelWriter, ExcelTypeEnum.Folder, folderDatas);
+                activeExcelType = getActiveExcelType(activeExcelType, ExcelTypeEnum.Folder);
+            }
+
+            excelWriter.writeContext().getWorkbook().setActiveSheet(activeExcelType.getIndex());
 
             excelWriter.finish();
             log.info("export success:{}", targetPath);
@@ -132,6 +104,13 @@ public class ExcelDataExporter extends DataExporter {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private ExcelTypeEnum getActiveExcelType(ExcelTypeEnum activeExcelType, ExcelTypeEnum currentExcelType) {
+        if (activeExcelType == ExcelTypeEnum.Explanation) {
+            return currentExcelType;
+        }
+        return activeExcelType;
     }
 
     private void writeRow(ExcelWriter excelWriter, ExcelTypeEnum excelType, List<ExportImportData> dataList) {

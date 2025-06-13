@@ -1,0 +1,32 @@
+[
+  {
+    "dataType": 1,
+    "topic": "hkj/2ayw",
+    "addDashBoard": false,
+    "addFlow": false,
+    "fields": [
+      {
+        "name": "tm",
+        "type": "long"
+      }, {
+        "name": "wq",
+        "type": "double"
+      }
+    ]
+  },
+  {
+    "dataType": 1,
+    "topic": "hkj/bugseq2",
+    "addDashBoard": false,
+    "addFlow": false,
+    "fields": [
+      {
+        "name": "tm",
+        "type": "long"
+      }, {
+        "name": "wq",
+        "type": "double"
+      }
+    ]
+  }
+]

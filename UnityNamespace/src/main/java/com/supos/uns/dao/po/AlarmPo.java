@@ -22,9 +22,14 @@ public class AlarmPo {
     private Long id;
 
     /**
-     * 报警规则topic
+     * 报警规则 uns Id
      */
-    private String topic;
+    private Long uns;
+
+    /**
+     * uns 路径
+     */
+    private String unsPath;
 
     /**
      * 当前值

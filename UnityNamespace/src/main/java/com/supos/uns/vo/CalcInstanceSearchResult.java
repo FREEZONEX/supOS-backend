@@ -7,6 +7,9 @@ import java.util.List;
 
 @Data
 public class CalcInstanceSearchResult {
-    String topic;
+
+    String id;
+    String path;
+    String name;
     List<FieldDefineVo> fields;
 }

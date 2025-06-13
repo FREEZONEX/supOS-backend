@@ -1,46 +1,47 @@
 package com.supos.uns.vo;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.Date;
+import org.hibernate.validator.constraints.Length;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateTodoVo {
 
-    /**
-     * 用户ID
-     */
-    @Schema(description = "用户ID")
-    private String userId;
-
-    /**
-     * 用户名
-     */
     @Schema(description = "用户名")
+    @NotBlank(message = "用户名不可为空")
     private String username;
-
     /**
      * 模块编码
      * @see com.supos.common.enums.SysModuleEnum
      */
-    @Schema(description = "模块名称")
+    @Schema(description = "模块编码")
+    @NotBlank(message = "模块编码不可为空")
+    @Length(max = 32 , message = "模块编码长度不能超过32")
     private String moduleCode;
+
+    @Schema(description = "模块名称")
+    @NotBlank(message = "模块名称不可为空")
+    @Length(max = 32 , message = "模块名称长度不能超过32")
+    private String moduleName;
 
     /**
      * 事项信息
      */
     @Schema(description = "事项信息")
+    @NotBlank(message = "事项信息不可为空")
     private String todoMsg;
 
     /**
      * 业务主键
      */
     @Schema(description = "业务主键")
+    @Hidden
     private String businessId;
 
     /**

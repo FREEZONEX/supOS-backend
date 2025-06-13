@@ -33,5 +33,6 @@ public class PostgresqlTypeUtils {
         dbType2FieldTypeMap.put("varchar", FieldType.STRING.name);
         dbType2FieldTypeMap.put("bool", FieldType.BOOLEAN.name);
         dbType2FieldTypeMap.put("boolean", FieldType.BOOLEAN.name);
+        dbType2FieldTypeMap.put("blob", FieldType.BLOB.name);
     }
 }

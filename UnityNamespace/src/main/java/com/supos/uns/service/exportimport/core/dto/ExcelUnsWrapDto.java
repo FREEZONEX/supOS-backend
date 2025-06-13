@@ -1,6 +1,7 @@
-package com.supos.uns.service.exportimport.core.dto;
+package com.supos.common.dto.excel;
 
 import com.supos.common.dto.CreateTopicDto;
+import com.supos.common.dto.InstanceField;
 import lombok.Data;
 
 import java.util.HashSet;
@@ -30,6 +31,11 @@ public class ExcelUnsWrapDto {
      * 关联的标签
      */
     private Set<String> labels;
+
+    /**
+     * 关联的引用
+     */
+    private InstanceField[] refers;
 
     public ExcelUnsWrapDto(String batchIndex, CreateTopicDto uns) {
         this.batchIndex = batchIndex;

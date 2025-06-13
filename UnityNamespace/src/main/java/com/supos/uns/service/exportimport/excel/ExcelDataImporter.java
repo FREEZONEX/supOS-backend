@@ -47,14 +47,17 @@ public class ExcelDataImporter extends DataImporter {
             ReadSheet[] readSheets = new ReadSheet[ExcelTypeEnum.size()];
             for (ExcelTypeEnum obj : ExcelTypeEnum.values()) {
                 if (obj != ExcelTypeEnum.ERROR) {
-                    WriteSheet writeSheet = EasyExcel.writerSheet(obj.getIndex()).registerWriteHandler(new ExcelErrorWriteHandler()).build();
+                    WriteSheet writeSheet = EasyExcel.writerSheet(obj.getIndex()).registerWriteHandler(new ExcelErrorWriteHandler(getContext())).build();
                     ReadSheet readSheet =
-                            EasyExcel.readSheet(obj.getIndex()).registerReadListener(new ExcelRowErrorHandler(excelWriter, writeSheet, getContext().getError())).build();
+                            EasyExcel.readSheet(obj.getIndex()).registerReadListener(new ExcelRowErrorHandler(excelWriter, writeSheet, getContext())).build();
                     readSheets[obj.getIndex()] = readSheet;
                 }
             }
             excelReader.read(readSheets);
             excelReader.finish();
+
+            excelWriter.writeContext().getWorkbook().setActiveSheet(getContext().getActiveExcelType().getIndex());
+
             excelWriter.finish();
         } catch (Throwable e) {
             log.error("导入失败", e);
@@ -93,7 +96,7 @@ public class ExcelDataImporter extends DataImporter {
                 dataMap.put(headerIndex.get(i), list.get(i));
             }
 
-            if (/*currentExcelType != ExcelTypeEnum.Explanation && */currentExcelType != ExcelTypeEnum.ERROR) {
+            if (currentExcelType != ExcelTypeEnum.Explanation && currentExcelType != ExcelTypeEnum.ERROR) {
                 getParser(currentExcelType).parseExcel(sheetIndex, (int) l, dataMap, context);
                 if (l % batch == 0) {
                     doImport(currentExcelType);
@@ -111,13 +114,13 @@ public class ExcelDataImporter extends DataImporter {
                 importFolder(context);
             } else if (currentExcelType == ExcelTypeEnum.FILE_TIMESERIES
                     || currentExcelType == ExcelTypeEnum.FILE_RELATION
-                    /*|| currentExcelType == ExcelTypeEnum.FILE_CALCULATE
+                    || currentExcelType == ExcelTypeEnum.FILE_CALCULATE
                     || currentExcelType == ExcelTypeEnum.FILE_AGGREGATION
-                    || currentExcelType == ExcelTypeEnum.FILE_REFERENCE*/) {
+                    || currentExcelType == ExcelTypeEnum.FILE_REFERENCE) {
                 importFile(context, currentExcelType);
             }
 
-            if (currentExcelType == ExcelTypeEnum.FILE_RELATION) {
+            if (currentExcelType == ExcelTypeEnum.FILE_REFERENCE) {
                 log.info("import running time:{}s", getStopWatch().getTotalTimeSeconds());
                 log.info(getStopWatch().prettyPrint());
             }

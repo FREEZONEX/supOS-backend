@@ -1,83 +1,103 @@
 package com.supos.uns;
 
+import com.supos.common.Constants;
 import com.supos.common.NodeType;
-import com.supos.common.SrcJdbcType;
+import com.supos.common.adpater.historyquery.UnsHistoryQueryResult;
 import com.supos.common.dto.*;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.JsonUtil;
-import com.supos.uns.dao.po.UnsLabelPo;
-import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.service.*;
 import com.supos.uns.vo.*;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
 
 @RestController
 @Slf4j
+@Hidden
 public class UnsApiController {
+
     @Autowired
     UnsManagerService unsManagerService;
     @Autowired
+    UnsAddService unsAddService;
+    @Autowired
+    UnsRemoveService unsRemoveService;
+    @Autowired
+    UnsTemplateService unsTemplateService;
+    @Autowired
     UnsQueryService unsQueryService;
     @Autowired
-    AlarmService alarmService;
-    @Autowired
-    UnsLabelService unsLabelService;
-    @Autowired
     DbToUnsService dbToUnsService;
+    @Autowired
+    UnsMapper unsMapper;
+    @Autowired
+    UnsDataService unsDataService;
+
+    private static final Set<Integer> baseDataTypes = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE)));
 
     @Operation(summary = "分页搜索主题")
     @GetMapping(path = {"/inter-api/supos/uns/search"}, produces = "application/json")
     public TopicPaginationSearchResult searchPaged(@RequestParam(name = "k", required = false) @Parameter(description = "模糊搜索词") String key,
                                                    @RequestParam(name = "modelTopic", required = false) @Parameter(description = "模型topic") String modelTopic,
-                                                   @RequestParam(name = "type", required = false, defaultValue = "2") @Parameter(description = "搜索类型: 1--模型, 2--实例(默认值), 3--非计算时序实例，4--时序实例，5--报警规则") int searchType,
-                                                   @RequestParam(name = "normal", required = false) @Parameter(description = "只搜索基本实例") boolean normal,
+                                                   @RequestParam(name = "type", required = false, defaultValue = "2") @Parameter(description = "搜索类型: 1--模型, 2--文件(默认值), 3--非计算时序文件，4--时序文件，5--报警规则") int searchType,
+                                                   @RequestParam(name = "normal", required = false) @Parameter(description = "只搜索基本文件") boolean normal,
                                                    @RequestParam(name = "dataTypes", required = false) @Parameter(description = "数据类型") Set<Integer> dataTypes,
-                                                   @RequestParam(name = "p", required = false, defaultValue = "1") @Parameter(description = "页码，默认1") Integer pageNo,
-                                                   @RequestParam(name = "sz", required = false, defaultValue = "10") @Parameter(description = "每页条数，默认10") Integer pageSize,
+                                                   @RequestParam(name = "pageNo", required = false, defaultValue = "1") @Parameter(description = "页码，默认1") Integer pageNo,
+                                                   @RequestParam(name = "pageSize", required = false, defaultValue = "10") @Parameter(description = "每页条数，默认10") Integer pageSize,
                                                    @RequestParam(name = "nfc", required = false) @Parameter(description = "至少需要的数字类型字段的个数") Integer nfc) throws Exception {
         NodeType nodeType = NodeType.valueOf(searchType);
         if (normal && (dataTypes == null || dataTypes.isEmpty())) {
-            dataTypes = SrcJdbcType.idMap.keySet();
+            dataTypes = baseDataTypes;
         }
         return unsQueryService.searchPaged(modelTopic, key, nodeType, dataTypes, pageNo, pageSize, nfc);
     }
 
-    @Operation(summary = "搜索主题树，默认整个树",tags = "openapi.tag.folder.management")
-    @GetMapping(path = {"/inter-api/supos/uns/tree", "/open-api/supos/uns/tree"})
+    @Operation(summary = "搜索主题树，默认整个树", tags = "openapi.tag.folder.management")
+    @GetMapping(path = {"/inter-api/supos/uns/tree"})
     public JsonResult<List<TopicTreeResult>> searchTree(@RequestParam(name = "key", required = false) @Parameter(description = "子节点模糊搜索词") String keyword,
+                                                        @RequestParam(name = "parentId", required = false) @Parameter(description = "父级ID") Long parentId,
                                                         @RequestParam(name = "showRec", required = false, defaultValue = "false") @Parameter(description = "显示记录条数") boolean showRec,
                                                         @RequestParam(name = "type", required = false, defaultValue = "1") @Parameter(description = "搜索类型: 1--文本搜索, 2--标签搜索，3--模板搜索") int searchType
     ) throws Exception {
         if (1 == searchType) {
-            return unsQueryService.searchTree(keyword, showRec);
+            return unsQueryService.searchTree(keyword, parentId, showRec);
         } else if (2 == searchType) {
             return unsQueryService.searchByTag(keyword);
         } else if (3 == searchType) {
             return unsQueryService.searchByTemplate(keyword);
         } else {
-            return new JsonResult<>(0, "ok", Collections.emptyList());
+            return new JsonResult<>(0, unsMapper.timeZone(), Collections.emptyList());
         }
     }
 
-    @Operation(summary = "搜索外部topic主题树，默认整个树")
+    @Operation(summary = "搜索外部topic主题树，默认整个树" , tags = "openapi.tag.folder.management")
     @GetMapping(path = {"/inter-api/supos/external/tree"})
     public JsonResult<List<TopicTreeResult>> searchExternalTree(@RequestParam(name = "key", required = false) @Parameter(description = "子节点模糊搜索词") String keyword) {
         List<TopicTreeResult> treeResults = unsQueryService.searchExternalTopics(keyword);
         return new JsonResult<>(0, "ok", treeResults);
     }
 
-    @Operation(summary = "枚举数据类型", description = "列出所有支持的数据类型，供建表时下拉选择",tags = "openapi.tag.folder.management")
+
+    @Operation(summary = "多条件分页查询树结构", tags = {"openapi.tag.folder.management"})
+    @PostMapping(path = {"/inter-api/supos/uns/condition/tree","/open-api/supos/uns/condition/tree"})
+    public PageResultDTO<TopicTreeResult> searchTreeByCondition(@RequestBody UnsSearchCondition params) {
+        return unsQueryService.unsTree(params);
+    }
+
+
+    @Operation(summary = "枚举数据类型", description = "列出所有支持的数据类型，供建表时下拉选择", tags = "openapi.tag.folder.management")
     @GetMapping(path = {"/inter-api/supos/uns/types", "/open-api/supos/uns/types"})
     public JsonResult<Collection<String>> listTypes() {
         return unsQueryService.listTypes();
@@ -85,13 +105,37 @@ public class UnsApiController {
 
     @Operation(summary = "获取最新消息", parameters = @Parameter(name = "topic", description = "主题"), responses = @ApiResponse(description = "消息体"))
     @GetMapping(value = "/inter-api/supos/uns/getLastMsg", produces = "application/json")
-    public JsonResult<Object> getLastMsg(@RequestParam(name = "topic", required = false) @Parameter(description = "主题，实例path路径") String[] topics) throws Exception {
+    public JsonResult<Object> getLastMsg(
+            @RequestParam(name = "path", required = false)
+            @Parameter(description = "主题，文件path路径") String[] paths,
+            @RequestParam(name = "id", required = false)
+            @Parameter(description = "主题id") Long id,
+            @RequestParam(name = "alias", required = false)
+            @Parameter(description = "主题别名") String alias
+    ) throws Exception {
         // 查表最新数据
-        if (ArrayUtils.isEmpty(topics)) {
+        if (id != null) {
+            String rs = unsQueryService.getLastMsg(id, true).getData();
+            if (rs != null) {
+                Object jsonObj = JsonUtil.fromJson(rs);
+                return new JsonResult<>(0, "ok", jsonObj);
+            } else {
+                return new JsonResult<>(0, "NoData");
+            }
+        } else if (alias != null) {
+            String rs = unsQueryService.getLastMsgByAlias(alias, true).getData();
+            if (rs != null) {
+                Object jsonObj = JsonUtil.fromJson(rs);
+                return new JsonResult<>(0, "ok", jsonObj);
+            } else {
+                return new JsonResult<>(0, "NoData");
+            }
+        }
+        if (ArrayUtils.isEmpty(paths)) {
             return new JsonResult<>(0, "Empty topics");
         }
-        if (topics.length == 1) {
-            String rs = unsQueryService.getLastMsg(topics[0]).getData();
+        if (paths.length == 1) {
+            String rs = unsQueryService.getLastMsgByPath(paths[0], true).getData();
             if (rs != null) {
                 Object jsonObj = JsonUtil.fromJson(rs);
                 return new JsonResult<>(0, "ok", jsonObj);
@@ -100,8 +144,8 @@ public class UnsApiController {
             }
         } else {
             LinkedHashMap<String, Object> msgs = new LinkedHashMap<>();
-            for (String topic : topics) {
-                String rs = unsQueryService.getLastMsg(topics[0]).getData();
+            for (String topic : paths) {
+                String rs = unsQueryService.getLastMsgByPath(topic, true).getData();
                 if (rs != null) {
                     Object jsonObj = JsonUtil.fromJson(rs);
                     msgs.put(topic, jsonObj);
@@ -111,16 +155,28 @@ public class UnsApiController {
         }
     }
 
-    @Operation(summary = "查询文件夹详情",tags = "openapi.tag.folder.management")
+    @Operation(summary = "查询文件夹详情", tags = "openapi.tag.folder.management")
     @GetMapping(path = {"/inter-api/supos/uns/model", "/open-api/supos/uns/model"})
-    public JsonResult<ModelDetail> getModelDefinition(@RequestParam(name = "topic", required = false) @Parameter(description = "模型对应的主题路径") String topic) throws Exception {
-        return unsQueryService.getModelDefinition(topic);
+    public JsonResult<ModelDetail> getModelDefinition(@RequestParam(name = "id") @Parameter(description = "模型对应的主题ID") Long id) throws Exception {
+        return unsQueryService.getModelDefinition(id, null);
     }
 
-    @Operation(summary = "查询文件详情",tags = "openapi.tag.folder.management")
+    @Operation(summary = "根据别名,查询文件夹详情", tags = "openapi.tag.folder.management")
+    @GetMapping(path = {"/open-api/supos/uns/folderDetail"})
+    public JsonResult<ModelDetail> getModelDefinitionByAlias(@RequestParam(name = "alias") @Parameter(description = "别名") String alias) {
+        return unsQueryService.getModelDefinition(null, alias);
+    }
+
+    @Operation(summary = "查询文件详情", tags = "openapi.tag.folder.management")
     @GetMapping(path = {"/inter-api/supos/uns/instance", "/open-api/supos/uns/instance"})
-    public JsonResult<InstanceDetail> getInstanceDetail(@RequestParam(name = "topic", required = false) @Parameter(description = "模型对应的主题路径") String topic) throws Exception {
-        return unsQueryService.getInstanceDetail(topic);
+    public JsonResult<InstanceDetail> getInstanceDetail(@RequestParam(name = "id") @Parameter(description = "模型对应的主题ID") Long id) throws Exception {
+        return unsQueryService.getInstanceDetail(id, null);
+    }
+
+    @Operation(summary = "根据别名,查询文件详情", tags = "openapi.tag.folder.management")
+    @GetMapping(path = {"/open-api/supos/uns/fileDetail"})
+    public JsonResult<InstanceDetail> getInstanceDetailByAlias(@RequestParam(name = "alias") @Parameter(description = "别名") String alias) {
+        return unsQueryService.getInstanceDetail(null, alias);
     }
 
     @Operation(summary = "外部数据源表的字段定义转uns字段定义")
@@ -141,29 +197,40 @@ public class UnsApiController {
         return unsQueryService.parseJson2TreeUns(json);
     }
 
-    @Operation(summary = "批量创建文件夹和文件(node-red导入专用)", tags = "openapi.tag.folder.management")
-    @PostMapping(path = {"/inter-api/supos/uns/for/nodered"})
-    public ResultVO createModelsForNodeRed(@RequestBody List<CreateUnsNodeRedDto> requestDto) throws Exception {
-        List<String[]> results = unsManagerService.createModelsForNodeRed(requestDto);
-        return ResultVO.successWithData(results);
-    }
-
-    @Operation(summary = "创建文件夹和文件",tags = "openapi.tag.folder.management")
+    @Operation(summary = "创建文件夹和文件", tags = "openapi.tag.folder.management")
     @PostMapping(path = {"/inter-api/supos/uns/model", "/open-api/supos/uns/model"})
     @Valid
-    public BaseResult createModelInstance(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "模型字段定义") CreateModelInstanceVo dto) throws Exception {
-        return unsManagerService.createModelInstance(dto);
+    public JsonResult<String> createModelInstance(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "文件夹或文件字段定义") CreateTopicDto dto) throws Exception {
+        return unsAddService.createModelInstance(dto);
     }
 
-    @Operation(summary = "修改文件夹字段（只支持删除和新增）和描述",tags = "openapi.tag.folder.management")
-    @PutMapping(path = {"/inter-api/supos/uns/model", "/open-api/supos/uns/model"})
+    @Operation(summary = "创建文件夹", tags = "openapi.tag.folder.management")
+    @PostMapping(path = {"/inter-api/supos/uns/folder", "/open-api/supos/uns/folder"})
     @Valid
-    public ResultVO updateFieldAndDesc(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "模型字段定义") UpdateModeRequestVo dto) throws Exception {
-        if (dto.getFields() != null && dto.getFields().length > 0) {
-            return unsManagerService.updateFields(dto.getAlias(), dto.getFields());
-        } else {
-            return unsManagerService.updateDescription(dto.getAlias(), dto.getModelDescription());
-        }
+    public JsonResult<String> createFolder(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "文件夹字段定义") CreateFolderDto dto) throws Exception {
+        return unsAddService.createModelInstance(dto);
+    }
+
+    @Operation(summary = "创建文件", tags = "openapi.tag.folder.management")
+    @PostMapping(path = {"/inter-api/supos/uns/file", "/open-api/supos/uns/file"})
+    @Valid
+    public JsonResult<String> createFile(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "文件字段定义") CreateFileDto dto) throws Exception {
+        return unsAddService.createModelInstance(dto);
+    }
+
+
+    @Operation(summary = "修改文件夹或文件明细", tags = "openapi.tag.folder.management")
+    @PutMapping(path = {"/inter-api/supos/uns/detail"})
+    @Valid
+    public JsonResult<String> updateDetail(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "文件夹或文件字段定义") UpdateUnsDto dto) {
+        return unsAddService.updateModelInstance(dto);
+    }
+
+    @Operation(summary = "修改文件夹或文件名称", tags = "openapi.tag.folder.management")
+    @PutMapping(path = {"/inter-api/supos/uns/name"})
+    @Valid
+    public JsonResult<String> updateName(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "字段定义") UpdateNameVo updateNameVo) {
+        return unsAddService.updateName(updateNameVo);
     }
 
     @Operation(summary = "预先判断是否有属性关联")
@@ -173,34 +240,52 @@ public class UnsApiController {
         return unsManagerService.detectIfFieldReferenced(dto.getAlias(), dto.getFields());
     }
 
-    @Operation(summary = "批量创建模型和实例")
+    @Operation(summary = "批量创建文件夹和文件", tags = "openapi.tag.folder.management")
     @PostMapping(path = {"/inter-api/supos/uns/batch"})
-    public ResultVO createModelInstances(@RequestParam(name = "flags", required = false) Integer flags, @RequestBody List<CreateTopicDto> list) throws Exception {
+    public ResultVO createModelInstances(@RequestParam(name = "flags", required = false) Integer flags,
+                                         @RequestParam(name = "fromImport", required = false, defaultValue = "false") boolean fromImport,
+                                         @RequestBody List<CreateTopicDto> list) throws Exception {
         if (flags != null) {
             for (CreateTopicDto dto : list) {
                 dto.setFlags(flags);
             }
         }
-        Map<String, String> rs = unsManagerService.createModelAndInstance(list);
+        Map<String, String> rs = unsAddService.createModelAndInstance(list,fromImport);
         if (rs == null || rs.isEmpty()) {
             return ResultVO.success("ok");
         }
         ResultVO resultVO = new ResultVO();
         resultVO.setCode(206);
-        resultVO.setData(rs.values());
+        resultVO.setData(rs);
         return resultVO;
     }
 
-    @Operation(summary = "删除指定路径下的所有文件夹和文件",tags = "openapi.tag.folder.management")
-    @DeleteMapping({"/inter-api/supos/uns","/open-api/supos/uns"})
-    public RemoveResult removeModelOrInstance(@RequestParam(name = "path") @Parameter(description = "主题，文件夹或文件的 path路径，也可能只是某段路径") String path
+    @Operation(summary = "批量创建文件夹和文件(node-red导入专用)", tags = "openapi.tag.folder.management")
+    @PostMapping(path = {"/inter-api/supos/uns/for/nodered"})
+    public ResultVO createModelsForNodeRed(@RequestBody List<CreateUnsNodeRedDto> requestDto) throws Exception {
+        List<String[]> results = unsAddService.createModelsForNodeRed(requestDto);
+        return ResultVO.successWithData(results);
+    }
+
+    @Operation(summary = "删除指定路径下的所有文件夹和文件", tags = "openapi.tag.folder.management")
+    @DeleteMapping({"/inter-api/supos/uns"})
+    public RemoveResult removeModelOrInstance(@RequestParam(name = "id") @Parameter(description = "uns 主键") Long id
             , @RequestParam(name = "withFlow", defaultValue = "true") @Parameter(description = "是否删除相关流程") boolean withFlow
             , @RequestParam(name = "withDashboard", defaultValue = "true") @Parameter(description = "是否删除相关可视化面板") boolean withDashboard
             , @RequestParam(name = "cascade", required = false) @Parameter(description = "是否删除关联的文件") Boolean removeRefer
     ) throws Exception {
-        RemoveResult rs = unsManagerService.removeModelOrInstance(path, withFlow, withDashboard, removeRefer);
-        log.info("删除uns: path={}, cascade={}, rs: {}", path, removeRefer, rs);
+        RemoveResult rs = unsRemoveService.removeModelOrInstance(id, withFlow, withDashboard, removeRefer);
+        log.info("删除uns: id={}, cascade={}, rs: {}", id, removeRefer, rs);
         return rs;
+    }
+
+    /**
+     * 此接口pride在用
+     */
+    @Operation(summary = "根据别名集合批量删除文件夹和文件")
+    @DeleteMapping({"/inter-api/supos/uns/batch/alias", "/open-api/supos/uns/batch/alias"})
+    public ResponseEntity<RemoveResult> batchRemoveResultByAliasList(@RequestBody BatchRemoveUnsDto batchRemoveUnsDto) {
+        return unsRemoveService.batchRemoveResultByAliasList(batchRemoveUnsDto);
     }
 
     @Operation(summary = "校验指定文件夹夹是否已存在文件夹、文件名称")
@@ -212,25 +297,26 @@ public class UnsApiController {
         return unsQueryService.checkDuplicationName(folder, name, checkType);
     }
 
-    @Operation(summary = "从RestApi搜索模型字段")
-    @PostMapping("/inter-api/supos/uns/searchRestField")
-    public JsonResult<RestTestResponseVo> searchRestField(@RequestBody RestTestRequestVo requestVo) {
-        JsonResult<RestTestResponseVo> rs = null;
-        try {
-            return rs = unsQueryService.searchRestField(requestVo);
-        } catch (Exception ex) {
-            log.warn("searchRestFieldErr: " + ex.getMessage());
-            throw ex;
-        } finally {
-            log.info("searchRestField: body={}, res={}", requestVo, rs);
-        }
-    }
+//    @Deprecated
+//    @Operation(summary = "从RestApi搜索模型字段")
+//    @PostMapping("/inter-api/supos/uns/searchRestField")
+//    public JsonResult<RestTestResponseVo> searchRestField(@RequestBody RestTestRequestVo requestVo) {
+//        JsonResult<RestTestResponseVo> rs = null;
+//        try {
+//            return rs = unsQueryService.searchRestField(requestVo);
+//        } catch (Exception ex) {
+//            log.warn("searchRestFieldErr: " + ex.getMessage());
+//            throw ex;
+//        } finally {
+//            log.info("searchRestField: body={}, res={}", requestVo, rs);
+//        }
+//    }
 
-    @Operation(summary = "手动触发RestApi")
-    @PostMapping("/inter-api/supos/uns/triggerRestApi")
-    public JsonResult<RestTestResponseVo> triggerRestApi(@RequestParam(name = "topic", required = false) @Parameter(description = "文件对应的主题路径") String topic) {
-        return unsQueryService.triggerRestApi(topic);
-    }
+//    @Operation(summary = "手动触发RestApi")
+//    @PostMapping("/inter-api/supos/uns/triggerRestApi")
+//    public JsonResult<RestTestResponseVo> triggerRestApi(@RequestParam(name = "id", required = false) @Parameter(description = "文件对应的主题路径") Long fileId) {
+//        return unsQueryService.triggerRestApi(fileId);
+//    }
 
     @Operation(summary = "Mock rest")
     @GetMapping("/test/supos/uns/mockRest")
@@ -264,95 +350,26 @@ public class UnsApiController {
         return I18nUtils.getMessage(k);
     }
 
-    @Operation(summary = "创建报警规则")
-    @PostMapping(path = {"/inter-api/supos/uns/alarm/rule"})
-    public BaseResult createAlarmRule(@Valid @RequestBody CreateAlarmRuleVo createAlarmRuleVo) {
-        return unsManagerService.createAlarmRule(createAlarmRuleVo);
+
+    @Operation(summary = "批量查询文件实时值", tags = {"openapi.tag.folder.management"})
+    @PostMapping(path = {"/inter-api/supos/uns/file/current/batchQuery","/open-api/supos/uns/file/current/batchQuery"})
+    public ResponseEntity<ResultVO> batchQueryFile(@RequestBody @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "别名数组") List<String> aliasList) {
+        return unsQueryService.batchQueryFile(aliasList);
     }
 
-    @Operation(summary = "更新报警规则")
-    @PutMapping(path = {"/inter-api/supos/uns/alarm/rule"})
-    public BaseResult updateAlarmRule(@Valid @RequestBody UpdateAlarmRuleVo updateAlarmRuleVo) {
-        return unsManagerService.updateAlarmRule(updateAlarmRuleVo);
+    /**
+     * 基于pride历史查询需求实现  @安冬
+     * 91669 【open-api-批量查询文件历史值】需要提供一个标准接口，可以查询文件下“键”名非value的文件历史值，目前定制给PRIDE的接口，只能查询键名为value的历史值
+     */
+    @Operation(summary = "批量查询文件历史值", tags = {"openapi.tag.folder.management"})
+    @PostMapping(path = {"/inter-api/supos/uns/file/history/batch/query", "/open-api/supos/uns/file/history/batch/query"})
+    public ResponseEntity<ResultVO<UnsHistoryQueryResult>> batchQueryFileHistoryValue(@RequestBody @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "历史值查询请求参数") HistoryValueRequest historyValueRequest) {
+        return unsDataService.batchQueryFileHistoryValue(historyValueRequest);
     }
 
-    @Operation(summary = "查询报警列表")
-    @PostMapping(path = {"/inter-api/supos/uns/alarm/pageList"})
-    public PageResultDTO<AlarmVo> list(@Valid @RequestBody AlarmQueryVo params) {
-        return alarmService.pageList(params);
-    }
-
-    @Operation(summary = "确认报警")
-    @PostMapping(path = {"/inter-api/supos/uns/alarm/confirm"})
-    public BaseResult confirmAlarm(@Valid @RequestBody AlarmConfirmVo alarmConfirmVo) {
-        return alarmService.confirmAlarm(alarmConfirmVo);
-    }
-
-    @Operation(summary = "标签列表", description = "列出所有支持的标签，下拉选择，支持模糊搜索" ,tags = "openapi.tag.label.management")
-    @GetMapping(path = {"/inter-api/supos/uns/allLabel", "/open-api/supos/uns/allLabel"})
-    public ResultVO<List<UnsLabelPo>> allLabels(@RequestParam(name = "key", required = false) @Parameter(description = "关键字") String key) {
-        return unsLabelService.allLabels(key);
-    }
-
-    @Operation(summary = "标签详情",tags = "openapi.tag.label.management")
-    @GetMapping(path = {"/inter-api/supos/uns/label/detail","/open-api/supos/uns/label/detail"})
-    public ResultVO<LabelVo> labelDetail(@RequestParam(name = "id") @Parameter(description = "标签ID") Long id) {
-        return unsLabelService.detail(id);
-    }
-
-    @Operation(summary = "创建标签",tags = "openapi.tag.label.management")
-    @PostMapping(path = {"/inter-api/supos/uns/label","/open-api/supos/uns/label"})
-    public ResultVO createLabel(@RequestParam @Parameter(description = "标签名称") String name) {
-        return unsLabelService.create(name);
-    }
-
-    @Operation(summary = "删除标签",tags = "openapi.tag.label.management")
-    @DeleteMapping(path = {"/inter-api/supos/uns/label","/open-api/supos/uns/label"})
-    public ResultVO deleteLabel(@RequestParam @Parameter(description = "标签ID") Long id) {
-        return unsLabelService.delete(id);
-    }
-
-    @Operation(summary = "修改标签",tags = "openapi.tag.label.management")
-    @PutMapping(path = {"/inter-api/supos/uns/label","/open-api/supos/uns/label"})
-    public ResultVO updateLabel(@Valid @RequestBody LabelVo labelVo) {
-        return unsLabelService.update(labelVo);
-    }
-
-    @Operation(summary = "文件打标签",tags = "openapi.tag.label.management")
-    @PostMapping(path = {"/inter-api/supos/uns/makeLabel", "/open-api/supos/uns/makeLabel"})
-    public ResultVO makeLabel(@RequestParam @Parameter(description = "实例别名") String alias,
-                              @RequestBody(required = false) @Parameter(description = "标签集合，为空则取消所有标签") List<LabelVo> labelList) {
-        return unsLabelService.makeLabel(alias, labelList);
-    }
-
-    @Operation(summary = "查询模板列表",tags = "openapi.tag.template.management")
-    @PostMapping(path = {"/inter-api/supos/uns/template/pageList","/open-api/supos/uns/template/pageList"})
-    public PageResultDTO<TemplateSearchResult> templatePageList(@Valid @RequestBody TemplateQueryVo params) {
-        return unsQueryService.templatePageList(params);
-    }
-
-    @Operation(summary = "查询模板详情",tags = "openapi.tag.template.management")
-    @GetMapping(path = {"/inter-api/supos/uns/template","/open-api/supos/uns/template"})
-    public ResultVO<TemplateVo> templateDetail(@RequestParam(name = "id") @Parameter(description = "模板ID") String id) {
-        return ResultVO.successWithData(unsQueryService.getTemplateById(id));
-    }
-
-    @Operation(summary = "新增模板",tags = "openapi.tag.template.management")
-    @PostMapping(path = {"/inter-api/supos/uns/template","/open-api/supos/uns/template"})
-    public ResultVO<UnsPo> createTemplate(@Valid @RequestBody CreateTemplateVo createTemplateVo) {
-        return unsManagerService.createTemplate(createTemplateVo);
-    }
-
-    @Operation(summary = "修改模板",tags = "openapi.tag.template.management")
-    @PutMapping(path = {"/inter-api/supos/uns/template","/open-api/supos/uns/template"})
-    public ResultVO updateTemplate(@RequestParam(name = "id") @Parameter(description = "模板ID") String id,
-                                   @RequestParam(name = "path") @Parameter(description = "模板名称") String path) {
-        return unsManagerService.updateTemplate(id, path);
-    }
-
-    @Operation(summary = "删除模板",tags = "openapi.tag.template.management")
-    @DeleteMapping(path = {"/inter-api/supos/uns/template","/open-api/supos/uns/template"})
-    public RemoveResult deleteTemplate(@RequestParam(name = "id") @Parameter(description = "模板ID") String id) {
-        return unsManagerService.deleteTemplate(id);
+    @Operation(summary = "批量写文件实时值",tags = {"openapi.tag.folder.management"})
+    @PostMapping(path = {"/inter-api/supos/uns/file/current/batchUpdate", "/open-api/supos/uns/file/current/batchUpdate"})
+    public ResponseEntity<ResultVO<UnsDataResponseVo>> batchUpdateFile(@RequestBody List<UpdateFileDTO> list) {
+        return ResponseEntity.ok(unsDataService.batchUpdateFile(list));
     }
 }

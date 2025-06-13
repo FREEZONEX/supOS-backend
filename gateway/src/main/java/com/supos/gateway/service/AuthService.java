@@ -8,23 +8,26 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.jwt.JWT;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import com.baomidou.dynamic.datasource.annotation.DS;
+import com.supos.common.Constants;
 import com.supos.common.config.OAuthKeyCloakConfig;
+import com.supos.common.dto.UserAttributeDto;
 import com.supos.common.dto.auth.ResourceDto;
 import com.supos.common.dto.auth.RoleDto;
+import com.supos.common.enums.RoleEnum;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.KeycloakUtil;
 import com.supos.common.vo.UserInfoVo;
 import com.supos.gateway.dao.mapper.AuthMapper;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
-import jakarta.annotation.Resource;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -37,7 +40,11 @@ public class AuthService {
     @Resource
     private AuthMapper authMapper;
 
-    private static final List<String> DEF_METHODS = Arrays.asList("get","post","put","delete","patch","head","options");
+    private static final List<String> DEF_METHODS = Arrays.asList("get", "post", "put", "delete", "patch", "head", "options");
+
+    private static final List<String> DEFAULT_COMMON_URI = Arrays.asList("/logo", "/default", "/inter-api/supos", "/fuxa",
+            "/swagger-ui", "/assets", "/hasura", "/chat2db/api", "/chat2db/home", "/nodered/home", "/404", "/todo", "/plugin"
+            , "/mf-manifest.json", "/403", "/copilotkit", "/portainer/home/", "/konga/home/");
 
     /**
      * key:supos_community_token
@@ -54,22 +61,23 @@ public class AuthService {
     @Resource
     private TimedCache<String, UserInfoVo> userInfoCache;
 
-    public UserInfoVo getUserInfoVoByToken(String token){
+    public UserInfoVo getUserInfoVoByToken(String token) {
         JSONObject tokenObj = tokenCache.get(token);
         if (null == tokenObj) {
             return null;
         }
         String accessToken = tokenObj.getString("access_token");
-        UserInfoVo userInfoVo = getUserInfoVoByCache(accessToken,true);
+        UserInfoVo userInfoVo = getUserInfoVoByCache(accessToken, true);
         return userInfoVo;
     }
 
     /**
      * 获取用户信息（保活）
+     *
      * @param token
      * @return
      */
-    public ResponseEntity getUserInfoByToken(String token){
+    public ResponseEntity getUserInfoByToken(String token) {
         //获取token json info
         JSONObject tokenObj = tokenCache.get(token);
         if (null == tokenObj) {
@@ -87,82 +95,94 @@ public class AuthService {
         //如果过期时间小于5分钟，刷新token
         if ((exp - currentTimeInSeconds) <= keyCloakConfig.getRefreshTokenTime()) {
 //        if (true) {
-            log.info(">>>>>>>>>>>>token：{}过期时间小于RefreshTokenTime，进行refreshToken",token);
+            log.info(">>>>>>>>>>>>token：{}过期时间小于RefreshTokenTime，进行refreshToken", token);
             //使用refresh刷新token
             HttpResponse refreshRes = keycloakUtil.refreshToken(tokenObj.getString("refresh_token"));
             if (200 == refreshRes.getStatus()) {
                 JSONObject refreshTokenObj = JSON.parseObject(refreshRes.body());
-                tokenCache.put(token, refreshTokenObj,refreshTokenObj.getLong("expires_in") * 1000);
-                log.info(">>>>>>>>>>>>token：{}，完成保活",token);
+                tokenCache.put(token, refreshTokenObj, refreshTokenObj.getLong("expires_in") * 1000);
+                log.info(">>>>>>>>>>>>token：{}，完成保活", token);
             }
         }
-        UserInfoVo userInfoVo = getUserInfoVoByCache(accessToken,true);
-        if (null == userInfoVo){
+        UserInfoVo userInfoVo = getUserInfoVoByCache(accessToken, true);
+        if (null == userInfoVo) {
             return ResponseEntity.status(401).body("keycloak token获取用户信息失败");
         }
-        return ResponseEntity.ok(ResultVO.successWithData(userInfoVo));
+
+        ResponseCookie cookie = ResponseCookie.from(Constants.ACCESS_TOKEN_KEY, token)
+                .path("/")
+                .maxAge(Constants.TOKEN_MAX_AGE) // 秒
+                .build();
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.SET_COOKIE, cookie.toString());
+        return ResponseEntity.status(HttpStatus.OK).headers(headers).body(ResultVO.successWithData(userInfoVo));
     }
 
-    public String getTokenByCode(String code){
+    public String getTokenByCode(String code) {
         JSONObject tokenObj = keycloakUtil.getKeyCloakToken(code);
-        if (null == tokenObj){
+        if (null == tokenObj) {
             return null;
         }
         //设置 token与token_info
         String token = IdUtil.fastUUID();
-        tokenCache.put(token, tokenObj,tokenObj.getLong("expires_in") * 1000);
+        tokenCache.put(token, tokenObj, tokenObj.getLong("expires_in") * 1000);
         //设置用户信息缓存：key:sub   value:user_info
         String accessToken = tokenObj.getString("access_token");
-        getUserInfoVoByCache(accessToken,false);
+        getUserInfoVoByCache(accessToken, false);
         return token;
     }
 
     /**
      * 从缓存获取用户信息 获取不到重新从keycloak获取并设置缓存
+     *
      * @param accessToken
      * @return
      */
-    private UserInfoVo getUserInfoVoByCache(String accessToken,boolean getCache){
+    private UserInfoVo getUserInfoVoByCache(String accessToken, boolean getCache) {
         JWT jwt = JWT.of(accessToken);
         String sub = jwt.getPayloads().getStr("sub");
         UserInfoVo userInfoVo = null;
-        if (getCache){
+        if (getCache) {
             userInfoVo = userInfoCache.get(sub);
-            if (null != userInfoVo){
+            if (null != userInfoVo) {
                 return userInfoVo;
             }
         }
         HttpResponse response = keycloakUtil.userinfo(accessToken);
-        if (200 != response.getStatus()){
-            log.warn("accessToken:{}查询keycloak用户信息失败",accessToken);
+        if (200 != response.getStatus()) {
+            log.warn("accessToken:{}查询keycloak用户信息失败", accessToken);
             return null;
         }
         //设置用户信息缓存 key = sub   value = user_info
-        userInfoVo = JSON.parseObject(response.body(),UserInfoVo.class);
+        JSONObject userinfoObj = JSON.parseObject(response.body());
+        userInfoVo = JSON.parseObject(response.body(), UserInfoVo.class);
+        String phone = getUserAttributeById(userInfoVo.getSub()).get("phone");
+        userInfoVo.setPhone(phone);
+        userInfoVo.setFirstName(userinfoObj.getString("name"));
 
         //首次登录
-        if (1 == userInfoVo.getFirstTimeLogin()){
+        if (1 == userInfoVo.getFirstTimeLogin()) {
             JSONObject attributes = new JSONObject();
             JSONObject params = new JSONObject();
-            params.put("firstTimeLogin",0);
-
-            params.put("tipsEnable",userInfoVo.getTipsEnable());
-            attributes.put("attributes",params);
-            if (StrUtil.isNotBlank(userInfoVo.getEmail())){
-                attributes.put("email",userInfoVo.getEmail());
+            params.put("firstTimeLogin", 0);
+            params.put("phone", phone);
+            params.put("tipsEnable", userInfoVo.getTipsEnable());
+            attributes.put("attributes", params);
+            if (StrUtil.isNotBlank(userInfoVo.getEmail())) {
+                attributes.put("email", userInfoVo.getEmail());
             }
-            keycloakUtil.updateUser(userInfoVo.getSub(),attributes);
+            keycloakUtil.updateUser(userInfoVo.getSub(), attributes);
         }
         userInfoVo = getUserRolesResources(userInfoVo);
         userInfoCache.put(sub, userInfoVo);
-        log.debug("获取用户信息成功：{}",userInfoVo);
+        log.debug("获取用户信息成功：{}", userInfoVo);
         return userInfoVo;
     }
 
-    public UserInfoVo getUserRolesResources(UserInfoVo userInfoVo){
+    public UserInfoVo getUserRolesResources(UserInfoVo userInfoVo) {
         //查询用户的所有角色  包含组合角色
-        List<RoleDto> roleList = authMapper.roleListByUserId(keyCloakConfig.getRealm(),userInfoVo.getSub());
-        if (CollectionUtil.isEmpty(roleList)){
+        List<RoleDto> roleList = authMapper.roleListByUserId(keyCloakConfig.getRealm(), userInfoVo.getSub());
+        if (CollectionUtil.isEmpty(roleList)) {
             return userInfoVo;
         }
 
@@ -178,7 +198,7 @@ public class AuthService {
         allRoleList.addAll(compositeRoleList);
         allRoleList.addAll(clientRoleList);
 
-        userInfoVo.setRoleList(allRoleList);
+        userInfoVo.setRoleList(allRoleList.stream().filter(r -> !RoleEnum.IGNORE_ROLE_ID.contains(r.getRoleId()) && !RoleEnum.IGNORE_ROLE_NAME.contains(r.getRoleName()) && !r.getRoleName().startsWith("deny-")).collect(Collectors.toList()));
 
         //分别获取允许角色和拒绝策略角色
         List<String> denyRoles = allRoleList.stream()
@@ -187,36 +207,49 @@ public class AuthService {
                 .collect(Collectors.toList());
 
         List<String> allowRoles = allRoleList.stream()
-                .filter(role -> !role.getRoleName().startsWith("deny"))
+                .filter(role -> !role.getRoleName().startsWith("deny") && !RoleEnum.IGNORE_ROLE_NAME.contains(role.getRoleName()))
                 .map(RoleDto::getRoleId)
                 .collect(Collectors.toList());
         //获取资源列表
         List<ResourceDto> denyResourceList = new ArrayList<>();
         List<ResourceDto> allowResourceList = new ArrayList<>();
-        if (CollectionUtil.isNotEmpty(denyRoles)){
+        if (CollectionUtil.isNotEmpty(denyRoles)) {
             denyResourceList = getResourceListByRoles(denyRoles);
+            denyResourceList = denyResourceList != null ? denyResourceList : new ArrayList<>();
         }
         if (CollectionUtil.isNotEmpty(allowRoles)) {
             allowResourceList = getResourceListByRoles(allowRoles);
+            allowResourceList = allowResourceList != null ? allowResourceList : new ArrayList<>();
         }
+
+        // 添加通用资源
+        Map<String, ResourceDto> allowResourceMap = allowResourceList.stream().collect(Collectors.toMap(ResourceDto::getUri, Function.identity(), (k1, k2) -> k2));
+        List<ResourceDto> resourceList = DEFAULT_COMMON_URI.stream().filter(r -> !allowResourceMap.containsKey(r)).map(uri -> {
+            ResourceDto resourceDto = new ResourceDto();
+            resourceDto.setUri(uri);
+            resourceDto.setMethods(transMethodList(uri));
+            return resourceDto;
+        }).collect(Collectors.toList());
+        allowResourceList.addAll(resourceList);
+
         userInfoVo.setDenyResourceList(denyResourceList);
         userInfoVo.setResourceList(allowResourceList);
         return userInfoVo;
     }
 
-    public List<ResourceDto> getResourceListByRoles(List<String> roleIds){
+    public List<ResourceDto> getResourceListByRoles(List<String> roleIds) {
         List<String> policyIds = new ArrayList<>();
         for (String roleId : roleIds) {
             List<String> pList = authMapper.getPolicyIdsByRoleId(roleId);
-            if (CollectionUtil.isNotEmpty(pList)){
+            if (CollectionUtil.isNotEmpty(pList)) {
                 policyIds.addAll(pList);
             }
         }
-        if (CollectionUtil.isEmpty(policyIds)){
+        if (CollectionUtil.isEmpty(policyIds)) {
             return null;
         }
         List<ResourceDto> resourceList = authMapper.getResourceListByPolicyIds(policyIds);
-        if (CollectionUtil.isNotEmpty(resourceList)){
+        if (CollectionUtil.isNotEmpty(resourceList)) {
             resourceList.forEach(res -> {
                 res.setMethods(transMethodList(res.getUri()));
                 removeIfUriSuffix(res);
@@ -226,28 +259,28 @@ public class AuthService {
         return resourceList;
     }
 
-    private void removeIfUriSuffix(ResourceDto resource){
-        if (StrUtil.contains(resource.getUri(),"$")){
-            String uri = StrUtil.subBefore(resource.getUri(),"$",true);
+    private void removeIfUriSuffix(ResourceDto resource) {
+        if (StrUtil.contains(resource.getUri(), "$")) {
+            String uri = StrUtil.subBefore(resource.getUri(), "$", true);
             resource.setUri(uri);
         }
     }
 
-    public static List<String> transMethodList(String uri){
+    public static List<String> transMethodList(String uri) {
         // /dashboard/test$get,post,put,delete
-        if (!StrUtil.contains(uri,"$")){
+        if (!StrUtil.contains(uri, "$")) {
             return DEF_METHODS;
         }
 
-        String methodsStr =  StrUtil.subAfter(uri,"$",true);
-        if (StrUtil.isBlank(methodsStr)){
+        String methodsStr = StrUtil.subAfter(uri, "$", true);
+        if (StrUtil.isBlank(methodsStr)) {
             return DEF_METHODS;
         }
 
         return Arrays.stream(methodsStr.toLowerCase().split(",")).collect(Collectors.toList());
     }
 
-    private void removeRepeat(List<ResourceDto> resourceList){
+    private void removeRepeat(List<ResourceDto> resourceList) {
         new ArrayList<>(resourceList.stream()
                 .collect(Collectors.toMap(ResourceDto::getUri, obj -> obj, (existing, replacement) -> {
                     if (existing.getMethods().size() > replacement.getMethods().size()) {
@@ -257,5 +290,14 @@ public class AuthService {
                     }
                 }))
                 .values());
+    }
+
+    private Map<String, String> getUserAttributeById(String userId) {
+        Map<String, String> attrMap = new HashMap<>();
+        List<UserAttributeDto> attrList = authMapper.getUserAttribute(userId);
+        if (CollectionUtil.isNotEmpty(attrList)) {
+            return attrList.stream().collect(Collectors.toMap(UserAttributeDto::getName, UserAttributeDto::getValue));
+        }
+        return attrMap;
     }
 }

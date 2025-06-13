@@ -3,7 +3,17 @@ springdoc:
     path: /swagger-ui
   api-docs:
     path: /swagger-ui/v3/api-docs
+grpc:
+  server:
+    port: 19099
+  thread-pool:
+    core-size: 16      # 核心线程数（建议为 CPU核数 × 2）
+    max-size: 64       # 最大线程数（建议为 CPU核数 × 4）
+    queue-capacity: 200 # 队列容量
+    keep-alive-time: 60 # 线程空闲存活时间（秒）
 spring:
+  application:
+    name: backend-server
   main:
     allow-circular-references: true
   mvc:
@@ -13,8 +23,8 @@ spring:
     property-naming-strategy: SNAKE_CASE
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: 300MB
+      max-request-size: 300MB
   datasource:
     url: jdbc:postgresql://100.100.100.20:31014/postgres?currentSchema=supos
     username: postgres
@@ -55,6 +65,7 @@ node-red:
 hasura:
   url: ${HASURA_URL:http://office.unibutton.com:11488/hasura/home/v1/metadata}
 mybatis-plus:
+  type-handlers-package: com.supos.uns.config
   configuration:
     # 开启下划线转驼峰
     map-underscore-to-camel-case: true
@@ -96,9 +107,11 @@ camunda:
         enforceHistoryTimeToLive: false
         data-source-name: camundaDataSource
   datasource:
-    url: jdbc:postgresql://100.100.100.22:33890/camunda?currentSchema=public
+    url: jdbc:postgresql://100.100.100.20:31014/camunda?currentSchema=public
     driver-class-name: org.postgresql.Driver
     username: postgres
     password: postgres
     hikari:
       pool-name: CamundaDataSource
+      maximum-pool-size: 1
+      leak-detection-threshold: 60000

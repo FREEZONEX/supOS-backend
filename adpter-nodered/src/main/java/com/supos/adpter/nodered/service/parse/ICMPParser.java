@@ -6,16 +6,9 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.parser.Feature;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
-import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.protocol.ICMPConfigDTO;
-import com.supos.common.dto.protocol.MqttConfigDTO;
-import com.supos.common.enums.IOTProtocol;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * 定制化协议，ping目标服务器
@@ -55,7 +48,6 @@ public class ICMPParser extends ParserApi {
         jsonFlowStr = jsonFlowStr.replace("$ping_ip", icmpConfig.getServer().getHost());
         jsonFlowStr = jsonFlowStr.replace("$ping_timeout", icmpConfig.getRetry() * icmpConfig.getTimeout() + "");
         jsonFlowStr = jsonFlowStr.replace("$model_topic", uns.getUnsTopic());
-        jsonFlowStr = jsonFlowStr.replace("$schema_json_string", uns.getUnsJsonString());
 
         JSONArray jsonArr = JSON.parseArray(jsonFlowStr);
 
@@ -67,6 +59,10 @@ public class ICMPParser extends ParserApi {
                 y += highSpace;
             }
             jsonArr.getJSONObject(i).put("y", y);
+            String nodeType = jsonArr.getJSONObject(i).getString("type");
+            if ("supmodel".equals(nodeType)) {
+                jsonArr.getJSONObject(i).put("model", uns.getModel());
+            }
         }
         fullNodes.addAll(jsonArr);
     }
@@ -86,11 +82,6 @@ public class ICMPParser extends ParserApi {
                 }
             }
         }
-        return null;
-    }
-
-    @Override
-    public Map<String, ?> buildMapping(List<FieldDefine> fields, String topic, boolean isArray) {
         return null;
     }
 

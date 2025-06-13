@@ -1,6 +1,9 @@
 package com.supos.common.vo;
 
 import com.alibaba.fastjson.annotation.JSONField;
+import com.alibaba.fastjson2.JSONObject;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.supos.common.dto.auth.ResourceDto;
 import com.supos.common.dto.auth.RoleDto;
 import com.supos.common.enums.RoleEnum;
@@ -20,7 +23,7 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserInfoVo {
+public class UserInfoVo extends UserAttributeVo{
 
 
     /**
@@ -46,33 +49,12 @@ public class UserInfoVo {
     /**
      * 名字
      */
-    @JSONField(name = "given_name")
-    private String givenName;
-
-    /**
-     * 全名
-     */
-    private String name;
-
+    private String firstName;
 
     /**
      * 是否启用
      */
     private Boolean enabled;
-
-    /**
-     * 是否首次登录
-     * 1：是
-     * 0：否
-     */
-    private int firstTimeLogin = 1;
-
-    /**
-     * 是否开启tips
-     * 1：是
-     * 0：否
-     */
-    private int tipsEnable = 1;
 
     /**
      * 角色列表

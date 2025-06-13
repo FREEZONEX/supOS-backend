@@ -1,22 +1,24 @@
 package com.supos.uns.service;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.thread.ThreadUtil;
-import cn.hutool.core.util.StrUtil;
+import cn.hutool.core.util.ObjectUtil;
+import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.supos.camunda.po.ProcessDefinitionPo;
 import com.supos.camunda.service.ProcessService;
 import com.supos.camunda.service.ProcessTaskService;
 import com.supos.common.Constants;
 import com.supos.common.config.SystemConfig;
-import com.supos.common.dto.AlarmRuleDefine;
-import com.supos.common.dto.BaseResult;
-import com.supos.common.dto.PageResultDTO;
+import com.supos.common.dto.*;
 import com.supos.common.enums.SysModuleEnum;
+import com.supos.common.event.TopicMessageEvent;
+import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.I18nUtils;
+import com.supos.common.utils.JsonUtil;
 import com.supos.common.utils.UserContext;
 import com.supos.common.vo.UserInfoVo;
 import com.supos.common.vo.UserManageVo;
@@ -29,18 +31,20 @@ import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.vo.AlarmConfirmVo;
 import com.supos.uns.vo.AlarmQueryVo;
 import com.supos.uns.vo.AlarmVo;
+import com.supos.uns.vo.InstanceFieldVo;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.camunda.bpm.model.bpmn.instance.UserTask;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.supos.uns.service.UnsManagerService.genIdForPath;
-
+@Slf4j
 @Service
 public class AlarmService extends ServiceImpl<AlarmMapper, AlarmPo> {
 
@@ -58,6 +62,36 @@ public class AlarmService extends ServiceImpl<AlarmMapper, AlarmPo> {
     private ProcessTaskService processTaskService;
     @Resource
     private ProcessService processService;
+    @Autowired
+    IUnsDefinitionService unsDefinitionService;
+
+    @EventListener(classes = TopicMessageEvent.class)
+    public void alarmEvent(TopicMessageEvent event) {
+        if (event.dataType != Constants.ALARM_RULE_TYPE || MapUtils.isEmpty(event.data)) {
+            return;
+        }
+        //报警数据
+        JSONObject dataObj = new JSONObject(event.data);
+        AlarmPo alarmPo = BeanUtil.toBean(dataObj,AlarmPo.class);
+        long unsId = dataObj.getLong("_id");
+        alarmPo.setId(unsId);
+        alarmPo.setReadStatus(false);
+        alarmPo.setCreateAt(dataObj.getDate("_ct"));
+        CreateTopicDto createTopicDto = unsDefinitionService.getDefinitionById(event.unsId);
+        if (createTopicDto != null){
+            InstanceField[] ins = createTopicDto.getRefers();
+            if (ObjectUtil.isNotNull(ins)){
+                InstanceField ref = ins[0];
+                CreateTopicDto refDto = unsDefinitionService.getDefinitionById(ref.getId());
+                if (refDto != null){
+                    alarmPo.setUnsPath(refDto.getPath());
+                }
+            }
+        }
+        alarmMapper.insert(alarmPo);
+        log.info(">>>>>>>>>>>>处理TopicMessageEvent 写入报警数据,topic:{} 完成写入", event.topic);
+    }
+
 
     public PageResultDTO<AlarmVo> pageList(AlarmQueryVo params) {
         Page<AlarmVo> page = new Page<>(params.getPageNo(), params.getPageSize());
@@ -66,115 +100,127 @@ public class AlarmService extends ServiceImpl<AlarmMapper, AlarmPo> {
                 .total(iPage.getTotal()).pageNo(params.getPageNo()).pageSize(params.getPageSize());
         List<AlarmVo> list = iPage.getRecords();
         for (AlarmVo alarmVo : list) {
+            InstanceField instanceField = JsonUtil.fromJson(alarmVo.getRefers(), InstanceField[].class)[0];
+            CreateTopicDto unsPo = unsDefinitionService.getDefinitionById(instanceField.getId());
+            if (unsPo != null){
+                InstanceFieldVo ifv = BeanUtil.copyProperties(instanceField,InstanceFieldVo.class);
+                if (StringUtils.isNotBlank(alarmVo.getUnsPath())){
+                    ifv.setPath(alarmVo.getUnsPath());
+                } else {
+                    ifv.setPath(unsPo.getPath());
+                }
+                alarmVo.setRefers(JsonUtil.toJson(new InstanceFieldVo[]{ifv}));
+            }
             AlarmRuleDefine define = new AlarmRuleDefine();
             define.parseExpression(alarmVo.getExpression());
             alarmVo.setCondition(define.getCondition());
-            alarmVo.setCanHandler(isCanHandler(UserContext.get(),params.getTopic()));
+            alarmVo.setCanHandler(isCanHandler(UserContext.get(), alarmVo.getUns()));
         }
         return pageBuilder.code(0).data(iPage.getRecords()).build();
     }
 
-    public boolean isCanHandler(UserInfoVo userInfoVo,String topic){
-        if (userInfoVo == null){
+    public boolean isCanHandler(UserInfoVo userInfoVo, Long instanceId) {
+        if (userInfoVo == null) {
             return false;
         }
         //超管 可处理
-        if (userInfoVo.isSuperAdmin()){
+        if (userInfoVo.isSuperAdmin()) {
             return true;
         }
-        String instanceId = genIdForPath(topic);
         UnsPo instance = unsMapper.selectById(instanceId);
-        if (null == instance){
+        if (null == instance) {
             return false;
         }
         //人员
         if (checkWithFlags(instance.getWithFlags()) == Constants.UNS_FLAG_ALARM_ACCEPT_PERSON) {
-            List<AlarmHandlerPo> handlerList = alarmHandlerMapper.getByTopic(topic);
-            if (CollectionUtils.isEmpty(handlerList)){
+            List<AlarmHandlerPo> handlerList = alarmHandlerMapper.getByUnsId(instanceId);
+            if (CollectionUtils.isEmpty(handlerList)) {
                 return false;
             }
             AlarmHandlerPo handlerPo = handlerList.stream().filter(h -> userInfoVo.getSub().equals(h.getUserId())).findFirst().orElse(null);
             return null != handlerPo;
-        } else if (checkWithFlags(instance.getWithFlags()) == Constants.UNS_FLAG_ALARM_ACCEPT_WORKFLOW){
+        } /*else if (checkWithFlags(instance.getWithFlags()) == Constants.UNS_FLAG_ALARM_ACCEPT_WORKFLOW) {
             //工作流查询流程中配置的人员
             ProcessDefinitionPo processDefinition = processService.getById(Long.valueOf(instance.getExtend()));
-            if (null == processDefinition){
+            if (null == processDefinition) {
                 return false;
             }
             List<UserTask> tasks = processTaskService.getUserTaskListByProcessDefinitionId(processDefinition.getProcessDefinitionId());
-            if (CollectionUtils.isEmpty(tasks)){
+            if (CollectionUtils.isEmpty(tasks)) {
                 return false;
             }
             String userIdsStr = tasks.get(0).getCamundaCandidateUsers();
-            List<String> userIds = StrUtil.split(userIdsStr,",");
-            if (CollectionUtils.isEmpty(userIds)){
+            List<String> userIds = StrUtil.split(userIdsStr, ",");
+            if (CollectionUtils.isEmpty(userIds)) {
                 return false;
             }
             String userId = userIds.stream().filter(user -> userInfoVo.getSub().equals(user)).findFirst().orElse(null);
             //如果存在返回true
             return StringUtils.isNotBlank(userId);
-        }
+        }*/
         return false;
     }
 
-    public BaseResult confirmAlarm(AlarmConfirmVo alarmConfirmVo){
-        UserInfoVo userInfoVo = UserContext.get() != null ? UserContext.get() : new UserInfoVo(Constants.UNKNOWN_USER,Constants.UNKNOWN_USER);
+    public BaseResult confirmAlarm(AlarmConfirmVo alarmConfirmVo) {
+        UserInfoVo userInfoVo = UserContext.get() != null ? UserContext.get() : new UserInfoVo(Constants.UNKNOWN_USER, Constants.UNKNOWN_USER);
         BaseResult result = new BaseResult(0, "ok");
         boolean isOk = true;
-        if (alarmConfirmVo.getConfirmType() == 1){
+        if (alarmConfirmVo.getConfirmType() == 1) {
             List<AlarmPo> list = alarmConfirmVo.getIds().stream().map(id -> {
                 AlarmPo alarm = getById(id);
                 alarm.setReadStatus(true);
                 return alarm;
             }).collect(Collectors.toList());
             isOk = updateBatchById(list);
-            handlerTodo(list,userInfoVo);
+            handlerTodo(list, userInfoVo);
         } else if (alarmConfirmVo.getConfirmType() == 2) {
             List<AlarmPo> alarmList;
-            if (userInfoVo.isSuperAdmin()){
+            if (userInfoVo.isSuperAdmin()) {
                 //超管可以处理，当前topic下所有未处理的报警记录
-                alarmList = alarmMapper.getNoReadListByTopic(alarmConfirmVo.getTopic());
+                alarmList = alarmMapper.getNoReadListByUnsId(alarmConfirmVo.getUnsId());
             } else {
                 //普通用户 只能处理处理人为自己的未处理报警记录
-               alarmList = alarmMapper.getNoReadListByTopicAndUserId(alarmConfirmVo.getTopic(),userInfoVo.getSub());
+                alarmList = alarmMapper.getNoReadListByUnsIdAndUserId(alarmConfirmVo.getUnsId(), userInfoVo.getSub());
             }
             //报警设置为已读
             batchSetReadStatus(alarmList);
             //处理待办
-            handlerTodo(alarmList,userInfoVo);
+            handlerTodo(alarmList, userInfoVo);
         }
-        if (!isOk){
+        if (!isOk) {
             result.setCode(500);
             result.setMsg(I18nUtils.getMessage("uns.alarm.confirm.failed"));
         }
         return result;
     }
 
-    public void createAlarmHandler(String topic,List<UserManageVo> userList){
+    public void createAlarmHandler(Long unsId, List<UserManageVo> userList) {
         if (CollectionUtils.isNotEmpty(userList)) {
-            alarmHandlerMapper.delete(new LambdaQueryWrapper<AlarmHandlerPo>().eq(AlarmHandlerPo::getTopic, topic));
-            alarmHandlerMapper.saveBatch(topic, userList);
+            alarmHandlerMapper.delete(new LambdaQueryWrapper<AlarmHandlerPo>().eq(AlarmHandlerPo::getUnsId, unsId));
+            alarmHandlerMapper.saveBatch(unsId, userList);
         }
     }
 
 
-    private void batchSetReadStatus(List<AlarmPo> alarmList){
-        for (AlarmPo alarmPo : alarmList) {
-            alarmPo.setReadStatus(true);
-            updateById(alarmPo);
-        }
+    private void batchSetReadStatus(List<AlarmPo> alarmList) {
+        List<Long> ids = alarmList.stream().map(AlarmPo::getId).collect(Collectors.toList());
+        LambdaUpdateWrapper<AlarmPo> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.in(AlarmPo::getId, ids);
+        updateWrapper.set(AlarmPo::getReadStatus, true);
+        update(updateWrapper);
     }
 
     /**
      * 处理待办
+     *
      * @param list
      * @param userInfoVo
      */
-    private void handlerTodo(List<AlarmPo> list, UserInfoVo userInfoVo){
+    private void handlerTodo(List<AlarmPo> list, UserInfoVo userInfoVo) {
         ThreadUtil.execute(() -> {
             for (AlarmPo alarm : list) {
-                String instanceId = genIdForPath(alarm.getTopic());
-                todoService.handleTodo(SysModuleEnum.ALARM, instanceId,alarm.getId() + "",1,userInfoVo);
+                Long instanceId = alarm.getUns();
+                todoService.handleTodo(SysModuleEnum.ALARM, instanceId, alarm.getId() + "", 1, userInfoVo);
             }
         });
     }

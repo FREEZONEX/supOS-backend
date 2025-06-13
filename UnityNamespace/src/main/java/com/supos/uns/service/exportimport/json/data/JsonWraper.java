@@ -30,4 +30,12 @@ public class JsonWraper implements Serializable {
     @JsonProperty("File-relation")
     private List<FileRelation> fileRelationDataList;
 
+    @JsonProperty("File-calculate")
+    private List<FileCalculate> fileCalculateDataList;
+
+    @JsonProperty("File-aggregation")
+    private List<FileAggregation> fileAggregationDataList;
+
+    @JsonProperty("File-reference")
+    private List<FileReference> fileReferenceDataList;
 }

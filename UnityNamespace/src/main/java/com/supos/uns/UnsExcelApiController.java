@@ -1,19 +1,16 @@
 package com.supos.uns;
 
-import com.supos.common.Constants;
 import com.supos.common.dto.JsonResult;
-import com.supos.common.utils.JsonUtil;
 import com.supos.uns.service.UnsExcelService;
-import com.supos.uns.util.FileUtils;
 import com.supos.uns.vo.ExportParam;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.socket.TextMessage;
 
-import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -72,5 +69,16 @@ public class UnsExcelApiController {
     @PostMapping("/data/export")
     public JsonResult<String> dataExport(@RequestBody ExportParam exportParam) {
         return unsExcelService.dataExport(exportParam);
+    }
+
+    /**
+     * 自测 UNS 导入本地文件
+     *
+     * @return
+     */
+    @PostMapping("/data/import/test")
+    public void dataImport(@RequestParam("path") String path) {
+        unsExcelService.asyncImport(new File(path), new UnsExcelService.LogWrapperConsumer(runningStatus -> {
+        }), false);
     }
 }

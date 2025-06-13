@@ -1,6 +1,7 @@
 package com.supos.uns.util;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.supos.common.Constants;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.InstanceField;
@@ -9,10 +10,12 @@ import com.supos.common.utils.JsonUtil;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.service.exportimport.core.ExcelExportContext;
+import com.supos.uns.service.exportimport.core.ExportNode;
 import com.supos.uns.service.exportimport.core.data.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.lang.reflect.Field;
@@ -31,11 +34,11 @@ public class ExportImportUtil {
     private static List<String> FOLDER_INDEX = new LinkedList<>();
     private static List<String> FILE_TIMESERIES_INDEX = new LinkedList<>();
     private static List<String> FILE_RELATION_INDEX = new LinkedList<>();
-/*    private static List<String> FILE_CALCULATE_INDEX = new LinkedList<>();
+    private static List<String> FILE_CALCULATE_INDEX = new LinkedList<>();
     private static List<String> FILE_AGGREGATION_INDEX = new LinkedList<>();
     private static List<String> FILE_REFERENCE_INDEX = new LinkedList<>();
 
-    public static List<String> EXPLANATION = new LinkedList<>();*/
+    public static List<String> EXPLANATION = new LinkedList<>();
 
     static {
         // 模板列
@@ -51,7 +54,7 @@ public class ExportImportUtil {
 
         FILE_RELATION_INDEX.addAll(getFields(ExcelTypeEnum.FILE_RELATION));
 
-/*        FILE_CALCULATE_INDEX.addAll(getFields(ExcelTypeEnum.FILE_CALCULATE));
+        FILE_CALCULATE_INDEX.addAll(getFields(ExcelTypeEnum.FILE_CALCULATE));
 
         FILE_AGGREGATION_INDEX.addAll(getFields(ExcelTypeEnum.FILE_AGGREGATION));
 
@@ -66,7 +69,7 @@ public class ExportImportUtil {
         EXPLANATION.add("uns.excel.explanation.file.refers");
         EXPLANATION.add("uns.excel.explanation.file.expression");
         EXPLANATION.add("uns.excel.explanation.file.frequency");
-        EXPLANATION.add("uns.excel.explanation.file.label");*/
+        EXPLANATION.add("uns.excel.explanation.file.label");
     }
 
     public static int errorIndex(ExcelTypeEnum excelTypeEnum) {
@@ -92,7 +95,7 @@ public class ExportImportUtil {
             case FILE_RELATION:
                 clazz = FileRelationBase.class;
                 break;
-/*            case FILE_CALCULATE:
+            case FILE_CALCULATE:
                 clazz = FileCalculateBase.class;
                 break;
             case FILE_AGGREGATION:
@@ -100,7 +103,7 @@ public class ExportImportUtil {
                 break;
             case FILE_REFERENCE:
                 clazz = FileReferenceBase.class;
-                break;*/
+                break;
         }
         return Arrays.stream(clazz.getDeclaredFields()).map(Field::getName).collect(Collectors.toList());
     }
@@ -131,7 +134,7 @@ public class ExportImportUtil {
             case FILE_RELATION:
                 needHeads = FILE_RELATION_INDEX;
                 break;
-/*            case FILE_CALCULATE:
+            case FILE_CALCULATE:
                 needHeads = FILE_CALCULATE_INDEX;
                 break;
             case FILE_AGGREGATION:
@@ -139,7 +142,7 @@ public class ExportImportUtil {
                 break;
             case FILE_REFERENCE:
                 needHeads = FILE_REFERENCE_INDEX;
-                break;*/
+                break;
         }
 
         for (String needHead : needHeads) {
@@ -167,7 +170,7 @@ public class ExportImportUtil {
                 case Constants.RELATION_TYPE:
                     rowWrapper = createRowForFileRelation(unsPo, context);
                     break;
-/*                case Constants.CALCULATION_REAL_TYPE:
+                case Constants.CALCULATION_REAL_TYPE:
                     rowWrapper = createRowForFileCalculate(unsPo, context);
                     break;
                 case Constants.MERGE_TYPE:
@@ -175,7 +178,7 @@ public class ExportImportUtil {
                     break;
                 case Constants.CITING_TYPE:
                     rowWrapper = createRowForFileReference(unsPo, context);
-                    break;*/
+                    break;
             }
         }
 
@@ -190,7 +193,7 @@ public class ExportImportUtil {
      */
     private static RowWrapper createRowForTemplate(UnsPo unsPo) {
         TemplateDataBase excelData = new TemplateDataBase();
-        excelData.setName(unsPo.getPath());
+        excelData.setName(unsPo.getName());
         excelData.setAlias(unsPo.getAlias() != null ? unsPo.getAlias() : "");
         excelData.setFields(field(unsPo.getFields()));
         excelData.setDescription(StringUtils.isNotBlank(unsPo.getDescription()) ? unsPo.getDescription() : "");
@@ -215,7 +218,7 @@ public class ExportImportUtil {
      * @return
      */
     private static RowWrapper createRowForFolder(UnsPo unsPo, ExcelExportContext context) {
-        Map<String, UnsPo> templateMap = context.getTemplateMap();
+        Map<Long, UnsPo> templateMap = context.getTemplateMap();
 
         FolderDataBase excelData = new FolderDataBase();
         excelData.setPath(unsPo.getPath());
@@ -226,7 +229,7 @@ public class ExportImportUtil {
         } else {
             excelData.setTemplateAlias("");
         }
-        //excelData.setDisplayName(StringUtils.isNotBlank(unsPo.getDisplayName()) ? unsPo.getDisplayName() : "");
+        excelData.setDisplayName(StringUtils.isNotBlank(unsPo.getDisplayName()) ? unsPo.getDisplayName() : "");
         excelData.setFields(field(unsPo.getFields()));
         excelData.setDescription(unsPo.getDescription());
 
@@ -240,13 +243,13 @@ public class ExportImportUtil {
      * @return
      */
     private static RowWrapper createRowForFileTimeseries(UnsPo unsPo, ExcelExportContext context) {
-        Map<String, UnsPo> templateMap = context.getTemplateMap();
-        Map<String, Set<String>> unsLabelNamesMap = context.getUnsLabelNamesMap();
+        Map<Long, UnsPo> templateMap = context.getTemplateMap();
+        Map<Long, Set<String>> unsLabelNamesMap = context.getUnsLabelNamesMap();
 
         FileTimeseriesBase excelData = new FileTimeseriesBase();
         excelData.setPath(StringUtils.isNotBlank(unsPo.getPath()) ? unsPo.getPath() : "");
         excelData.setAlias(unsPo.getAlias() != null ? unsPo.getAlias() : "");
-        //excelData.setDisplayName(unsPo.getDisplayName() != null ? unsPo.getDisplayName() : "");
+        excelData.setDisplayName(unsPo.getDisplayName() != null ? unsPo.getDisplayName() : "");
         if (unsPo.getModelId() != null) {
             UnsPo template = templateMap.get(unsPo.getModelId());
             excelData.setTemplateAlias(template != null ? template.getAlias() : "");
@@ -255,12 +258,6 @@ public class ExportImportUtil {
         }
         excelData.setFields(field(unsPo.getFields()));
         excelData.setDescription(StringUtils.isNotBlank(unsPo.getDescription()) ? unsPo.getDescription() : "");
-
-        if (unsPo.getWithFlags() != null) {
-            excelData.setMockData(Constants.withFlow(unsPo.getWithFlags()) ? "TRUE" : "FALSE");
-        } else {
-            excelData.setMockData("");
-        }
 
         if (unsPo.getWithFlags() != null) {
             excelData.setAutoDashboard(Constants.withDashBoard(unsPo.getWithFlags()) ? "TRUE" : "FALSE");
@@ -291,13 +288,13 @@ public class ExportImportUtil {
      * @return
      */
     private static RowWrapper createRowForFileRelation(UnsPo unsPo, ExcelExportContext context) {
-        Map<String, UnsPo> templateMap = context.getTemplateMap();
-        Map<String, Set<String>> unsLabelNamesMap = context.getUnsLabelNamesMap();
+        Map<Long, UnsPo> templateMap = context.getTemplateMap();
+        Map<Long, Set<String>> unsLabelNamesMap = context.getUnsLabelNamesMap();
 
         FileRelationBase excelData = new FileRelationBase();
         excelData.setPath(StringUtils.isNotBlank(unsPo.getPath()) ? unsPo.getPath() : "");
         excelData.setAlias(unsPo.getAlias() != null ? unsPo.getAlias() : "");
-        //excelData.setDisplayName(unsPo.getDisplayName() != null ? unsPo.getDisplayName() : "");
+        excelData.setDisplayName(unsPo.getDisplayName() != null ? unsPo.getDisplayName() : "");
         if (unsPo.getModelId() != null) {
             UnsPo template = templateMap.get(unsPo.getModelId());
             excelData.setTemplateAlias(template != null ? template.getAlias() : "");
@@ -306,12 +303,6 @@ public class ExportImportUtil {
         }
         excelData.setFields(field(unsPo.getFields()));
         excelData.setDescription(StringUtils.isNotBlank(unsPo.getDescription()) ? unsPo.getDescription() : "");
-
-        if (unsPo.getWithFlags() != null) {
-            excelData.setMockData(Constants.withFlow(unsPo.getWithFlags()) ? "TRUE" : "FALSE");
-        } else {
-            excelData.setMockData("");
-        }
 
         if (unsPo.getWithFlags() != null) {
             excelData.setAutoDashboard(Constants.withDashBoard(unsPo.getWithFlags()) ? "TRUE" : "FALSE");
@@ -340,7 +331,7 @@ public class ExportImportUtil {
      * @param unsPo
      * @return
      */
-/*    private static RowWrapper createRowForFileCalculate(UnsPo unsPo, ExcelExportContext context) {
+    private static RowWrapper createRowForFileCalculate(UnsPo unsPo, ExcelExportContext context) {
         Map<Long, Set<String>> unsLabelNamesMap = context.getUnsLabelNamesMap();
 
         FileCalculateBase excelData = new FileCalculateBase();
@@ -371,17 +362,10 @@ public class ExportImportUtil {
 
         excelData.setExpression(StringUtils.isNotBlank(unsPo.getExpression()) ? unsPo.getExpression() : "");
 
-        RowWrapper rowWrapper = new RowWrapper(ExcelTypeEnum.FILE_CALCULATE, excelData);
-        if (ArrayUtils.isNotEmpty(unsPo.getRefers())) {
-            for (InstanceField refer : unsPo.getRefers()) {
-                context.addRefer(refer);
-            }
-            rowWrapper.setRefers(unsPo.getRefers());
-        }
-        excelData.setRefers("");
+        excelData.setRefers(handleRefer(context, unsPo.getRefers(), ExcelTypeEnum.FILE_CALCULATE));
 
-        return rowWrapper;
-    }*/
+        return new RowWrapper(ExcelTypeEnum.FILE_CALCULATE, excelData);
+    }
 
     /**
      * 聚合文件
@@ -389,7 +373,7 @@ public class ExportImportUtil {
      * @param unsPo
      * @return
      */
-/*    private static RowWrapper createRowForFileAggregation(UnsPo unsPo, ExcelExportContext context) {
+    private static RowWrapper createRowForFileAggregation(UnsPo unsPo, ExcelExportContext context) {
         Map<Long, Set<String>> unsLabelNamesMap = context.getUnsLabelNamesMap();
 
         FileAggregationBase excelData = new FileAggregationBase();
@@ -428,25 +412,18 @@ public class ExportImportUtil {
         }
         excelData.setFrequency(frequencyStr);
 
-        RowWrapper rowWrapper = new RowWrapper(ExcelTypeEnum.FILE_AGGREGATION, excelData);
-        if (ArrayUtils.isNotEmpty(unsPo.getRefers())) {
-            for (InstanceField refer : unsPo.getRefers()) {
-                context.addRefer(refer);
-            }
-            rowWrapper.setRefers(unsPo.getRefers());
-        }
-        excelData.setRefers("");
+        excelData.setRefers(handleRefer(context, unsPo.getRefers(), ExcelTypeEnum.FILE_AGGREGATION));
 
-        return rowWrapper;
-    }*/
+        return new RowWrapper(ExcelTypeEnum.FILE_AGGREGATION, excelData);
+    }
 
     /**
      * RestAPI协议文件
      *
-     * @param
+     * @param unsPo
      * @return
      */
-/*    private static RowWrapper createRowForFileReference(UnsPo unsPo, ExcelExportContext context) {
+    private static RowWrapper createRowForFileReference(UnsPo unsPo, ExcelExportContext context) {
         Map<Long, Set<String>> unsLabelNamesMap = context.getUnsLabelNamesMap();
 
         FileReferenceBase excelData = new FileReferenceBase();
@@ -473,26 +450,53 @@ public class ExportImportUtil {
         } else {
             excelData.setLabel("");
         }
+        excelData.setRefers(handleRefer(context, unsPo.getRefers(), ExcelTypeEnum.FILE_REFERENCE));
 
-        RowWrapper rowWrapper = new RowWrapper(ExcelTypeEnum.FILE_REFERENCE, excelData);
-        if (ArrayUtils.isNotEmpty(unsPo.getRefers())) {
-            for (InstanceField refer : unsPo.getRefers()) {
-                context.addRefer(refer);
+        return new RowWrapper(ExcelTypeEnum.FILE_REFERENCE, excelData);
+    }
+
+    private static String field(FieldDefine[] fs) {
+        if (ArrayUtils.isNotEmpty(fs)) {
+            FieldDefine[] field = Arrays.stream(fs).filter(f -> !f.isSystemField()).toArray(FieldDefine[]::new);
+            if (ArrayUtils.isNotEmpty(field)) {
+                return JsonUtil.toJson(field);
             }
-            rowWrapper.setRefers(unsPo.getRefers());
-        }
-        excelData.setRefers("");
-
-        return rowWrapper;
-    }*/
-
-    private static final String field(String fs) {
-        if (fs != null && fs.length() > 3 && fs.charAt(0) == '[') {
-            List<FieldDefine> list = JsonUtil.fromJson(fs, new TypeReference<List<FieldDefine>>() {
-            }.getType());
-            return JsonUtil.toJson(list.stream().filter(f -> !f.getName().startsWith(Constants.SYSTEM_FIELD_PREV)).collect(Collectors.toList()));
         }
         return "";
+    }
+
+    private static String handleRefer(ExcelExportContext context, InstanceField[] refers, ExcelTypeEnum excelType) {
+        JSONArray jsonArray = new JSONArray();
+        if (ArrayUtils.isNotEmpty(refers)) {
+            for (InstanceField field : refers) {
+                ExportNode ref = null;
+                if (field.getId() != null) {
+                    ref = context.getFileIdMap().get(field.getId());
+                } else if (StringUtils.isNotBlank(field.getAlias())) {
+                    ref = context.getFileAliasMap().get(field.getAlias());
+                } else if (StringUtils.isNotBlank(field.getPath())) {
+                    ref = context.getFilePathMap().get(field.getPath());
+                }
+
+                if (ref != null) {
+                    JSONObject jsonObject = new JSONObject();
+                    if (excelType == ExcelTypeEnum.FILE_CALCULATE) {
+                        jsonObject.put("field", field.getField());
+                        jsonObject.put("path", ref.getUnsPo().getPath());
+                        jsonObject.put("alias", ref.getUnsPo().getAlias());
+                    } else if (excelType == ExcelTypeEnum.FILE_AGGREGATION || excelType == ExcelTypeEnum.FILE_REFERENCE) {
+                        jsonObject.put("path", ref.getUnsPo().getPath());
+                        jsonObject.put("alias", ref.getUnsPo().getAlias());
+                    }
+                    if (field.getUts() != null) {
+                        jsonObject.put("uts", field.getUts());
+                    }
+
+                    jsonArray.add(jsonObject);
+                }
+            }
+        }
+        return jsonArray.toString();
     }
 
     @Data
@@ -501,41 +505,5 @@ public class ExportImportUtil {
         private ExcelTypeEnum excelType;
         private ExportImportData exportImportData;
 
-        private InstanceField[] refers;
-
-        public RowWrapper(ExcelTypeEnum excelType, ExportImportData exportImportData) {
-            this.excelType = excelType;
-            this.exportImportData = exportImportData;
-        }
-
-/*        public void handleRefer(Map<Long, UnsPo> referFileIdMap, Map<String, UnsPo> referFileAliadMap) {
-            if (refers != null) {
-                JSONArray jsonArray = new JSONArray();
-                for (InstanceField field : refers) {
-                    UnsPo ref = null;
-                    if (field.getId() == null) {
-                        ref = referFileIdMap.get(field.getId());
-                    } else if (field.getAlias() != null) {
-                        ref = referFileAliadMap.get(field.getAlias());
-                    }
-
-                    if (ref != null) {
-                        JSONObject jsonObject = new JSONObject();
-
-                        if (excelType == ExcelTypeEnum.FILE_CALCULATE) {
-                            jsonObject.put("field", field.getField());
-                            jsonObject.put("path", ref.getPath());
-                            jsonObject.put("alias", ref.getAlias());
-                        } else if (excelType == ExcelTypeEnum.FILE_AGGREGATION || excelType == ExcelTypeEnum.FILE_REFERENCE) {
-                            jsonObject.put("path", ref.getPath());
-                            jsonObject.put("alias", ref.getAlias());
-                        }
-
-                        jsonArray.add(jsonObject);
-                    }
-                }
-                exportImportData.handleRefers(jsonArray.toString());
-            }
-        }*/
     }
 }

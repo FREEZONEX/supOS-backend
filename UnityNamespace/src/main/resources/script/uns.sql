@@ -1,13 +1,39 @@
 
 CREATE TABLE if not exists uns_namespace (
-	"id" char(32) PRIMARY KEY NOT NULL,
+	"id" bigint PRIMARY KEY NOT NULL,
+	"lay_rec" text NOT NULL,
+	"alias" varchar(128) NOT NULL,
+	"parent_alias" varchar(128) NULL,
+	"name" varchar(512) NOT NULL,
 	"path" text NOT NULL,
 	"path_type" int2 NOT NULL,
 	"data_type" int2 NULL,
-	"fields" text NULL,
+	"fields" json NULL,
 	"create_at" timestamptz DEFAULT now() NULL,
-	"status" smallint DEFAULT 1 NULL
+	"status" smallint DEFAULT 1 NULL,
+	"description" varchar(255),
+	"update_at" timestamptz NULL,
+	"protocol" varchar(2000) NULL,
+	"data_path" varchar(128) NULL,
+	 "with_flags" integer NULL default 0,
+	 "data_src_id" int2 NULL,
+	 "ref_uns" jsonb default '{}',
+	 "refers" json NULL,
+	 "expression" varchar(255) NULL,
+	 "table_name" varchar(190) NULL,
+	 "number_fields" int2 default NULL,
+	 "parent_id" bigint default NULL,
+	 "model_id" bigint default NULL,
+	 "protocol_type" varchar(64) NULL,
+	 "extend" jsonb DEFAULT '{}'
 );
+ALTER TABLE uns_namespace ALTER COLUMN fields TYPE json USING fields::json;
+ALTER TABLE uns_namespace ALTER COLUMN refers TYPE json USING refers::json;
+ALTER TABLE uns_namespace ALTER COLUMN extend TYPE jsonb USING extend::jsonb;
+
+CREATE UNIQUE INDEX if not exists idx_uns_spacex_alias ON uns_namespace (alias);
+
+insert into uns_namespace("id","path_type","lay_rec","alias","name","path","description")values(1,1,'1','__templates__','tmplt','tmplt','模板顶级目录')ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE if not exists uns_dashboard (
 	id varchar(64) PRIMARY KEY NOT NULL,
@@ -17,24 +43,6 @@ CREATE TABLE if not exists uns_dashboard (
 	update_time timestamp(6) NULL,
 	create_time timestamp(6) NULL
 );
-
-alter table uns_namespace add if not exists "description" varchar(255);
-
-alter table uns_namespace add if not exists "update_at" timestamptz NULL;
-
-alter table uns_namespace add if not exists "protocol" varchar(2000) NULL;
-
-alter table uns_namespace add if not exists "data_path" varchar(128) NULL;
-
-alter table uns_namespace add if not exists with_flags integer NULL default 0;
-alter table uns_namespace add if not exists "data_src_id" int2 NULL;
-update uns_namespace set data_src_id=data_type where data_src_id is null;
-alter table uns_namespace add if not exists "ref_uns" jsonb default '{}';
-alter table uns_namespace add if not exists "refers" text NULL;
-alter table uns_namespace add if not exists "expression" varchar(255) NULL;
-alter table uns_namespace add if not exists "table_name" varchar(190) NULL;
-alter table uns_namespace add if not exists "number_fields" int2 default NULL;
-alter table uns_namespace add if not exists "model_id" char(32) default NULL;
 CREATE TABLE if not exists "supos_user_menu" (
     "id" int8 PRIMARY KEY NOT NULL,
     "user_id" varchar(64) COLLATE "pg_catalog"."default",
@@ -48,15 +56,10 @@ ALTER TABLE "supos_user_menu" OWNER TO "postgres";
 
 CREATE INDEX if not exists "idx_user_id" ON "supos_user_menu" USING btree ("user_id" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST);
 
-alter table uns_namespace add if not exists "alias" varchar(128) NULL;
-
-alter table uns_namespace add if not exists "protocol_type" varchar(64) NULL;
-
-INSERT INTO "uns_namespace" ("id", "path", "path_type", "data_type", "fields", "create_at", "status", "description", "update_at", "protocol", "data_path", "with_flags", "alias", "protocol_type", "data_src_id", "ref_uns", "refers", "expression") VALUES ('3cc8aebb301c7999b067e466534be51a', '/$alarm/*', 1, 5, '[{"name":"current_val","type":"double"},{"name":"limit_value","type":"double"},{"name":"topic","type":"string"}]', '2024-12-19 07:37:53.274213+00', 1, NULL, NULL, NULL, NULL, 0, '_$alarm_29eb8acd63d4419b80312271c28ce3cb', NULL, 1, '{}', NULL, NULL) ON CONFLICT (id) DO NOTHING;;
-
 CREATE TABLE if not exists "uns_alarms_data" (
 "_id" BIGSERIAL PRIMARY KEY,
-"topic" varchar(255) COLLATE "pg_catalog"."default",
+"uns" bigint NOT NULL,
+"uns_path" varchar(255) NULL,
 "current_value" float4,
 "limit_value" float4,
 "is_alarm" bool DEFAULT true,
@@ -64,7 +67,11 @@ CREATE TABLE if not exists "uns_alarms_data" (
 "_ct" timestamptz(6) DEFAULT now()
 );
 
-CREATE INDEX if not exists "index_topic" ON "uns_alarms_data" USING btree ("topic" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST);
+ALTER TABLE "uns_alarms_data" ALTER COLUMN "read_status" SET DEFAULT false;
+ALTER TABLE "uns_alarms_data" ALTER COLUMN "is_alarm" SET DEFAULT true;
+ALTER TABLE "uns_alarms_data" ADD IF NOT EXISTS "uns_path" varchar(255) NULL;
+
+CREATE index if not exists uns_alarms_data_uns_idx ON "uns_alarms_data" ("uns");
 
 alter table "uns_dashboard"  add if not exists "type" int2 DEFAULT 1;
 
@@ -96,7 +103,7 @@ CREATE TABLE if not exists "supos"."uns_label" (
 CREATE TABLE if not exists "supos"."uns_label_ref" (
 "id" BIGSERIAL PRIMARY KEY,
 "label_id" int8 NOT NULL,
-"uns_id" char(32) COLLATE "pg_catalog"."default",
+"uns_id" bigint NOT NULL,
 "create_at" timestamptz(6) DEFAULT now()
 );
 
@@ -105,9 +112,10 @@ CREATE TABLE if not exists "supos"."supos_todo" (
 "user_id" varchar(64) NOT NULL,
 "username" varchar(64) NOT NULL,
 "module_code" varchar(32),
+"module_name" varchar(32),
 "status" smallint DEFAULT 0 NULL,
 "todo_msg" varchar(256) ,
-"business_id" varchar(64),
+"business_id" bigint,
 "link" varchar(512),
 "handler_user_id" varchar(64),
 "handler_username" varchar(64),
@@ -116,6 +124,7 @@ CREATE TABLE if not exists "supos"."supos_todo" (
 );
 
 alter table supos_todo add if not exists "handler_time" timestamptz(6);
+alter table supos_todo add if not exists "module_name" varchar(32);
 
 COMMENT ON COLUMN "supos"."supos_todo"."user_id" IS '用户ID';
 COMMENT ON COLUMN "supos"."supos_todo"."username" IS '用户名';
@@ -149,12 +158,11 @@ INSERT INTO "supos"."supos_example" ("id", "name", "description", "package_path"
 
 CREATE TABLE if not exists "supos"."uns_alarms_handler" (
 "id" BIGSERIAL PRIMARY KEY,
-"topic" varchar(256),
+"uns_id" bigint,
 "user_id" varchar(64),
 "username" varchar(256),
 "create_at" timestamptz(6) DEFAULT now());
 
-alter table uns_namespace add if not exists "extend" varchar(64) NULL;
 
 alter table supos_todo add if not exists "process_id" int8 NULL;
 alter table supos_todo add if not exists "process_instance_id" varchar(64) NULL;
@@ -173,3 +181,5 @@ CREATE TABLE if not exists "supos"."supos_workflow_process" (
 "deploy_time" timestamptz(6),
 "bpmn_xml" text,
 "create_at" timestamptz(6) DEFAULT now());
+
+alter table uns_namespace add if not exists "display_name" varchar(512) NULL;

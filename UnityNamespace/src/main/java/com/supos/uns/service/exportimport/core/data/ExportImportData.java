@@ -10,5 +10,6 @@ import java.io.Serializable;
  */
 public interface ExportImportData extends Serializable {
 
+    default void handleRefers(String refers) {}
 
 }

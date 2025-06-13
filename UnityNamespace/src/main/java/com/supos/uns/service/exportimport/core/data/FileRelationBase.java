@@ -17,13 +17,13 @@ public class FileRelationBase implements ExportImportData {
     @ExcelProperty(index = 1)
     private String alias;
     @ExcelProperty(index = 2)
-    private String templateAlias;
+    private String displayName;
     @ExcelProperty(index = 3)
-    private String fields;
+    private String templateAlias;
     @ExcelProperty(index = 4)
-    private String description;
+    private String fields;
     @ExcelProperty(index = 5)
-    private String mockData;
+    private String description;
     @ExcelProperty(index = 6)
     private String autoDashboard;
     @ExcelProperty(index = 7)

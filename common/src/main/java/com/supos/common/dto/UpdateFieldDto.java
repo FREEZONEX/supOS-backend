@@ -1,14 +1,12 @@
 package com.supos.common.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.supos.common.annotation.TopicNameValidator;
 import com.supos.common.utils.JsonUtil;
+import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
 import java.util.Collection;
 
 @Data

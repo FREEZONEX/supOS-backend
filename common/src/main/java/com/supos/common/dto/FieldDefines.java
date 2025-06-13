@@ -7,7 +7,7 @@ import org.springframework.util.CollectionUtils;
 import java.util.*;
 
 public class FieldDefines {
-    public static final int DEFAULT_MAX_STR_LEN = 255;
+    public static final int DEFAULT_MAX_STR_LEN = 512;
     @Getter
     private Map<String, FieldDefine> fieldsMap;
     @Getter @Setter
@@ -16,7 +16,7 @@ public class FieldDefines {
     @Getter
     private Map<String, String> fieldIndexMap;
     @Getter
-    String[] uniqueKeys = new String[0];
+    Set<String> uniqueKeys = Collections.emptySet();
 
     public FieldDefines() {
         fieldsMap = Collections.emptyMap();
@@ -33,7 +33,7 @@ public class FieldDefines {
 
     private void init(Collection<FieldDefine> fs) {
         if (!CollectionUtils.isEmpty(fs)) {
-            ArrayList<String> ids = new ArrayList<>(2);
+            Set<String> ids = new LinkedHashSet<>(2);
             fieldsMap = new LinkedHashMap<>(fs.size());
             for (FieldDefine f : fs) {
                 fieldsMap.put(f.getName(), f);
@@ -48,7 +48,7 @@ public class FieldDefines {
                     fieldIndexMap.put(index, f.getName());
                 }
             }
-            this.uniqueKeys = ids.toArray(new String[ids.size()]);
+            this.uniqueKeys = Collections.unmodifiableSet(ids) ;
             if (fieldIndexMap == null) {
                 fieldIndexMap = Collections.emptyMap();
             }

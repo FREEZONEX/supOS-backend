@@ -2,39 +2,77 @@ package com.supos.uns.vo;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.supos.common.vo.FieldDefineVo;
+import com.supos.common.dto.FieldDefine;
+import com.supos.common.utils.PathUtil;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Collection;
+import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.TreeSet;
 
 @Data
 @NoArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TopicTreeResult {
+    @Schema(description = "ID")
+    String id;
+    @Schema(description = "别名")
+    String alias;// 别名
+    @Schema(description = "目录ID")
+    String parentId;// 目录ID
+    @Schema(description = "目录别名")
+    String parentAlias;// 目录别名
     @Schema(description = "节点值，本期表示消费下来的数据条数")
     Long value; //节点值，本期表示消费下来的数据条数
     @Schema(description = "最新更新时间")
     Long lastUpdateTime;
-    @Schema(description = "子节点数")
-    Integer countChildren;
-    @Schema(description = "节点类型: 0--纯路径，1--模型, 2--实例")
-    int type; // 节点类型: 0--纯路径，1--模型, 2--实例
+    @Schema(description = "子节点数(文件)")
+    Integer countChildren;//只包含文件夹的数量（子孙）
+//    @Schema(description = "路径类型: 0--文件夹，1--模板，2--文件")
+//    int type; // 路径类型: 0--文件夹，1--模板，2--文件
+    @Schema(description = "路径类型: 0--文件夹，1--模板，2--文件")
+    int pathType; // 路径类型: 0--文件夹，1--模板，2--文件
+    int type; // 路径类型: 0--文件夹，1--模板，2--文件
+    @Schema(description = "名称")
+    String name;//名称
     @Schema(description = "显示名称")
-    String name;//显示名称
+    String displayName;//显示名称
     @Schema(description = "树的路径")
     String path;//树的路径
+    @Schema(description = "文件路径名")
+    String pathName;//文件路径名
+    @Schema(description = "描述")
+    String description;
+    @Schema(description = "模板别名")
+    String templateAlias;
     @Schema(description = "协议类型")
     String protocol; // 协议类型
     @Schema(description = "字段定义")
-    FieldDefineVo[] fields;// 字段定义
+    FieldDefine[] fields;// 字段定义
     @Schema(description = "子节点")
     Collection<TopicTreeResult> children;// 子节点
+    @Schema(description = "扩展字段")
+    LinkedHashMap<String, Object> extend;//扩展字段 文件/文件夹：扩展字段  报警类型：workflow表主键ID
+    @Schema(description = "当前节点下是否有子的文件夹")
+    Boolean hasChildren;//当前节点下是否有子的文件夹 （只查子节点）
+    @Schema(description = "创建时间")
+    Date createAt;
+    @Schema(description = "更新时间")
+    Date updateAt;
 
     public TopicTreeResult(String name, String path) {
+        this.name = name;
+        this.path = path;
+    }
+
+    public TopicTreeResult(String id, String alias, String parentId, String name, String path) {
+        this.id = id;
+        this.alias = alias;
+        this.parentId = parentId;
         this.name = name;
         this.path = path;
     }
@@ -42,8 +80,8 @@ public class TopicTreeResult {
     public void addChild(TopicTreeResult child) {
         if (children == null) {
             children = new TreeSet<>((o1, o2) -> {
-                String a = o1.name, b = o2.name;
-                if ("".equals(o1.name) && "".equals(o2.name) ) {
+                String a = PathUtil.getName(o1.path), b = PathUtil.getName(o2.path);
+                if ("".equals(a) && "".equals(b) ) {
                     return 0;
                 }
                 if (Character.isDigit(a.charAt(a.length() - 1)) && Character.isDigit(b.charAt(b.length() - 1))) {
@@ -85,7 +123,7 @@ public class TopicTreeResult {
             if (children != null) {
                 int count = 0;
                 for (TopicTreeResult child : children) {
-                    if (child.type == 2) {
+                    if (child.pathType == 2) {
                         count++;
                     }
                     count += child.getCountChildren();
@@ -113,8 +151,9 @@ public class TopicTreeResult {
         return value;
     }
 
-    public TopicTreeResult setType(int type) {
-        this.type = type;
+    public TopicTreeResult setPathType(int pathType) {
+        this.pathType = pathType;
+        this.type = pathType;
         return this;
     }
 

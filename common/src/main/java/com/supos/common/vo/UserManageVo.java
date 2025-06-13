@@ -1,5 +1,6 @@
 package com.supos.common.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.supos.common.dto.auth.RoleDto;
 import com.supos.common.utils.JsonUtil;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -12,7 +13,8 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserManageVo {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class UserManageVo extends UserAttributeVo{
 
     private String id;
 

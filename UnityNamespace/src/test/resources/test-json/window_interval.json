@@ -1,0 +1,28 @@
+{
+  "addFlow": false,
+  "addDashBoard": false,
+  "topic": "/hk/nstream_iv27",
+  "referTopic": "/ddx/4",
+  "alias": "stream_ddx4_27",
+  "dataType": 4,
+  "fields": [
+    {
+      "name": "avgVal",
+      "type": "double",
+      "index": "avg(wq)"
+    }
+  ],
+  "modelDescription": "流模型",
+  "instanceDescription": "流实例",
+  "streamOptions": {
+    "window": {
+      "windowType": "INTERVAL",
+      "options": {
+        "intervalValue": "30s",
+        "intervalOffset": "1s"
+      }
+    },
+    "trigger": "MAX_DELAY 15s",
+    "waterMark": "100s"
+  }
+}

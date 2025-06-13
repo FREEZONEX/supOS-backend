@@ -47,7 +47,7 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
     @Resource
     private SystemConfig systemConfig;
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, timeout = 300)
     public void upload(String alias, MultipartFile[] files){
         for (MultipartFile file : files) {
             if (file.getSize() > Constants.ATTACHMENT_MAX_SIZE) {
@@ -103,7 +103,7 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
         }
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, timeout = 300)
     public void delete(String objectName) {
         List<UnsAttachmentPo> attachmentPos = unsAttachmentMapper.attachmentListByAttachmentPath(objectName);
         if (CollectionUtils.isNotEmpty(attachmentPos)) {

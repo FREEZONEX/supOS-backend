@@ -8,20 +8,25 @@ import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.FieldDefines;
 import com.supos.common.enums.FieldType;
-import lombok.Data;
-import org.junit.Test;
-
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+import org.junit.Test;
 
 import java.util.*;
 
 public class FindDataListTest {
     @Test
     public void test_DataType() {
-        Number number = System.currentTimeMillis();
-        Object v = number.longValue();
-        System.out.println(v.getClass() + ", " + (v instanceof Long));
+        String pkQuery = " SELECT \n" +
+                "  tc.table_name,\n" +
+                "  kcu.column_name,\n" +
+                "  CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN true ELSE false END AS is_primary\n" +
+                "FROM  information_schema.table_constraints tc  \n" +
+                " JOIN information_schema.key_column_usage kcu \n" +
+                "  ON tc.constraint_name = kcu.constraint_name\n" +
+                "WHERE tc.table_name in (";
+        System.out.println(pkQuery);
     }
 
     @Test
@@ -179,7 +184,7 @@ public class FindDataListTest {
         System.out.println(JsonUtil.toJson(fs));
 
         CreateTopicDto dto = new CreateTopicDto();
-        dto.setTopic("/a/b/1F");
+        dto.setPath("/a/b/1F");
         System.out.println(JsonUtil.toJson(dto));
         //
         Map<String, Object> bean = new HashMap<>();

@@ -1,0 +1,21 @@
+{
+  "withFlags": 16,
+  "refers": [
+    {
+      "topic": "hkxi/AKc2",
+      "field": "wq"
+    }
+  ],
+  "protocol": {
+    "condition": ">",
+    "limitValue": 110
+  },
+  "userList": [
+    {
+      "id": "d5065907-0ae7-4820-9dbf-bc5cbd10b4dd",
+      "preferredUsername": "xiaozhengtest"
+    }
+  ],
+  "expression": "a1>110",
+  "id": "fa95496a3d39ec3202af3300f9ab3b29"
+}

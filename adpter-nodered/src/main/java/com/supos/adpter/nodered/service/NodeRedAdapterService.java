@@ -17,6 +17,7 @@ import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.NodeFlowVO;
 import com.supos.adpter.nodered.vo.UpdateFlowRequestVO;
 import com.supos.common.dto.PageResultDTO;
+import com.supos.common.dto.ResultDTO;
 import com.supos.common.exception.NodeRedException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,8 @@ public class NodeRedAdapterService {
     private NodeFlowMapper nodeFlowMapper;
     @Autowired
     private NodeFlowModelMapper nodeFlowModelMapper;
+
+
 
     /**
      * proxy nodered /flows api
@@ -73,12 +76,12 @@ public class NodeRedAdapterService {
 
     /**
      * 根据topic获取对应流程
-     * @param topic
+     * @param alias
      * @return
      */
-    public List<NodeFlowVO> getByTopic(String topic) {
-        List<Long> flowIds = nodeFlowModelMapper.queryByTopic(topic);
-        if (flowIds != null && flowIds.size() > 0) {
+    public List<NodeFlowVO> getByAlias(String alias) {
+        List<Long> flowIds = nodeFlowModelMapper.queryByAlias(alias);
+        if (flowIds != null && !flowIds.isEmpty()) {
             List<NodeFlowPO> nodeFlows = nodeFlowMapper.selectByIds(flowIds);
             return buildNodeFlowVOs(nodeFlows);
         }
@@ -139,7 +142,7 @@ public class NodeRedAdapterService {
      * @return flowId
      */
     @Transactional(isolation = Isolation.READ_COMMITTED, timeout = 300)
-    public String proxyDeploy(long id, JSONArray nodes, List<String> topics) {
+    public String proxyDeploy(long id, JSONArray nodes, List<String> aliases) {
         NodeFlowPO nodeFlow = nodeFlowMapper.getById(id);
         if (nodeFlow == null) {
            throw new NodeRedException(400, "nodered.flow.not.exist");
@@ -161,11 +164,11 @@ public class NodeRedAdapterService {
         }
         // 记录流程和uns模型的关联关系
         List<NodeFlowModelPO> flowModels = new ArrayList<>();
-        if (topics == null || topics.isEmpty()) {
+        if (aliases == null || aliases.isEmpty()) {
             flowModels = parseTopicFromFlow(id, nodes);
         } else {
-            for (String t : topics) {
-                flowModels.add(new NodeFlowModelPO(id, t));
+            for (String alias : aliases) {
+                flowModels.add(new NodeFlowModelPO(id, "", alias));
             }
         }
         // update database
@@ -184,24 +187,14 @@ public class NodeRedAdapterService {
         List<NodeFlowModelPO> flowModels = new ArrayList<>();
         for (int i = 0; i < nodes.size(); i++) {
             String nodeType = nodes.getJSONObject(i).getString("type");
-            String modelTopic = nodes.getJSONObject(i).getString("selectedModel");
             // 统计关联了哪些模型topic
-            if ("supmodel".equals(nodeType) && !"Auto".equals(modelTopic)) {
-                flowModels.add(new NodeFlowModelPO(id, modelTopic));
-            } else if ("modelConverter".equals(nodeType) ) {
-                flowModels.add(new NodeFlowModelPO(id, modelTopic));
-            } else if ("inject".equals(nodeType)) {
-                // 解析inject payload, 这里的解析过程需要知晓inject节点的数据结构
-                JSONArray payload = null;
-                try {
-                    payload = nodes.getJSONObject(i).getJSONArray("payload");
-                } catch (Exception ignore) {
-                    // ignore
-                }
-                if (payload != null) {
-                    for (int j = 0; j < payload.size(); j++) {
-                        String topic  = payload.getJSONObject(j).getString("model");
-                        flowModels.add(new NodeFlowModelPO(id, topic));
+            if ("supmodel".equals(nodeType)) {
+                JSONArray models = nodes.getJSONObject(i).getJSONArray("models");
+                if (models != null) {
+                    for (int ii = 0; ii < models.size(); ii++) {
+                        log.info(models.getJSONArray(ii).toString());
+                        String alias = models.getJSONArray(ii).getString(1);
+                        flowModels.add(new NodeFlowModelPO(id, "", alias));
                     }
                 }
             }
@@ -298,14 +291,20 @@ public class NodeRedAdapterService {
         List<NodeFlowModelPO> flowModels = new ArrayList<>();
         if (nodes != null) {
             flowJson = nodes.toString();
-            for (int i = 0; i < nodes.size(); i++) {
+            /*for (int i = 0; i < nodes.size(); i++) {
                 String nodeType = nodes.getJSONObject(i).getString("type");
                 // 统计关联了哪些模型topic
-                if ("model-selector".equals(nodeType)) {
-                    String topic = nodes.getJSONObject(i).getString("selectedModel");
-                    flowModels.add(new NodeFlowModelPO(id, topic));
+                if ("supmodel".equals(nodeType)) {
+                    JSONArray models = nodes.getJSONObject(i).getJSONArray("models");
+                    if (models != null && !models.isEmpty()) {
+                        for (int j = 0; j < models.size(); j++) {
+                            String topic = models.getJSONObject(j).getString("topic");
+                            String unsId = models.getJSONObject(j).getString("id");
+                            flowModels.add(new NodeFlowModelPO(id, topic, unsId));
+                        }
+                    }
                 }
-            }
+            }*/
         }
         String status = StringUtils.hasText(nodeFlow.getFlowId()) ? FlowStatus.PENDING.name() : FlowStatus.DRAFT.name();
         nodeFlowMapper.saveFlowData(id, status, flowJson);
@@ -451,12 +450,12 @@ public class NodeRedAdapterService {
     }
 
     /**
-     * 根据topic批量查询关联流程
-     * @param topics
+     * 根据uns节点别名批量查询关联流程
+     * @param aliases
      * @return
      */
-    public List<NodeFlowVO> selectByTopics(Collection<String> topics) {
-        List<Long> parentIds = nodeFlowModelMapper.selectByTopics(topics);
+    public List<NodeFlowVO> selectByAliases(Collection<String> aliases) {
+        List<Long> parentIds = nodeFlowModelMapper.selectByAliases(aliases);
         List<NodeFlowVO> nodeFlowVo = new ArrayList<>();
         if (parentIds.isEmpty()) {
             return nodeFlowVo;

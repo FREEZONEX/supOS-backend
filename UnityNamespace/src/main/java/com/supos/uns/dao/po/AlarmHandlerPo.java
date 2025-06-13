@@ -1,7 +1,6 @@
 package com.supos.uns.dao.po;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
@@ -22,9 +21,9 @@ public class AlarmHandlerPo {
     private Long id;
 
     /**
-     * 报警规则topic
+     * 报警规则 id
      */
-    private String topic;
+    private String unsId;
 
     private String userId;
 

@@ -1,0 +1,54 @@
+[
+  {
+    "alias": "__gateway",
+    "name": "采集器",
+    "pathType": 0,
+    "table": "__gateway"
+  },
+  {
+    "alias": "__gateway_collector__ceshi1",
+    "index": 1,
+    "name": "ceshi1",
+    "parentAlias": "__gateway",
+    "pathType": 0,
+    "table": "__gateway_collector__ceshi1"
+  },
+  {
+    "alias": "__gateway_endpoint__2",
+    "index": 2,
+    "name": "3",
+    "parentAlias": "__gateway_collector__ceshi1",
+    "pathType": 0,
+    "table": "__gateway_endpoint__2"
+  },
+  {
+    "addDashBoard": false,
+    "addFlow": false,
+    "alias": "rrr_A1",
+    "pathType": 2,
+    "dataType": 1,
+    "description": "",
+    "fields": [
+      {
+        "displayName": "质量码",
+        "name": "q",
+        "type": "long"
+      },
+      {
+        "displayName": "时间戳",
+        "name": "t",
+        "type": "long"
+      },
+      {
+        "displayName": "rrr",
+        "name": "v",
+        "type": "int"
+      }
+    ],
+    "index": 3,
+    "name": "rrr2",
+    "parentAlias": "__gateway_endpoint__2",
+    "save2db": false,
+    "table": "rrr"
+  }
+]

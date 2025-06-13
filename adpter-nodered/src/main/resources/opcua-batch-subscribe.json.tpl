@@ -68,9 +68,9 @@
         "id_server": "$id_opcua_server",
         "type": "supmodel",
         "z": "",
-        "selectedModel": "Auto",
-        "modelSchema": "$schema_json_string",
-        "modelMapping": "$mapping_string",
+        "protocol": "opcua",
+        "models": [],
+        "mappings": "",
         "x": 870,
         "y": 160,
         "wires": [

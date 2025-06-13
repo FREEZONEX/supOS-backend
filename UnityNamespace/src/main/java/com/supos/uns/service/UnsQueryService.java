@@ -1,8 +1,8 @@
 package com.supos.uns.service;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.net.URLEncodeUtil;
-import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
@@ -11,7 +11,6 @@ import cn.hutool.http.HttpUtil;
 import cn.hutool.http.Method;
 import cn.hutool.http.ssl.DefaultSSLFactory;
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -19,19 +18,23 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.collect.Lists;
 import com.supos.adapter.mqtt.service.MQTTPublisher;
 import com.supos.camunda.service.ProcessService;
 import com.supos.common.Constants;
 import com.supos.common.NodeType;
+import com.supos.common.SrcJdbcType;
 import com.supos.common.annotation.DateTimeConstraint;
 import com.supos.common.dto.*;
-import com.supos.common.dto.protocol.RestConfigDTO;
 import com.supos.common.dto.protocol.RestServerConfigDTO;
 import com.supos.common.enums.FieldType;
+import com.supos.common.event.EventBus;
+import com.supos.common.event.QueryLastMsgEvent;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.event.TopicMessageEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
+import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.*;
 import com.supos.common.vo.FieldDefineVo;
 import com.supos.uns.dao.mapper.AlarmHandlerMapper;
@@ -40,14 +43,20 @@ import com.supos.uns.dao.mapper.UnsLabelMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.AlarmPo;
 import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.util.PageUtil;
 import com.supos.uns.util.ParserUtil;
+import com.supos.uns.util.UnsConverter;
+import com.supos.uns.util.UnsCountCache;
 import com.supos.uns.vo.*;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Triple;
+import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -58,9 +67,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import static com.supos.uns.service.UnsManagerService.genIdForPath;
-import static com.supos.uns.service.UnsManagerService.getShowPath;
-
 @Slf4j
 @Service
 public class UnsQueryService {
@@ -70,6 +76,11 @@ public class UnsQueryService {
     private final UnsLabelMapper unsLabelMapper;
     private final AlarmHandlerMapper alarmHandlerMapper;
     private final ProcessService processService;
+    @Autowired
+    IUnsDefinitionService unsDefinitionService;
+
+    @Autowired
+    UnsCountCache unsCountCache;
 
     private MQTTPublisher mqttPublisher;
 
@@ -94,12 +105,24 @@ public class UnsQueryService {
         return new JsonResult<Collection<String>>().setData(fieldTypes);
     }
 
-    public static void batchRemoveExternalTopic(Collection<CreateTopicDto[]> topics) {
-        for (CreateTopicDto[] arr : topics) {
-            for (CreateTopicDto t : arr) {
-                EXTERNAL_TOPIC_CACHE.remove(t.getTopic());
+    public Set<String> listByAlias(Collection<String> alias) {
+        return unsMapper.selectList(new QueryWrapper<UnsPo>().in("alias", alias).select("alias"))
+                .stream().map(UnsPo::getPath).collect(Collectors.toSet());
+    }
+
+    public long countByAlias(Collection<String> alias) {
+        long count = 0;
+        if (!CollectionUtils.isEmpty(alias)) {
+            List<List<String>> aliasList = Lists.partition(new ArrayList<>(alias), 2000);
+            for (List<String> subAlias : aliasList) {
+                count += unsMapper.selectCount(new QueryWrapper<UnsPo>().in("alias", subAlias));
             }
         }
+        return count;
+    }
+
+    public Set<Long> listInstances(Collection<Long> instanceIds) {
+        return unsMapper.listInstanceIds(instanceIds);
     }
 
     public static JsonResult<List<OuterStructureVo>> parseJson2uns(String json) {
@@ -125,7 +148,10 @@ public class UnsQueryService {
         } else {// 否则取所有结果，即所有对象
             list = searchResult.multiResults;
         }
-        List<OuterStructureVo> rsList = list.stream().map(UnsQueryService::map2fields).toList();
+        List<OuterStructureVo> rsList = list.stream().map(UnsQueryService::map2fields).collect(Collectors.collectingAndThen(
+                Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(OuterStructureVo::getDataPath))),
+                ArrayList::new
+        ));
         return new JsonResult<>(0, "ok", rsList);
     }
 
@@ -209,19 +235,20 @@ public class UnsQueryService {
                 pageNumber = 1;
             }
             int offset = (pageNumber - 1) * pageSize;
-            PageDto page = new PageDto();
-            page.setPage(pageNumber);
+            PageResultDTO page = new PageResultDTO();
+            page.setPageNo(pageNumber);
             page.setTotal(total);
             page.setPageSize(pageSize);
             result.setPage(page);
             if (total > 0) {
-                ArrayList<String> paths = unsMapper.listPaths(modelId, keyword, searchType.code, dataTypes, offset, pageSize);
-                if (!CollectionUtils.isEmpty(paths) && searchType == NodeType.Model) {
-                    for (int i = 0, len = paths.size(); i < len; i++) {
-                        String path = paths.get(i);
+                ArrayList<SimpleUns> paths = unsMapper.listPaths(modelId, keyword, searchType.code, dataTypes, offset, pageSize);
+                if (!CollectionUtils.isEmpty(paths)) {
+                    for (SimpleUns simpleUns : paths) {
+                        String path = simpleUns.getPath();
                         if (path.endsWith("/")) {
-                            paths.set(i, path.substring(0, path.length() - 1));
+                            simpleUns.setPath(path.substring(0, path.length() - 1));
                         }
+                        simpleUns.setTopic(Constants.useAliasAsTopic ? simpleUns.getAlias() : simpleUns.getPath());
                     }
                 }
                 List strList = paths;
@@ -238,8 +265,8 @@ public class UnsQueryService {
                 pageNumber = 1;
             }
             int offset = (pageNumber - 1) * pageSize;
-            PageDto page = new PageDto();
-            page.setPage(pageNumber);
+            PageResultDTO page = new PageResultDTO();
+            page.setPageNo(pageNumber);
             page.setTotal(total);
             page.setPageSize(pageSize);
             result.setPage(page);
@@ -247,13 +274,15 @@ public class UnsQueryService {
                 ArrayList<UnsPo> list = unsMapper.listNotCalcSeqInstance(keyword, minNumFields, offset, pageSize);
                 ArrayList<CalcInstanceSearchResult> rs = new ArrayList<>(list.size());
                 for (UnsPo po : list) {
-                    FieldDefine[] fs = JsonUtil.fromJson(po.getFields(), FieldDefine[].class);
+                    FieldDefine[] fs = po.getFields();
                     List<FieldDefineVo> fields = Arrays.stream(fs)
-                            .filter(f -> (f.getType().isNumber || f.getType() == FieldType.BOOLEAN) && !f.getName().startsWith(Constants.SYSTEM_FIELD_PREV))
+                            .filter(f -> (f.getType().isNumber || f.getType() == FieldType.BOOLEAN) && !f.isSystemField())
                             .map(f -> new FieldDefineVo(f.getName(), f.getType().name)).collect(Collectors.toList());
                     if (fields.size() > 0) {
                         CalcInstanceSearchResult srs = new CalcInstanceSearchResult();
-                        srs.setTopic(po.getPath());
+                        srs.setId(po.getId().toString());
+                        srs.setName(po.getName());
+                        srs.setPath(po.getPath());
                         srs.setFields(fields);
                         rs.add(srs);
                     }
@@ -269,8 +298,8 @@ public class UnsQueryService {
                 pageNumber = 1;
             }
             int offset = (pageNumber - 1) * pageSize;
-            PageDto page = new PageDto();
-            page.setPage(pageNumber);
+            PageResultDTO page = new PageResultDTO();
+            page.setPageNo(pageNumber);
             page.setTotal(total);
             page.setPageSize(pageSize);
             result.setPage(page);
@@ -278,13 +307,15 @@ public class UnsQueryService {
                 ArrayList<UnsPo> list = unsMapper.listTimeSeriesInstance(keyword, offset, pageSize);
                 ArrayList<TimeseriesInstanceSearchResult> rs = new ArrayList<>(list.size());
                 for (UnsPo po : list) {
-                    FieldDefine[] fs = JsonUtil.fromJson(po.getFields(), FieldDefine[].class);
+                    FieldDefine[] fs = po.getFields();
                     List<FieldDefineVo> fields = Arrays.stream(fs)
                             .filter(f -> (f.getType().isNumber) && !f.getName().startsWith(Constants.SYSTEM_FIELD_PREV))
                             .map(f -> new FieldDefineVo(f.getName(), f.getType().name)).collect(Collectors.toList());
                     if (fields.size() > 0) {
                         TimeseriesInstanceSearchResult srs = new TimeseriesInstanceSearchResult();
-                        srs.setTopic(po.getPath());
+                        srs.setId(po.getId().toString());
+                        srs.setName(po.getName());
+                        srs.setPath(po.getPath());
                         srs.setFields(fields);
                         rs.add(srs);
                     }
@@ -300,48 +331,49 @@ public class UnsQueryService {
                 pageNumber = 1;
             }
             int offset = (pageNumber - 1) * pageSize;
-            PageDto page = new PageDto();
-            page.setPage(pageNumber);
+            PageResultDTO page = new PageResultDTO();
+            page.setPageNo(pageNumber);
             page.setTotal(total);
             page.setPageSize(pageSize);
             result.setPage(page);
             if (total > 0) {
                 ArrayList<UnsPo> list = unsMapper.listAlarmRules(keyword, offset, pageSize);
                 ArrayList<AlarmRuleSearchResult> rs = new ArrayList<>(list.size());
-                Map<String, Long[]> countAlarms = new HashMap<>(Math.max(64, list.size()));
+                Map<Long, Long[]> countAlarms = new HashMap<>(Math.max(64, list.size()));
                 if (!CollectionUtils.isEmpty(list)) {
-                    Collection<String> topics = list.stream().map(p -> p.getPath()).collect(Collectors.toSet());
-                    final String TOPIC = AlarmRuleDefine.FIELD_TOPIC;
+                    Collection<Long> unsIds = list.stream().map(UnsPo::getId).collect(Collectors.toSet());
+                    final String UNS = AlarmRuleDefine.FIELD_UNS_ID;
                     List<AlarmPo> alarmPos = alarmMapper.selectList(new QueryWrapper<AlarmPo>()
-                            .select(TOPIC, "count(1) as currentValue,SUM(CASE WHEN read_status = false THEN 1 ELSE 0 END) AS noReadCount").groupBy(TOPIC)
-                            .in(TOPIC, topics));
+                            .select(UNS, "count(1) as currentValue,SUM(CASE WHEN read_status = false THEN 1 ELSE 0 END) AS noReadCount").groupBy(UNS)
+                            .in(UNS, unsIds));
                     for (AlarmPo po : alarmPos) {
-                        countAlarms.put(po.getTopic(), new Long[]{po.getCurrentValue().longValue(), po.getNoReadCount()});
+                        countAlarms.put(po.getUns(), new Long[]{po.getCurrentValue().longValue(), po.getNoReadCount()});
                     }
                 }
                 for (UnsPo po : list) {
                     AlarmRuleSearchResult srs = new AlarmRuleSearchResult();
-                    srs.setId(po.getId());
+                    srs.setId(po.getId().toString());
                     srs.setTopic(po.getPath());
-                    srs.setName(po.getDataPath());
+                    srs.setName(po.getName());// 告警名称改用 name
                     srs.setDescription(po.getDescription());
                     srs.setWithFlags(AlarmService.checkWithFlags(po.getWithFlags()));
                     srs.setHandlerList(Collections.emptyList());
                     if (srs.getWithFlags() == Constants.UNS_FLAG_ALARM_ACCEPT_PERSON) {
-                        srs.setHandlerList(alarmHandlerMapper.getByTopic(srs.getTopic()));
+                        srs.setHandlerList(alarmHandlerMapper.getByUnsId(po.getId()));
                     } else if (srs.getWithFlags() == Constants.UNS_FLAG_ALARM_ACCEPT_WORKFLOW) {
-                        srs.setProcessDefinition(processService.getById(Long.valueOf(po.getExtend())));
+                        //TODO
+//                        srs.setProcessDefinition(processService.getById(Long.valueOf(po.getExtend())));
                     }
-                    Long[] counts = countAlarms.get(po.getPath());
+                    Long[] counts = countAlarms.get(po.getId());
                     if (ObjectUtil.isNotNull(counts)) {
-                        Long count = countAlarms.get(po.getPath())[0];
-                        Long noReadCount = countAlarms.get(po.getPath())[1];
+                        Long count = counts[0];
+                        Long noReadCount = counts[1];
                         srs.setAlarmCount(count != null ? count.longValue() : 0);
                         srs.setNoReadCount(noReadCount != null ? noReadCount.longValue() : 0);
                     }
-                    InstanceField[] refers = JsonUtil.fromJson(po.getRefers(), InstanceField[].class);
+                    InstanceField[] refers = po.getRefers();
                     if (ObjectUtil.isNotNull(refers)) {
-                        srs.setRefTopic(refers[0].getTopic());
+                        srs.setRefUns(String.valueOf(refers[0].getId()));
                         srs.setField(refers[0].getField());
                     }
                     AlarmRuleDefine ruleDefine = JsonUtil.fromJson(po.getProtocol(), AlarmRuleDefine.class);
@@ -364,7 +396,7 @@ public class UnsQueryService {
         treeResults = allNamespaces.stream().filter(uns -> {
             if (StringUtils.hasText(keyword)) {
                 String name = PathUtil.getName(uns.getPath());
-                if (name.toLowerCase().contains(keyword.toLowerCase())) {
+                if (name.toLowerCase().contains(keyword.toLowerCase()) || uns.getAlias().toLowerCase().contains(keyword.toLowerCase())) {
                     return true;
                 } else {
                     return false;
@@ -373,7 +405,8 @@ public class UnsQueryService {
             return true;
         }).map(uns -> {
             TopicTreeResult result = new TopicTreeResult();
-            result.setType(2);
+            result.setId(String.valueOf(uns.getId()));
+            result.setPathType(2);
             result.setProtocol(uns.getProtocolType());
             result.setPath(uns.getPath());
             result.setName(PathUtil.getName(uns.getPath()));
@@ -391,12 +424,13 @@ public class UnsQueryService {
             for (UnsPo uns : allNamespaces) {
                 String name = PathUtil.getName(uns.getPath());
                 if (StringUtils.hasText(keyword)) {
-                    if (!name.toLowerCase().contains(keyword.toLowerCase())) {
+                    if (!name.toLowerCase().contains(keyword.toLowerCase()) && !uns.getAlias().toLowerCase().contains(keyword.toLowerCase())) {
                         continue;
                     }
                 }
                 TopicTreeResult result = new TopicTreeResult();
-                result.setType(uns.getPathType());
+                result.setId(String.valueOf(uns.getId()));
+                result.setPathType(uns.getPathType());
                 result.setProtocol(uns.getProtocolType());
                 result.setPath(uns.getPath());
                 result.setName(name);
@@ -406,71 +440,278 @@ public class UnsQueryService {
         return new JsonResult<>(0, "ok", treeResults);
     }
 
-    public JsonResult<List<TopicTreeResult>> searchTree(String keyword, boolean showRec) {
-        List<UnsPo> allNamespaces = unsMapper.listAllNamespaces();
-        List<UnsPo> list = allNamespaces;
-        if (allNamespaces != null && keyword != null && (keyword = keyword.trim().toLowerCase()).length() > 0) {
-            list = new ArrayList<>(allNamespaces.size());
-            for (UnsPo po : allNamespaces) {
-                if (po.getPath().toLowerCase().contains(keyword)) {
-                    list.add(po);
-                }
-            }
-        }
-        List<TopicTreeResult> treeResults = getTopicTreeResults(allNamespaces, list, showRec);
-        return new JsonResult<>(0, "ok", treeResults);
+    public JsonResult<List<TopicTreeResult>> searchTree(String keyword, Long parentId, boolean showRec) {
+        UnsSearchCondition condition = new UnsSearchCondition();
+        condition.setKeyword(keyword);
+        condition.setParentId(parentId);
+        condition.setShowRec(showRec);
+        condition.setPageSize(Long.MAX_VALUE);
+        List<TopicTreeResult> topicTreeResults = searchTreeByCondition(condition).getData();
+        return new JsonResult<>(0, "ok", topicTreeResults);
     }
 
-    public JsonResult<InstanceDetail> getInstanceDetail(String topic) {
-        String fileId = genIdForPath(topic);
-        String folderId = null;
-        if (topic.contains("/")) {
-            folderId = genIdForPath(topic.substring(0, topic.lastIndexOf('/') + 1));
+    /**
+     * UNS树搜索模式
+     * 返回搜索结果后的树结构
+     *
+     * @param params
+     * @return
+     */
+    public PageResultDTO<TopicTreeResult> unsSearchByTree(UnsSearchCondition params) {
+        //搜索模式下：只返回parentId下的一级节点信息
+        Long pageNo = params.getPageNo();
+        Long pageSize = params.getPageSize();
+        UnsSearchCondition searchCondition = new UnsSearchCondition();
+        searchCondition.setKeyword(params.getKeyword());
+        List<UnsPo> unsSearchResult = null;
+        //根据条件全局搜索结果 查询类型：1-UNS（名称+别名） 2-含标签 3-含模板
+        if (params.getSearchType() == 1) {
+            unsSearchResult = unsMapper.listByConditions(searchCondition);
+        } else if (params.getSearchType() == 2) {
+            unsSearchResult = unsLabelMapper.getUnsByKeyword(params.getKeyword());
+        } else if (params.getSearchType() == 3) {
+            unsSearchResult = unsMapper.listInTemplate(params.getKeyword());
         }
-        UnsPo folder = null;
-        if (folderId != null) {
-            folder = unsMapper.selectById(folderId);
-            if (folder == null) {
-                return new JsonResult<>(0, "ModelNotFound!");
+        if (CollectionUtils.isEmpty(unsSearchResult)) {
+            return PageUtil.empty(Page.of(pageNo, pageSize));
+        }
+        UnsPo parent = null;
+        String parentLayRec = null;
+        if (params.getParentId() != null) {
+            parent = unsMapper.selectById(params.getParentId());
+            if (parent != null) {
+                parentLayRec = parent.getLayRec();
             }
         }
+        //查找父级下的直接子节点
+        HashMap<Long, UnsPo> nextNode = new HashMap<>(unsSearchResult.size());
+        for (UnsPo uns : unsSearchResult) {
+            String nextNodeId = PathUtil.getNextNodeAfterBasePath(parentLayRec, uns.getLayRec());
+            if (StringUtils.hasText(nextNodeId)) {
+                nextNode.put(Long.valueOf(nextNodeId), uns);
+            }
+        }
+        List<TopicTreeResult> filtered = new ArrayList<>();
+        //如果父级下没有直接的子节点了，根据父级ID匹配搜索结果，并返回
+        if (MapUtils.isEmpty(nextNode)) {
+            filtered = unsSearchResult.stream().filter(search -> {
+                //根据layRec搜索，并排除自身
+                return search.getLayRec().contains(params.getParentId().toString()) && !params.getParentId().equals(search.getId());
+            }).map(this::unsPoTrans2TreeResult).collect(Collectors.toList());
+        } else {
+            //key:id  value：children 所有的子数量(文件+文件夹)
+            Map<Long, List<UnsPo>> idToChildren = new HashMap<>(nextNode.size());
+//            List<String> searchResultLayRecList = unsSearchResult.stream().map(UnsPo::getLayRec).collect(Collectors.toList());
+            //遍历所有的一级节点，和searchResultLayRecList进行筛选，查询出所有子孙节点的数量
+            for (Long nextNodeId : nextNode.keySet()) {
+                List<UnsPo> children = unsSearchResult.stream()
+                        .filter(node -> {
+                            String nodeId = node.getLayRec();
+                            //查找匹配的节点，排除自身
+                            return nodeId.contains(nextNodeId.toString()) && !nodeId.endsWith(nextNodeId.toString());
+                        }).collect(Collectors.toList());
+                idToChildren.put(nextNodeId, children);
+            }
+            filtered = unsMapper.listUnsByIds(nextNode.keySet()).stream()
+                    .map(po -> {
+                        TopicTreeResult result = unsPoTrans2TreeResult(po);
+                        //获取所有子节点（文件+文件夹），分组统计各个数量，setCountChildren 和HasChildren
+                        List<UnsPo> children = idToChildren.getOrDefault(po.getId(), Collections.emptyList());
+                        Map<Integer, Long> typeCountMap = children.stream()
+                                .collect(Collectors.groupingBy(UnsPo::getPathType, Collectors.counting()));
+                        long folderCount = typeCountMap.getOrDefault(0, 0L);
+                        long fileCount = typeCountMap.getOrDefault(2, 0L);
+                        result.setCountChildren(Math.toIntExact(fileCount));
+                        result.setHasChildren(folderCount > 0 || fileCount > 0);//如果存在子文件夹 或者存在子文件
+                        return result;
+                    })
+                    .collect(Collectors.toList());
+        }
+        //手动分页
+        List<TopicTreeResult> pageResult = ListUtil.page(pageNo.intValue() - 1, pageSize.intValue(), filtered);
+        Page<TopicTreeResult> page = Page.of(pageNo, pageSize, filtered.size());
+        return PageUtil.build(page, pageResult);
+    }
 
+    public PageResultDTO<TopicTreeResult> unsTree(UnsSearchCondition params) {
+        String keyword = params.getKeyword();
+        if (params.getSearchType() == 1 && StringUtils.hasText(keyword)) {
+            return unsSearchByTree(params);
+        } else if (params.getSearchType() == 2 || params.getSearchType() == 3) {
+            return unsSearchByTree(params);
+        } else {
+            //懒加载模式 不带搜索条件
+            Page<UnsPo> page = new Page<>(params.getPageNo(), params.getPageSize());
+            int deep = ObjectUtil.defaultIfNull(params.getDeep(), 0);
+            IPage<UnsPo> iPage = unsMapper.pageListByLazy(page, params);
+            List<TopicTreeResult> treeResults = getTopicTreeResults(deep, iPage.getRecords());
+            return PageUtil.build(iPage, treeResults);
+        }
+    }
+
+    @NotNull
+    private List<TopicTreeResult> getTopicTreeResults(int deep, List<UnsPo> unsList) {
+        List<TopicTreeResult> treeResults = unsList.stream().map(uns -> {
+            TopicTreeResult result = unsPoTrans2TreeResult(uns, true);
+            if (deep == 0) {
+                return result;
+            } else {
+                UnsSearchCondition condition = new UnsSearchCondition();
+                condition.setParentId(uns.getId());
+                condition.setDeep(deep > 0 ? deep - 1 : -1);
+                condition.setPageSize(Long.MAX_VALUE);
+                PageResultDTO<TopicTreeResult> childrenResult = unsTree(condition);
+                if (!CollectionUtils.isEmpty(childrenResult.getData())) {
+                    result.setChildren(childrenResult.getData());
+                    result.setHasChildren(true);
+                }
+            }
+            return result;
+        }).collect(Collectors.toList());
+        return treeResults;
+    }
+
+    @NotNull
+    public TopicTreeResult unsPoTrans2TreeResult(UnsPo uns, boolean fromCache) {
+        TopicTreeResult result = new TopicTreeResult();
+        result.setId(uns.getId().toString());
+        result.setAlias(uns.getAlias());
+        if (uns.getParentId() != null) {
+            result.setParentId(String.valueOf(uns.getParentId()));
+        }
+        result.setParentAlias(uns.getParentAlias());
+        result.setPathType(uns.getPathType());
+        String name = PathUtil.getName(uns.getPath());
+        result.setName(name);
+        result.setDisplayName(uns.getDisplayName());
+        result.setDescription(uns.getDescription());
+        result.setPath(uns.getPath());
+        result.setTemplateAlias(uns.getTemplateAlias());
+        result.setPathName(PathUtil.getName(uns.getPath()));
+        result.setExtend(uns.getExtend());
+        result.setCreateAt(uns.getCreateAt());
+        result.setUpdateAt(uns.getUpdateAt());
+
+        //从缓存中获取count
+        if (fromCache) {
+            UnsCountDTO count = unsCountCache.get(uns.getId());
+            if (count == null) {
+                int children = unsMapper.countAllChildrenByLayRec(uns.getLayRec());
+                int direct = unsMapper.countDirectChildrenByParentId(uns.getId());
+                count = new UnsCountDTO(children, direct);
+                unsCountCache.put(uns.getId(), count);
+            }
+            result.setCountChildren(count.getCountChildren());
+            result.setHasChildren(count.getCountDirectChildren() > 0);
+        }
+        return result;
+    }
+
+    @Autowired
+    UnsConverter unsConverter;
+
+    @NotNull
+    public TopicTreeResult unsPoTrans2TreeResult(UnsPo uns) {
+        return unsPoTrans2TreeResult(uns, false);
+    }
+
+    public PageResultDTO<TopicTreeResult> searchTreeByCondition(UnsSearchCondition params) {
+        Page<UnsPo> page = new Page<>(params.getPageNo(), params.getPageSize());
+        IPage<UnsPo> iPage = unsMapper.pageListByConditions(page, params);
+        if (CollectionUtils.isEmpty(iPage.getRecords())) {
+            return PageUtil.build(iPage, Collections.emptyList());
+        }
+        //查询符合条件的记录
+        List<UnsPo> list = iPage.getRecords();
+        Set<String> layRecList = new HashSet<>();
+        //通过layRec 找出所有的父节点包含自身
+        list.forEach(uns -> {
+            String layRec = uns.getLayRec();
+            int lastSlash = layRec.lastIndexOf('/');
+            if (lastSlash == -1) {//如果是顶级节点，增加自身
+                layRecList.add(layRec);
+            } else {
+                String layRecSub = layRec.substring(0, lastSlash);//如果有父节点，排除父节点
+                if (layRecSub.contains("/")) {
+                    layRecList.addAll(Arrays.asList(layRecSub.split("/")));//把子节点ID都加入
+                } else {
+                    layRecList.add(layRecSub);
+                }
+            }
+        });
+        //父级点+自身
+        Set<Long> layRecLongSet = layRecList.stream().map(Long::valueOf).collect(Collectors.toSet());
+        //合并父节点 + 搜索节点 = ALL
+        List<UnsPo> allNamespaces = unsMapper.selectByIds(layRecLongSet);
+        allNamespaces.addAll(list);
+        List<TopicTreeResult> treeResults = getTopicTreeResults(allNamespaces, list, params.getShowRec());
+        return PageUtil.build(iPage, treeResults);
+    }
+
+    public JsonResult<InstanceDetail> getInstanceDetail(Long id, String alias) {
         InstanceDetail dto = new InstanceDetail();
-        UnsPo file = unsMapper.selectById(fileId);
-        dto.setId(fileId);
-        if (file == null) {
-            return new JsonResult<>(0, "InstanceNotFound!", dto);
+        UnsPo file = null;
+        if (ObjectUtil.isNotNull(id)) {
+            file = unsMapper.selectById(id);
+        } else if (alias != null) {
+            file = unsMapper.selectOne(new LambdaQueryWrapper<UnsPo>()
+                    .eq(UnsPo::getPathType, Constants.PATH_TYPE_FILE)
+                    .eq(UnsPo::getAlias, alias));
+        }
+        if (null == file) {
+            return new JsonResult<>(0, I18nUtils.getMessage("uns.file.not.found"), dto);
         }
 
-        dto.setDataType(file.getDataType());
-        dto.setModelDescription(folder != null ? folder.getDescription() : null);
-        dto.setFields(getFields(file.getFields()));
-        dto.setTopic(file.getPath());
-        dto.setDataPath(file.getDataPath());
-        String protocol = file.getProtocol();
-        if (protocol != null && protocol.startsWith("{")) {
-            dto.setProtocol(JsonUtil.fromJson(protocol, Map.class));
-        }
-        dto.setInstanceDescription(file.getDescription());
-        dto.setCreateTime(getDatetime(file.getCreateAt()));
-        dto.setAlias(file.getAlias());
-        dto.setName(PathUtil.getName(file.getPath()));
         String expression = file.getExpression();
-        String refStr = file.getRefers();
-        if (refStr != null && refStr.startsWith("[")) {
-            InstanceField[] fs = JsonUtil.fromJson(refStr, InstanceField[].class);
-            dto.setRefers(fs);
+        InstanceField[] fs = file.getRefers();
+        UnsPo origPo = null;//被引用的uns
+        if (ArrayUtils.isNotEmpty(fs)) {
+            if (file.getDataType() == Constants.CITING_TYPE) {
+                Long origId = fs[0].getId();
+                UnsPo orig = unsMapper.selectById(origId);
+                if (orig != null) {
+                    origPo = orig;
+                    file.setFields(orig.getFields());
+                    file.setWithFlags(orig.getWithFlags());
+                }
+            }
+            List<Long> ids = Arrays.stream(fs).map(InstanceField::getId).toList();
+            Map<Long, UnsPo> unsMap = unsMapper.listInstanceByIds(ids).stream().collect(Collectors.toMap(UnsPo::getId, k -> k));
+            InstanceFieldVo[] refers = Arrays.stream(fs).map(field -> {
+                InstanceFieldVo instanceFieldVo = new InstanceFieldVo();
+                instanceFieldVo.setId(field.getId().toString());
+                instanceFieldVo.setField(field.getField());
+                instanceFieldVo.setUts(field.getUts());
+                UnsPo ref = unsMap.get(field.getId());
+                if (ref != null) {
+                    instanceFieldVo.setAlias(ref.getAlias());
+                    instanceFieldVo.setPath(ref.getPath());
+                }
+                return instanceFieldVo;
+            }).toArray(InstanceFieldVo[]::new);
+            dto.setRefers(refers);
             Map<String, Object> protocolMap = dto.getProtocol();
             Object whereExpr;
             if (expression != null) {
                 Map<String, String> varReplacer = new HashMap<>(8);
+                Map<String, String> showVarReplacer = new HashMap<>(8);
                 for (int i = 0; i < fs.length; i++) {
                     InstanceField field = fs[i];
                     if (field != null) {
-                        varReplacer.put(Constants.VAR_PREV + (i + 1), String.format("$\"%s\".%s#", field.getTopic(), field.getField()));
+                        Long citingId = field.getId();
+                        if (citingId != null) {
+                            String var = Constants.VAR_PREV + (i + 1);
+                            varReplacer.put(var, String.format("$\"%s\".%s#", citingId, field.getField()));
+                            CreateTopicDto citingInfo = unsDefinitionService.getDefinitionById(citingId);
+                            if (citingInfo != null) {
+                                showVarReplacer.put(var, String.format("$\"%s\".%s#", citingInfo.getPath(), field.getField()));
+                            }
+                        }
                     }
                 }
                 if (!varReplacer.isEmpty()) {
+                    String showExpression = ExpressionUtils.replaceExpression(expression, showVarReplacer);
+                    dto.setShowExpression(showExpression);
                     expression = ExpressionUtils.replaceExpression(expression, varReplacer);
                 }
             } else if (protocolMap != null && (whereExpr = protocolMap.get("whereCondition")) != null) {
@@ -478,59 +719,122 @@ public class UnsQueryService {
             }
         }
         dto.setExpression(expression);
+
+        Long fileId = file.getId();
+        dto.setId(fileId.toString());
+        dto.setDataType(file.getDataType());
+        UnsPo unsPo = origPo != null ? origPo : file;
+        if (unsPo.getFields() != null) {
+            FieldDefine[] fields = unsPo.getFields();
+            FieldDefine[] fieldDefines;
+            int dataType = unsPo.getDataType();
+            if (dataType == Constants.TIME_SEQUENCE_TYPE || dataType == Constants.CALCULATION_REAL_TYPE) {
+                LinkedList<FieldDefine> fsList = new LinkedList<>(Arrays.asList(fields));
+                Iterator<FieldDefine> itr = fsList.iterator();
+                CreateTopicDto dtp = unsConverter.po2dto(unsPo);
+                String tbF = dtp.getTbFieldName();
+                if (tbF != null) {
+                    FieldDefine dvf = dtp.getFieldDefines().getFieldsMap().get(tbF);
+                    FieldDefine vf = dtp.getFieldDefines().getFieldsMap().get(Constants.SYSTEM_SEQ_VALUE);
+                    vf.setName(dvf.getTbValueName());
+                }
+                while (itr.hasNext()) {
+                    FieldDefine fd = itr.next();
+                    String name = fd.getName();
+                    if (name.startsWith(Constants.SYSTEM_FIELD_PREV) || fd.getTbValueName() != null) {
+                        itr.remove();
+                    }
+                }
+                fieldDefines = fsList.toArray(new FieldDefine[0]);
+            } else {
+                SrcJdbcType jdbcType = SrcJdbcType.getById(unsPo.getDataSrcId());
+                FieldDefine ct = FieldUtils.getTimestampField(fields), qos = FieldUtils.getQualityField(fields, jdbcType.typeCode);
+                fieldDefines = Arrays.stream(fields)
+                        .filter(fd -> fd != ct && fd != qos && !fd.getName().startsWith(Constants.SYSTEM_FIELD_PREV)).toList().toArray(new FieldDefine[0]);
+            }
+            dto.setFields(fieldDefines);
+        }
+        dto.setAlias(file.getAlias());
+        dto.setPath(file.getPath());
+        dto.setTopic(Constants.useAliasAsTopic ? file.getAlias() : file.getPath());
+        dto.setDataPath(file.getDataPath());
+        String protocol = file.getProtocol();
+        if (protocol != null && protocol.startsWith("{")) {
+            dto.setProtocol(JsonUtil.fromJson(protocol, Map.class));
+        }
+        dto.setDescription(file.getDescription());
+        dto.setCreateTime(getDatetime(file.getCreateAt()));
+        dto.setUpdateTime(getDatetime(file.getUpdateAt()));
+        dto.setAlias(file.getAlias());
+        dto.setName(file.getName());
+        dto.setDisplayName(file.getDisplayName());
+        dto.setPathName(PathUtil.getName(file.getPath()));
+        dto.setExtend(file.getExtend());
+
         Integer flagsN = file.getWithFlags();
         if (flagsN != null) {
             int flags = flagsN.intValue();
             dto.setWithFlow(Constants.withFlow(flags));
             dto.setWithDashboard(Constants.withDashBoard(flags));
             dto.setWithSave2db(Constants.withSave2db(flags));
+            dto.setSave2db(Constants.withSave2db(flags));
         }
         dto.setLabelList(unsLabelMapper.getLabelByUnsId(fileId));
 
-        String templateId = file.getModelId();
+        Long templateId = file.getModelId();
         if (templateId != null) {
             UnsPo template = unsMapper.selectById(templateId);
             if (template != null) {
-                dto.setModelId(templateId);
-                dto.setModelName(template.getPath());
+                dto.setModelId(templateId.toString());
+                dto.setModelName(template.getName());
+                dto.setTemplateName(template.getName());
+                dto.setTemplateAlias(template.getAlias());
             }
         }
         return new JsonResult<>(0, "ok", dto);
     }
 
-    public JsonResult<ModelDetail> getModelDefinition(String topic) {
-        if (topic == null || topic.length() < 2) {
-            String msg = I18nUtils.getMessage("uns.topic.format.invalid");
-            return new JsonResult<>(400, msg);
-        }
-
-        String modelId = genIdForPath(topic);
-        UnsPo po = unsMapper.selectById(modelId);
-        if (po == null) {
-            String msg = I18nUtils.getMessage("uns.model.not.found");
-            return new JsonResult<>(0, msg);
-        }
+    public JsonResult<ModelDetail> getModelDefinition(Long id, String alias) {
         ModelDetail dto = new ModelDetail();
-        dto.setName(PathUtil.getName(topic));
-        dto.setTopic(getShowPath(po.getPath()));
+        UnsPo po;
+        if (ObjectUtil.isNotNull(id)) {
+            po = unsMapper.getById(id);
+        } else {
+            po = unsMapper.selectOne(new LambdaQueryWrapper<UnsPo>()
+                    .eq(UnsPo::getPathType, Constants.PATH_TYPE_DIR)
+                    .eq(UnsPo::getAlias, alias));
+        }
+        if (null == po) {
+            return new JsonResult<>(0, I18nUtils.getMessage("uns.model.not.found"), dto);
+        }
+        dto.setId(po.getId().toString());
+        dto.setName(po.getName());
+        dto.setDisplayName(po.getDisplayName());
+        dto.setPathName(PathUtil.getName(po.getPath()));
+        dto.setPath(po.getPath());
+        dto.setAlias(po.getAlias());
+        dto.setTopic(Constants.useAliasAsTopic ? dto.getAlias() : dto.getPath());
         dto.setDataType(po.getDataType());
         dto.setCreateTime(getDatetime(po.getCreateAt()));
+        dto.setUpdateTime(getDatetime(po.getUpdateAt()));
         dto.setDescription(po.getDescription());
         dto.setAlias(po.getAlias());
-        FieldDefineVo[] fs = getFields(po.getFields());
+        dto.setExtend(po.getExtend());
+        FieldDefine[] fs = po.getFields();
         if (fs != null) {
-            for (FieldDefineVo f : fs) {
+            for (FieldDefine f : fs) {
                 f.setIndex(null);// 模型的定义 给前端消除掉 index
             }
         }
         dto.setFields(fs);
 
-        String templateId = po.getModelId();
+        Long templateId = po.getModelId();
         if (templateId != null) {
             UnsPo template = unsMapper.selectById(templateId);
             if (template != null) {
-                dto.setModelId(templateId);
-                dto.setModelName(template.getPath());
+                dto.setModelId(templateId.toString());
+                dto.setModelName(template.getName());
+                dto.setTemplateAlias(template.getAlias());
             }
         }
         return new JsonResult<>(0, "ok", dto);
@@ -550,9 +854,92 @@ public class UnsQueryService {
         return date != null ? date.getTime() : null;
     }
 
-    public JsonResult<String> getLastMsg(String topic) {
-        TopicMessageInfo msgInfo = topicLastMessages.get(topic);
-        return new JsonResult<>(0, "ok", msgInfo != null ? msgInfo.newestMessage : null);
+    public JsonResult<String> getLastMsgByPath(String path, boolean includeBlob) {
+        CreateTopicDto def = unsDefinitionService.getDefinitionByPath(path);
+        if (def != null) {
+            return getLastMsg(def, includeBlob);
+        } else {
+            TopicMessageInfo msgInfo = externTopicLastMessages.get(path);
+            return new JsonResult<>(0, "404", msgInfo != null ? msgInfo.newestMessage : null);
+        }
+    }
+
+    public JsonResult<String> getLastMsgByAlias(String alias, boolean includeBlob) {
+        CreateTopicDto def = unsDefinitionService.getDefinitionByAlias(alias);
+        if (def != null) {
+            return getLastMsg(def, includeBlob);
+        } else {
+            return new JsonResult<>(0, "404", null);
+        }
+    }
+
+    public JsonResult<String> getLastMsg(Long id, boolean includeBlob) {
+        CreateTopicDto def = unsDefinitionService.getDefinitionById(id);
+        return getLastMsg(def, includeBlob);
+    }
+
+    private JsonResult<String> getLastMsg(CreateTopicDto def, boolean includeBlob) {
+        Long id;
+        if (def == null || (id = def.getId()) == null) {
+            return new JsonResult<>(0, "ok", "");
+        }
+        TopicMessageInfo msgInfo = topicLastMessages.get(id);
+        if (msgInfo == null) {
+            if (def.getDataType() == Constants.CITING_TYPE && ArrayUtils.isNotEmpty(def.getRefers())) {// 引用类型
+                id = def.getRefers()[0].getId();
+                msgInfo = topicLastMessages.get(id);
+                def = unsDefinitionService.getDefinitionById(id);
+            }
+        }
+        if (msgInfo == null) {
+            QueryLastMsgEvent event = new QueryLastMsgEvent(this, def);
+            try {
+                EventBus.publishEvent(event);
+            } catch (Exception ex) {
+                log.warn("查询最新消息失败", ex);
+            }
+            Map<String, Object> lastMessage = event.getLastMessage();
+            if (lastMessage != null) {
+                lastMessage.remove(Constants.SYS_SAVE_TIME);
+                String topic = def.getTopic();
+                Integer dataType = def.getDataType();
+                String rawData = JsonUtil.toJson(lastMessage);
+                Map<String, Long> lastDataTime = new HashMap<>(lastMessage.size());
+                Long CT = event.getMsgCreateTime();
+                for (String k : lastMessage.keySet()) {
+                    lastDataTime.put(k, CT);
+                }
+                String ctField = def.getTimestampField();
+                if (ctField != null) {
+                    lastMessage.replace(ctField, CT);
+                }
+                TopicMessageEvent topicMessageEvent = new TopicMessageEvent(
+                        this, def,
+                        id,
+                        dataType != null ? dataType : -1,
+                        def.getFieldDefines().getFieldsMap(),
+                        topic,
+                        def.getProtocolType(),
+                        lastMessage,
+                        lastMessage,
+                        lastDataTime,
+                        rawData,
+                        CT,
+                        null);
+                onTopicMessageEvent(topicMessageEvent);
+                msgInfo = topicLastMessages.get(id);
+            } else {
+                msgInfo = topicLastMessages.computeIfAbsent(id, k -> new TopicMessageInfo());
+            }
+        }
+        String msg = null;
+        if (msgInfo != null) {
+            msg = msgInfo.newestMessage;
+            if (includeBlob) {
+                msg = DataUtils.handleBolb(msg, def);
+            }
+        }
+        return new JsonResult<>(0, "ok", msg);
     }
 
     static class TopicMessageInfo {
@@ -565,7 +952,7 @@ public class UnsQueryService {
             this.jsonObject = new JSONObject();
         }
 
-        synchronized void update(long lastUpdateTime, String payload, JSONObject data, final Map<String, Long> dt, String err) {
+        synchronized void update(long lastUpdateTime, String payload, Map<String, Object> data, final Map<String, Long> dt, String err) {
             jsonObject.put("updateTime", lastUpdateTime);
             jsonObject.put("payload", payload);
             jsonObject.put("msg", err);
@@ -582,106 +969,140 @@ public class UnsQueryService {
         }
     }
 
-    private static final ConcurrentHashMap<String, TopicMessageInfo> topicLastMessages = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Long, TopicMessageInfo> topicLastMessages = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, TopicMessageInfo> externTopicLastMessages = new ConcurrentHashMap<>();
 
     @EventListener(classes = RemoveTopicsEvent.class)
     @Order(90)
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
-        for (String topic : event.topics.keySet()) {
-            topicLastMessages.remove(topic);
+        for (SimpleUnsInstance ins : event.topics.values()) {
+            topicLastMessages.remove(ins.getId());
         }
     }
+
 
     @EventListener(classes = TopicMessageEvent.class)
     @Order(9)
     void onTopicMessageEvent(TopicMessageEvent event) {
 
-        TopicMessageInfo msgInfo = topicLastMessages.computeIfAbsent(event.topic, k -> new TopicMessageInfo());
+        TopicMessageInfo msgInfo;
         if (event.fieldsMap == null) {
             // 非 UNS topic
             // cache external topics
             EXTERNAL_TOPIC_CACHE.put(event.topic, new Date());
+            msgInfo = externTopicLastMessages.computeIfAbsent(event.topic, k -> new TopicMessageInfo());
             msgInfo.update(event.nowInMills, event.payload, null, event.lastDataTime, event.err);
             return;
+        } else {
+            msgInfo = topicLastMessages.computeIfAbsent(event.unsId, k -> new TopicMessageInfo());
         }
         if (!CollectionUtils.isEmpty(event.data)) {
             Map<String, Object> bean = event.lastData != null ? event.lastData : event.data;
             JSONObject data = new JSONObject(Math.max(bean.size(), 8));
+            CreateTopicDto info = event.def;
+            Map<String, FieldDefine> fieldsMap = info.getFieldDefines().getFieldsMap();
             for (Map.Entry<String, Object> entry : bean.entrySet()) {
                 String name = entry.getKey();
                 if (name.startsWith(Constants.SYSTEM_FIELD_PREV)) {
                     continue;
                 }
                 Object v = entry.getValue();
+                if (v != null) {
+                    FieldDefine fd = fieldsMap.get(name);
+                    if (fd != null && (fd.getType() == FieldType.LONG || fd.getType() == FieldType.DOUBLE)) {
+                        v = v.toString();
+                    }
+                }
                 data.put(name, v);
             }
-            msgInfo.update(event.nowInMills, event.payload, data, event.lastDataTime, event.err);
+            Map<String, Object> lastMsg = data;
+            String tbF;
+            Map<String, Long> lastDt = event.lastDataTime;
+            if (info != null && (tbF = info.getTbFieldName()) != null) {
+                FieldDefine tb = info.getFieldDefines().getFieldsMap().get(tbF);
+                FieldDefine vf = info.getFieldDefines().getFieldsMap().get(Constants.SYSTEM_SEQ_VALUE);
+                if (vf != null && tb != null) {
+                    lastMsg = new LinkedHashMap<>(lastMsg);
+                    lastMsg.remove(tbF);
+                    Object value = lastMsg.remove(Constants.SYSTEM_SEQ_VALUE);
+                    if (value != null) {
+                        lastMsg.put(tb.getTbValueName(), value);
+                    }
+                    lastDt = new LinkedHashMap<>(lastDt);
+                    lastDt.remove(tbF);
+                    Object tv = lastDt.remove(Constants.SYSTEM_SEQ_VALUE);
+                    if (tv instanceof Long timev) {
+                        lastDt.put(tb.getTbValueName(), timev);
+                    }
+                }
+            }
+            msgInfo.update(event.nowInMills, event.payload, lastMsg, lastDt, event.err);
         } else {
             msgInfo.update(event.nowInMills, event.payload, null, event.lastDataTime, event.err);
         }
     }
 
-    public JsonResult<RestTestResponseVo> searchRestField(RestTestRequestVo requestVo) {
-        Triple<JsonResult<RestTestResponseVo>, FindDataListUtils.SearchResult, String> resultSearchResultPair = doSearchRestField(requestVo);
-        if (resultSearchResultPair.getLeft() != null) {
-            return resultSearchResultPair.getLeft();
-        }
-        FindDataListUtils.SearchResult rs = resultSearchResultPair.getMiddle();
-        if (CollectionUtils.isEmpty(rs.list) || !rs.dataInList) {
-            log.warn("dataListNotFound: {}, from: {}", JsonUtil.toJson(rs), resultSearchResultPair.getRight());
-            return new JsonResult<>(404, I18nUtils.getMessage("uns.rest.data404"));
-        }
-        RestTestResponseVo responseVo = new RestTestResponseVo();
-        responseVo.setDataPath(rs.dataPath);
-        responseVo.setDataFields(rs.list.get(0).keySet().stream()
-                .filter(f -> !f.startsWith(Constants.SYSTEM_FIELD_PREV)).collect(Collectors.toList()));
-        return new JsonResult<>(0, resultSearchResultPair.getRight(), responseVo);
-    }
+//    public JsonResult<RestTestResponseVo> searchRestField(RestTestRequestVo requestVo) {
+//        Triple<JsonResult<RestTestResponseVo>, FindDataListUtils.SearchResult, String> resultSearchResultPair = doSearchRestField(requestVo);
+//        if (resultSearchResultPair.getLeft() != null) {
+//            return resultSearchResultPair.getLeft();
+//        }
+//        FindDataListUtils.SearchResult rs = resultSearchResultPair.getMiddle();
+//        if (CollectionUtils.isEmpty(rs.list) || !rs.dataInList) {
+//            log.warn("dataListNotFound: {}, from: {}", JsonUtil.toJson(rs), resultSearchResultPair.getRight());
+//            return new JsonResult<>(404, I18nUtils.getMessage("uns.rest.data404"));
+//        }
+//        RestTestResponseVo responseVo = new RestTestResponseVo();
+//        responseVo.setDataPath(rs.dataPath);
+//        responseVo.setDataFields(rs.list.get(0).keySet().stream()
+//                .filter(f -> !f.startsWith(Constants.SYSTEM_FIELD_PREV)).collect(Collectors.toList()));
+//        return new JsonResult<>(0, resultSearchResultPair.getRight(), responseVo);
+//    }
 
-    private Triple<JsonResult<RestTestResponseVo>, FindDataListUtils.SearchResult, String> doSearchRestField(RestTestRequestVo requestVo) {
-        String respBody = "";
-        String url = "";
-        Object msgBody = null;
-        Map<String, Object> jsonBody = requestVo.getJsonBody();
-        if (jsonBody == null || jsonBody.isEmpty()) {
-            String[] err = new String[2];
-            url = err[1];
-            respBody = getJsonBody(requestVo, err);
-            if (err[0] != null) {
-                return Triple.of(new JsonResult<>(400, err[0] + " : " + respBody), null, respBody);
-            }
-            try {
-                msgBody = JsonUtil.fromJson(respBody);
-            } catch (Exception ex) {
-            }
-            if (msgBody == null) {
-                throw new BuzException("jsonErr: " + respBody + ", url=" + url);
-            }
-        } else {
-            msgBody = jsonBody;
-        }
-
-        FieldDefine[] fields = requestVo.getFields();
-        if (ArrayUtil.isEmpty(fields)) {
-            String topic = requestVo.getTopic();
-            if (StringUtils.hasText(topic)) {
-                JsonResult<InstanceDetail> inst = getInstanceDetail(topic);
-                InstanceDetail detail = inst.getData();
-                if (detail == null) {
-                    return Triple.of(new JsonResult<>(inst.getCode(), inst.getMsg()), null, respBody);
-                } else if (ArrayUtil.isNotEmpty(detail.getFields())) {
-                    fields = Arrays.stream(detail.getFields()).map(f -> new FieldDefine(f.getName(), FieldType.getByName(f.getType()))).toArray(n -> new FieldDefine[n]);
-                } else {
-                    return Triple.of(new JsonResult<>(400, I18nUtils.getMessage("uns.fieldsIsEmptyAt", topic)), null, respBody);//"fields is Null at topic:" + topic
-                }
-            } else {
-                return Triple.of(new JsonResult<>(400, I18nUtils.getMessage("uns.fsAndTopicIsEmpty")), null, respBody);//"both fields and topic is Null"
-            }
-        }
-        FieldDefines fieldDefines = new FieldDefines(fields);
-        FindDataListUtils.SearchResult rs = FindDataListUtils.findDataList(msgBody, 0, fieldDefines);
-        return Triple.of(null, rs, respBody);
-    }
+//    private Triple<JsonResult<RestTestResponseVo>, FindDataListUtils.SearchResult, String> doSearchRestField(RestTestRequestVo requestVo) {
+//        String respBody = "";
+//        String url = "";
+//        Object msgBody = null;
+//        Map<String, Object> jsonBody = requestVo.getJsonBody();
+//        if (jsonBody == null || jsonBody.isEmpty()) {
+//            String[] err = new String[2];
+//            url = err[1];
+//            respBody = getJsonBody(requestVo, err);
+//            if (err[0] != null) {
+//                return Triple.of(new JsonResult<>(400, err[0] + " : " + respBody), null, respBody);
+//            }
+//            try {
+//                msgBody = JsonUtil.fromJson(respBody);
+//            } catch (Exception ex) {
+//            }
+//            if (msgBody == null) {
+//                throw new BuzException("jsonErr: " + respBody + ", url=" + url);
+//            }
+//        } else {
+//            msgBody = jsonBody;
+//        }
+//
+//        FieldDefine[] fields = requestVo.getFields();
+//        if (ArrayUtil.isEmpty(fields)) {
+//            String topic = requestVo.getTopic();
+//            if (StringUtils.hasText(topic)) {
+//                JsonResult<InstanceDetail> inst = getInstanceDetail(topic);
+//                InstanceDetail detail = inst.getData();
+//                if (detail == null) {
+//                    return Triple.of(new JsonResult<>(inst.getCode(), inst.getMsg()), null, respBody);
+//                } else if (ArrayUtil.isNotEmpty(detail.getFields())) {
+//                    fields = Arrays.stream(detail.getFields()).map(f -> new FieldDefine(f.getName(), FieldType.getByName(f.getType()))).toArray(n -> new FieldDefine[n]);
+//                } else {
+//                    return Triple.of(new JsonResult<>(400, I18nUtils.getMessage("uns.fieldsIsEmptyAt", topic)), null, respBody);//"fields is Null at topic:" + topic
+//                }
+//            } else {
+//                return Triple.of(new JsonResult<>(400, I18nUtils.getMessage("uns.fsAndTopicIsEmpty")), null, respBody);//"both fields and topic is Null"
+//            }
+//        }
+//        FieldDefines fieldDefines = new FieldDefines(fields);
+//        FindDataListUtils.SearchResult rs = FindDataListUtils.findDataList(msgBody, 0, fieldDefines);
+//        return Triple.of(null, rs, respBody);
+//    }
 
     /**
      * 查询外部topic，并组装树状结构返回
@@ -693,8 +1114,10 @@ public class UnsQueryService {
         List<UnsPo> externalTopics = new ArrayList<>();
         EXTERNAL_TOPIC_CACHE.forEach((topic, date) -> {
             UnsPo uns = new UnsPo();
+            uns.setId(1l);
             uns.setPath(topic);
-            uns.setPathType(2);
+            uns.setName(topic);
+            uns.setPathType(Constants.PATH_TYPE_FILE);
             if (!StringUtils.hasText(fuzzyTopic)) {
                 externalTopics.add(uns);
             } else if (topic.toLowerCase().contains(fuzzyTopic.toLowerCase())) {
@@ -715,9 +1138,18 @@ public class UnsQueryService {
         for (UnsPo po : all) {
             String path = po.getPath();
             int type = po.getPathType();
-            String name = PathUtil.getName(path);
-            TopicTreeResult rs = new TopicTreeResult(name, path).setType(po.getPathType()).setProtocol(po.getProtocolType());
-
+            String name = po.getName();
+            TopicTreeResult rs = new TopicTreeResult(name, path).setPathType(po.getPathType()).setProtocol(po.getProtocolType());
+            rs.setId(po.getId().toString());
+            rs.setAlias(po.getAlias());
+            if (po.getParentId() != null) {
+                rs.setParentId(po.getParentId().toString());
+                rs.setParentAlias(po.getParentAlias());
+            }
+            rs.setName(name);
+            rs.setPathName(PathUtil.getName(po.getPath()));
+            rs.setDisplayName(po.getDisplayName());
+            rs.setExtend(po.getExtend());
             if (type == 2) {
                 TopicMessageInfo info = topicLastMessages.get(path);
                 if (info != null) {
@@ -727,9 +1159,9 @@ public class UnsQueryService {
                     }
                 }
             }
-            FieldDefineVo[] fs = getFields(po.getFields());
+            FieldDefine[] fs = po.getFields();
             if (fs != null) {
-                for (FieldDefineVo f : fs) {
+                for (FieldDefine f : fs) {
                     f.setIndex(null);// 模型的定义 给前端消除掉 index
                 }
             }
@@ -761,7 +1193,7 @@ public class UnsQueryService {
                 tempParentNode = nodeMap.get(parentPath);
                 if (tempParentNode == null) {
                     String name = PathUtil.getName(parentPath);
-                    tempParentNode = new TopicTreeResult(name, parentPath).setType(0);
+                    tempParentNode = new TopicTreeResult(name, parentPath).setPathType(0);
                     nodeMap.put(parentPath, tempParentNode);
                 }
                 Set<String> childMap = childrenMap.computeIfAbsent(parentPath, k -> new HashSet<>());
@@ -780,7 +1212,9 @@ public class UnsQueryService {
             if (addRoot) {
                 Set<String> childMap = childrenMap.computeIfAbsent(parentPath, k -> new HashSet<>());
                 if (childMap.add(tempParentNode.getPath())) {
-                    rootNodes.put(tempParentNode.getPath(), tempParentNode);
+                    if (StringUtils.hasText(tempParentNode.getId())) {
+                        rootNodes.put(tempParentNode.getPath(), tempParentNode);
+                    }
                 }
             }
 
@@ -875,93 +1309,86 @@ public class UnsQueryService {
         return resp.body();
     }
 
-    /**
-     * 显式触发restApi协议流程，并将获取到的数据推送至mqtt
-     *
-     * @param topic
-     * @return
-     */
-    public JsonResult<RestTestResponseVo> triggerRestApi(String topic) {
-        String fileId = genIdForPath(topic);
-        UnsPo file = unsMapper.selectById(fileId);
-        if (file == null) {
-            String msg = I18nUtils.getMessage("uns.file.not.exist");
-            return new JsonResult<>(0, msg);
-        }
-        RestTestRequestVo requestVo = new RestTestRequestVo();
-
-        FieldDefineVo[] fs = getFields(file.getFields());
-        FieldDefine[] fieldDefines = Arrays.stream(fs).map(FieldDefineVo::convert).toArray(n -> new FieldDefine[n]);
-        requestVo.setFields(fieldDefines);
-
-        RestConfigDTO config = null;
-        if (org.apache.commons.lang3.StringUtils.isNotBlank(file.getProtocol())) {
-            config = JsonUtil.fromJson(file.getProtocol(), RestConfigDTO.class);
-        }
-        requestVo.setPath(config.getPath());
-        requestVo.setMethod(config.getMethod());
-        requestVo.setServer(config.getServer());
-        requestVo.setFullUrl(config.getFullUrl());
-
-        if (config.getPageDef() != null) {
-            requestVo.setPageDef(JsonUtil.fromJson(JsonUtil.toJson(config.getPageDef()), PageDef.class));
-        }
-
-        String body = config.getBody();
-        if (body != null && !org.apache.commons.lang3.StringUtils.equals(body, "{}")) {
-            Map<String, Object> bodyMap = JSON.parseObject(body);
-            requestVo.setBody(bodyMap);
-        }
-
-        JSONArray headers = config.getHeaders();
-        if (headers != null) {
-            List<StrMapEntry> newHeaders = new ArrayList<>();
-            for (int i = 0; i < headers.size(); i++) {
-                JSONObject headerJsonObj = headers.getJSONObject(i);
-                StrMapEntry header = new StrMapEntry();
-                header.setKey(headerJsonObj.getString("key"));
-                header.setValue(headerJsonObj.getString("value"));
-                newHeaders.add(header);
-            }
-            requestVo.setHeaders(newHeaders);
-        }
-
-        Triple<JsonResult<RestTestResponseVo>, FindDataListUtils.SearchResult, String> resultSearchResultTriple = doSearchRestField(requestVo);
-        if (resultSearchResultTriple.getLeft() != null) {
-            return resultSearchResultTriple.getLeft();
-        }
-        FindDataListUtils.SearchResult rs = resultSearchResultTriple.getMiddle();
-        if (CollectionUtils.isEmpty(rs.list) || !rs.dataInList) {
-            log.warn("dataListNotFound: {}, from: {}", JsonUtil.toJson(rs), resultSearchResultTriple.getRight());
-            return new JsonResult<>(404, I18nUtils.getMessage("uns.rest.data404"));
-        }
-
-        List<Map<String, Object>> dataList = rs.list;
-        List<FieldDefine> fieldDefineList = Arrays.stream(fieldDefines)
-                .filter(f -> !f.getName().startsWith(Constants.SYSTEM_FIELD_PREV) && f.getIndex() != null)
-                .collect(Collectors.toList());
-        List<Map<String, Object>> payload = dataList.stream().map(data -> {
-            Map<String, Object> values = new HashMap<>(data.size());
-            fieldDefineList.forEach(field -> {
-                values.put(field.getName(), data.get(field.getName()));
-            });
-            return values;
-        }).collect(Collectors.toList());
-        if (!CollectionUtils.isEmpty(payload)) {
-            try {
-                JSONObject msg = new JSONObject();
-                msg.put(Constants.MSG_RAW_DATA_KEY, JsonUtil.fromJson(resultSearchResultTriple.getRight()));
-                msg.put(Constants.MSG_RES_DATA_KEY, payload);
-
-                log.info("send message [{}] to sourceTopic[{}]", msg, topic);
-                mqttPublisher.publishMessage(topic, com.alibaba.fastjson2.JSON.toJSONBytes(msg), 0);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
-        return new JsonResult<>(0, "success");
-    }
-
+    //    public JsonResult<RestTestResponseVo> triggerRestApi(Long fileId) {
+//        UnsPo file = unsMapper.selectById(fileId);
+//        if (file == null) {
+//            String msg = I18nUtils.getMessage("uns.file.not.exist");
+//            return new JsonResult<>(0, msg);
+//        }
+//        final String topic = file.getAlias();
+//        RestTestRequestVo requestVo = new RestTestRequestVo();
+//
+//        FieldDefineVo[] fs = getFields(file.getFields());
+//        FieldDefine[] fieldDefines = Arrays.stream(fs).map(FieldDefineVo::convert).toArray(n -> new FieldDefine[n]);
+//        requestVo.setFields(fieldDefines);
+//
+//        RestConfigDTO config = null;
+//        if (org.apache.commons.lang3.StringUtils.isNotBlank(file.getProtocol())) {
+//            config = JsonUtil.fromJson(file.getProtocol(), RestConfigDTO.class);
+//        }
+//        requestVo.setPath(config.getPath());
+//        requestVo.setMethod(config.getMethod());
+//        requestVo.setServer(config.getServer());
+//        requestVo.setFullUrl(config.getFullUrl());
+//
+//        if (config.getPageDef() != null) {
+//            requestVo.setPageDef(JsonUtil.fromJson(JsonUtil.toJson(config.getPageDef()), PageDef.class));
+//        }
+//
+//        String body = config.getBody();
+//        if (body != null && !org.apache.commons.lang3.StringUtils.equals(body, "{}")) {
+//            Map<String, Object> bodyMap = JSON.parseObject(body);
+//            requestVo.setBody(bodyMap);
+//        }
+//
+//        JSONArray headers = config.getHeaders();
+//        if (headers != null) {
+//            List<StrMapEntry> newHeaders = new ArrayList<>();
+//            for (int i = 0; i < headers.size(); i++) {
+//                JSONObject headerJsonObj = headers.getJSONObject(i);
+//                StrMapEntry header = new StrMapEntry();
+//                header.setKey(headerJsonObj.getString("key"));
+//                header.setValue(headerJsonObj.getString("value"));
+//                newHeaders.add(header);
+//            }
+//            requestVo.setHeaders(newHeaders);
+//        }
+//
+//        Triple<JsonResult<RestTestResponseVo>, FindDataListUtils.SearchResult, String> resultSearchResultTriple = doSearchRestField(requestVo);
+//        if (resultSearchResultTriple.getLeft() != null) {
+//            return resultSearchResultTriple.getLeft();
+//        }
+//        FindDataListUtils.SearchResult rs = resultSearchResultTriple.getMiddle();
+//        if (CollectionUtils.isEmpty(rs.list) || !rs.dataInList) {
+//            log.warn("dataListNotFound: {}, from: {}", JsonUtil.toJson(rs), resultSearchResultTriple.getRight());
+//            return new JsonResult<>(404, I18nUtils.getMessage("uns.rest.data404"));
+//        }
+//
+//        List<Map<String, Object>> dataList = rs.list;
+//        List<FieldDefine> fieldDefineList = Arrays.stream(fieldDefines)
+//                .filter(f -> !f.getName().startsWith(Constants.SYSTEM_FIELD_PREV) && f.getIndex() != null)
+//                .collect(Collectors.toList());
+//        List<Map<String, Object>> payload = dataList.stream().map(data -> {
+//            Map<String, Object> values = new HashMap<>(data.size());
+//            fieldDefineList.forEach(field -> {
+//                values.put(field.getName(), data.get(field.getName()));
+//            });
+//            return values;
+//        }).collect(Collectors.toList());
+//        if (!CollectionUtils.isEmpty(payload)) {
+//            try {
+//                JSONObject msg = new JSONObject();
+//                msg.put(Constants.MSG_RAW_DATA_KEY, JsonUtil.fromJson(resultSearchResultTriple.getRight()));
+//                msg.put(Constants.MSG_RES_DATA_KEY, payload);
+//
+//                log.info("send message [{}] to sourceTopic[{}]", msg, topic);
+//                mqttPublisher.publishMessage(topic, com.alibaba.fastjson2.JSON.toJSONBytes(msg), 0);
+//            } catch (Exception e) {
+//                throw new RuntimeException(e);
+//            }
+//        }
+//        return new JsonResult<>(0, "success");
+//    }
     private static final void appendKeyValueParam(StringBuilder builder, StrMapEntry entry) {
         builder.append(URLEncodeUtil.encode(entry.getKey(), StandardCharsets.UTF_8)).append('=')
                 .append(URLEncodeUtil.encode(entry.getValue(), StandardCharsets.UTF_8));
@@ -976,47 +1403,47 @@ public class UnsQueryService {
         Page<UnsPo> page = new Page<>(params.getPageNo(), params.getPageSize());
         LambdaQueryWrapper<UnsPo> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(UnsPo::getPathType, 1).eq(UnsPo::getDataType, 0);
-        queryWrapper.like(StrUtil.isNotBlank(params.getKey()), UnsPo::getPath, params.getKey());
+        queryWrapper.like(StrUtil.isNotBlank(params.getKey()), UnsPo::getPath, SqlUtil.escapeForLike(params.getKey()));
         IPage<UnsPo> iPage = unsMapper.selectPage(page, queryWrapper);
         PageResultDTO.PageResultDTOBuilder<TemplateSearchResult> pageBuilder = PageResultDTO.<TemplateSearchResult>builder()
                 .total(iPage.getTotal()).pageNo(params.getPageNo()).pageSize(params.getPageSize());
         List<TemplateSearchResult> list = iPage.getRecords().stream()
                 .map(uns -> BeanUtil.copyProperties(uns, TemplateSearchResult.class))
                 .collect(Collectors.toList());
-        return pageBuilder.code(0).data(list).build();
+        return pageBuilder.code(200).data(list).build();
     }
 
-    public TemplateVo getTemplateById(String id) {
+    public TemplateVo getTemplateByAlias(String alias) {
+        UnsPo po = unsMapper.getByAlias(alias);
+        if (po == null) {
+            return null;
+        }
+        return getTemplateVoByUnsPo(po);
+    }
+
+    public TemplateVo getTemplateById(Long id) {
         UnsPo po = unsMapper.selectById(id);
         if (po == null) {
             return null;
         }
+        return getTemplateVoByUnsPo(po);
+    }
+
+    @NotNull
+    private TemplateVo getTemplateVoByUnsPo(UnsPo po) {
         TemplateVo dto = new TemplateVo();
         dto.setId(po.getId());
         dto.setAlias(po.getAlias());
-        dto.setPath(po.getPath());
+        dto.setName(po.getName());
         dto.setCreateTime(getDatetime(po.getCreateAt()));
         dto.setDescription(po.getDescription());
-        FieldDefineVo[] fs = getFields(po.getFields());
+        FieldDefine[] fs = po.getFields();
         if (fs != null) {
-            for (FieldDefineVo f : fs) {
+            for (FieldDefine f : fs) {
                 f.setIndex(null);// 模型的定义 给前端消除掉 index
             }
         }
         dto.setFields(fs);
-        //模板引用的模型和实例列表
-        List<UnsPo> templateRefs = unsMapper.selectList(new LambdaQueryWrapper<UnsPo>().eq(UnsPo::getModelId, id));
-        if (!CollectionUtils.isEmpty(templateRefs)) {
-            List<FileVo> fileList = templateRefs.stream().map(uns -> {
-                FileVo fileVo = new FileVo();
-                fileVo.setUnsId(uns.getId());
-                fileVo.setPathType(uns.getPathType());
-                fileVo.setPath(uns.getPath());
-                fileVo.setName(PathUtil.getName(uns.getPath()));
-                return fileVo;
-            }).collect(Collectors.toList());
-            dto.setFileList(fileList);
-        }
         return dto;
     }
 
@@ -1031,17 +1458,78 @@ public class UnsQueryService {
             } else {
                 path = name + "/";
             }
-            String folderId = genIdForPath(path);
-            count = unsMapper.selectCount(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 0).eq(UnsPo::getId, folderId));
+            count = unsMapper.selectCount(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 0).eq(UnsPo::getPath, path));
         } else if (checkType == 2) {
             // 校验文件名称是否已存在
             if (org.apache.commons.lang3.StringUtils.isNotBlank(folderPath)) {
                 path = folderPath + name;
             }
-            String fileId = genIdForPath(path);
-            count = unsMapper.selectCount(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 2).eq(UnsPo::getId, fileId));
+            count = unsMapper.selectCount(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 2).eq(UnsPo::getPath, path));
         }
 
         return ResultVO.successWithData(count);
+    }
+
+    /**
+     * pride 数据标准化，数字类型不要""包裹
+     *
+     * @param alias
+     * @param data
+     */
+    public void standardizingData(String alias, Map<String, Object> data) {
+        CreateTopicDto def = unsDefinitionService.getDefinitionByAlias(alias);
+        if (def != null) {
+            Map<String, FieldDefine> fieldsMap = def.getFieldDefines().getFieldsMap();
+            for (Map.Entry<String, Object> entry : data.entrySet()) {
+                FieldDefine fd = fieldsMap.get(entry.getKey());
+                if (fd != null && fd.getType().isNumber && entry.getValue() instanceof String str) {
+                    BigDecimal vNum = new BigDecimal(str);
+                    Object val = switch (fd.getType()) {
+                        case INT, LONG -> vNum.longValue();
+                        case FLOAT, DOUBLE -> vNum.doubleValue();
+                        default -> str;
+                    };
+                    data.put(entry.getKey(), val);
+                }
+            }
+        }
+    }
+
+    public ResponseEntity<ResultVO> batchQueryFile(List<String> aliasList) {
+        if (CollectionUtils.isEmpty(aliasList)) {
+            return ResponseEntity.status(400).body(ResultVO.fail("别名集合为空"));
+        }
+        JSONObject resultData = new JSONObject();
+        for (String alias : aliasList) {
+            String msgInfo = getLastMsgByAlias(alias, true).getData();
+            JSONObject data;
+            if (StringUtils.hasText(msgInfo)) {
+                data = JSON.parseObject(msgInfo).getJSONObject("data");
+                standardizingData(alias, data);
+                if (data.containsKey(Constants.QOS_FIELD)) {
+                    Object qos = data.get(Constants.QOS_FIELD);
+                    if (qos != null) {
+                        long v = 0;
+                        if (qos instanceof Number n) {
+                            v = n.longValue();
+                        } else {
+                            try {
+                                v = Long.parseLong(qos.toString());
+                            } catch (NumberFormatException ex) {
+                                log.error("qos isNaN:{}, alias={}", qos, alias);
+                            }
+                        }
+                        qos = Long.toHexString(v);
+                    }
+                    data.put(Constants.QOS_FIELD, qos);
+                }
+            } else {
+                //pride：如果所订查询的文件当前无实时值，则status=通讯异常（0x80 00 00 00 00 00 00 00），timeStampe=当前服务器时间戳，value=各数据类型的初始值（详见文章节：支持数据类型）
+                CreateTopicDto uns = unsDefinitionService.getDefinitionByAlias(alias);
+                data = DataUtils.transEmptyValue(uns, true);
+            }
+            resultData.put(alias, data);
+        }
+        return ResponseEntity.ok(ResultVO.successWithData("ok", resultData));
     }
 }

@@ -1,0 +1,18 @@
+
+{
+  "addFlow": false,
+  "addDashBoard": false,
+  "save2db": true,
+  "topic": "/lwltest/table1",
+  "dataType": 2,
+  "fields": [
+    {
+      "name": "name",
+      "type": "string"
+    },
+    {
+      "name": "age",
+      "type": "int"
+    }
+  ]
+}

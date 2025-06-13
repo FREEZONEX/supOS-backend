@@ -1,7 +1,10 @@
 package com.supos.uns.service.exportimport.core;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.supos.common.Constants;
 import com.supos.common.dto.CreateTopicDto;
+import com.supos.common.dto.InstanceField;
+import com.supos.common.dto.excel.ExcelUnsWrapDto;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.utils.ApplicationContextUtils;
 import com.supos.common.utils.I18nUtils;
@@ -10,9 +13,10 @@ import com.supos.common.utils.PathUtil;
 import com.supos.uns.bo.CreateModelInstancesArgs;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.service.UnsAddService;
 import com.supos.uns.service.UnsLabelService;
 import com.supos.uns.service.UnsManagerService;
-import com.supos.uns.service.exportimport.core.dto.ExcelUnsWrapDto;
+import com.supos.uns.service.UnsTemplateService;
 import com.supos.uns.service.exportimport.core.parser.*;
 import com.supos.uns.vo.CreateTemplateVo;
 import lombok.Getter;
@@ -23,10 +27,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.util.StopWatch;
 
 import java.io.File;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -47,6 +48,8 @@ public abstract class DataImporter {
 
     private UnsManagerService unsManagerService;
     private UnsLabelService unsLabelService;
+    private UnsTemplateService unsTemplateService;
+    private UnsAddService unsAddService;
 
     private Map<ExcelTypeEnum, ParserAble> parserMap = new HashMap<>();
 
@@ -54,6 +57,8 @@ public abstract class DataImporter {
         this.context = context;
         this.unsManagerService = ApplicationContextUtils.getBean(UnsManagerService.class);
         this.unsLabelService = ApplicationContextUtils.getBean(UnsLabelService.class);
+        this.unsTemplateService = ApplicationContextUtils.getBean(UnsTemplateService.class);
+        this.unsAddService = ApplicationContextUtils.getBean(UnsAddService.class);
 
         {
             parserMap.put(ExcelTypeEnum.Template, new TemplateParser());
@@ -61,6 +66,9 @@ public abstract class DataImporter {
             parserMap.put(ExcelTypeEnum.Folder, new FolderParser());
             parserMap.put(ExcelTypeEnum.FILE_TIMESERIES, new FileTimeseriesParser());
             parserMap.put(ExcelTypeEnum.FILE_RELATION, new FileRelationParser());
+            parserMap.put(ExcelTypeEnum.FILE_CALCULATE, new FileCalculateParser());
+            parserMap.put(ExcelTypeEnum.FILE_AGGREGATION, new FileAggregationParser());
+            parserMap.put(ExcelTypeEnum.FILE_REFERENCE, new FileReferenceParser());
         }
     }
 
@@ -79,7 +87,10 @@ public abstract class DataImporter {
         } else if (excelTypeEnum == ExcelTypeEnum.Folder) {
             importFolder(context);
         } else if (excelTypeEnum == ExcelTypeEnum.FILE_TIMESERIES
-                || excelTypeEnum == ExcelTypeEnum.FILE_RELATION) {
+                || excelTypeEnum == ExcelTypeEnum.FILE_RELATION
+                || excelTypeEnum == ExcelTypeEnum.FILE_CALCULATE
+                || excelTypeEnum == ExcelTypeEnum.FILE_AGGREGATION
+                || excelTypeEnum == ExcelTypeEnum.FILE_REFERENCE) {
             importFile(context, excelTypeEnum);
         }
     }
@@ -96,7 +107,7 @@ public abstract class DataImporter {
                 log.info("*** Excel[{}] 发起导入模板请求 createTemplate：{}", context.getFile(), JsonUtil.toJsonUseFields(templateVoList));
             }
             stopWatch.start(String.format("import template,size:%d", templateVoList.size()));
-            context.addAllError(unsManagerService.createTemplates(templateVoList));
+            context.addAllError(unsTemplateService.createTemplates(templateVoList));
             stopWatch.stop();
         }
         context.clear();
@@ -145,7 +156,7 @@ public abstract class DataImporter {
             args.setTopics(saveFolders);
             args.setFromImport(false);
             args.setThrowModelExistsErr(false);
-            Map<String, String> rs = unsManagerService.createModelAndInstancesInner(args);
+            Map<String, String> rs = unsAddService.createModelAndInstancesInner(args);
             context.addAllError(rs);
             stopWatch.stop();
         }
@@ -171,19 +182,17 @@ public abstract class DataImporter {
             checkParent(context, true);
 
             // 校验文件类型
-            checkFileDataType(context, excelType.getDataType());
+            checkAliasExist(context);
 
+            // 处理引用
+            checkRefer(context);
             stopWatch.stop();
 
-            Map<String, String[]> labelsMap = new HashMap<>(fileList.size());
             List<CreateTopicDto> saveFiles = fileList.stream().filter(ExcelUnsWrapDto::isCheckSuccess)
                     .map(w -> {
                         CreateTopicDto uns = w.getUns();
                         if (CollectionUtils.isNotEmpty(w.getLabels())) {
                             uns.setLabelNames(w.getLabels().toArray(new String[w.getLabels().size()]));
-                        }
-                        if (uns.getLabelNames() != null) {
-                            labelsMap.put(uns.getTopic(), uns.getLabelNames());
                         }
                         return uns;
                     }).collect(Collectors.toList());
@@ -196,8 +205,7 @@ public abstract class DataImporter {
                 args.setTopics(saveFiles);
                 args.setFromImport(false);
                 args.setThrowModelExistsErr(false);
-                args.setLabelsMap(labelsMap);
-                Map<String, String> rs = unsManagerService.createModelAndInstancesInner(args);
+                Map<String, String> rs = unsAddService.createModelAndInstancesInner(args);
                 context.addAllError(rs);
                 stopWatch.stop();
             }
@@ -213,7 +221,7 @@ public abstract class DataImporter {
     private void checkTemplateExist(ExcelImportContext context) {
         Set<String> checkTemplateAlias = context.getCheckTemplateAlias();
         if (CollectionUtils.isNotEmpty(checkTemplateAlias)) {
-            List<UnsPo> templates = unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).in(UnsPo::getAlias, checkTemplateAlias));
+            List<UnsPo> templates = unsTemplateService.list(Wrappers.lambdaQuery(UnsPo.class).in(UnsPo::getAlias, checkTemplateAlias));
             Map<String, UnsPo> templateMap = templates.stream().collect(Collectors.toMap(UnsPo::getAlias, Function.identity(), (k1, k2) -> k2));
             for (ExcelUnsWrapDto wrapDto : context.getUnsList()) {
                 if  (wrapDto.isCheckSuccess()) {
@@ -261,7 +269,7 @@ public abstract class DataImporter {
         for (ExcelUnsWrapDto wrapDto : context.getUnsList()) {
             if (wrapDto.isCheckSuccess()) {
                 CreateTopicDto uns = wrapDto.getUns();
-                String parentPath = PathUtil.subParentPath(uns.getTopic());
+                String parentPath = PathUtil.subParentPath(uns.getPath());
                 if (parentPath != null) {
                     if (!isFile) {
                         ExcelUnsWrapDto parentWrap = context.getUnsMap().get(parentPath);
@@ -270,7 +278,7 @@ public abstract class DataImporter {
                                 wrapDto.setCheckSuccess(false);
                                 context.addError(wrapDto.getBatchIndex(), I18nUtils.getMessage("uns.folder.parent.not.found"));
                             } else {
-                                // uns.setParentAlias(parentWrap.getUns().getAlias());
+                                uns.setParentAlias(parentWrap.getUns().getAlias());
                             }
                         } else {
                             // 查看数据库是否存在父节点
@@ -285,12 +293,12 @@ public abstract class DataImporter {
             }
         }
         if (MapUtils.isNotEmpty(parentMap)) {
-            List<UnsPo> parentList = unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 0).in(UnsPo::getPath, parentMap.values()));
+            List<UnsPo> parentList = unsAddService.list(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 0).in(UnsPo::getPath, parentMap.values()));
             Map<String, UnsPo> folderMap = parentList.stream().collect(Collectors.toMap(UnsPo::getPath, Function.identity(), (k1, k2) -> k2));
             for(Map.Entry<ExcelUnsWrapDto, String> entry : parentMap.entrySet()) {
                 UnsPo parent = folderMap.get(entry.getValue());
                 if (parent != null) {
-                    // entry.getKey().getUns().setParentAlias(parent.getAlias());
+                    entry.getKey().getUns().setParentAlias(parent.getAlias());
                 } else {
                     entry.getKey().setCheckSuccess(false);
                     context.addError(entry.getKey().getBatchIndex(), I18nUtils.getMessage("uns.folder.parent.not.found"));
@@ -299,19 +307,87 @@ public abstract class DataImporter {
         }
     }
 
-    private void checkFileDataType(ExcelImportContext context, int dataType) {
+    private void checkAliasExist(ExcelImportContext context) {
         List<ExcelUnsWrapDto> allUnsList = context.getUnsList();
-        List<ExcelUnsWrapDto> successUnsList = allUnsList.stream().filter(wrapDto -> wrapDto.isCheckSuccess()).collect(Collectors.toList());
-        Set<String> aliasSet = successUnsList.stream().map(wrapDto -> wrapDto.getUns().getAlias()).collect(Collectors.toSet());
-        if (CollectionUtils.isNotEmpty(aliasSet)) {
-            List<UnsPo> unsPos = unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).in(UnsPo::getAlias, aliasSet));
-            Map<String, UnsPo> unsMap = unsPos.stream().collect(Collectors.toMap(UnsPo::getAlias, Function.identity(), (k1, k2) -> k2));
-            for (ExcelUnsWrapDto wrapDto : successUnsList) {
-                UnsPo unsPo = unsMap.get(wrapDto.getUns().getAlias());
-                if (unsPo != null && unsPo.getDataType() != dataType) {
-                    wrapDto.setCheckSuccess(false);
-                    context.addError(wrapDto.getBatchIndex(), I18nUtils.getMessage("uns.file.dataType.change"));
+        Set<String> tempAliasFromDb = context.getTempAliasFromDb();
+        List<ExcelUnsWrapDto> firstCheckSuccessUnsList = allUnsList.stream().filter(wrapDto -> wrapDto.isCheckSuccess()).collect(Collectors.toList());
+        List<ExcelUnsWrapDto> secondCheckSuccessUnsList = new ArrayList<>(firstCheckSuccessUnsList.size());
+        for (ExcelUnsWrapDto wrapDto : firstCheckSuccessUnsList) {
+            if (tempAliasFromDb.contains(wrapDto.getUns().getAlias())) {
+                wrapDto.setCheckSuccess(false);
+                context.addError(wrapDto.getBatchIndex(), I18nUtils.getMessage("uns.alias.has.exist"));
+            } else {
+                secondCheckSuccessUnsList.add(wrapDto);
+            }
+        }
+
+        if (CollectionUtils.isNotEmpty(secondCheckSuccessUnsList)) {
+            Set<String> aliasSet = secondCheckSuccessUnsList.stream().map(wrapDto -> wrapDto.getUns().getAlias()).collect(Collectors.toSet());
+            List<UnsPo> unsPos = unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).select(UnsPo::getAlias).in(UnsPo::getAlias, aliasSet));
+            if (CollectionUtils.isNotEmpty(unsPos)) {
+                Set<String> existAliasSet = unsPos.stream().map(UnsPo::getAlias).collect(Collectors.toSet());
+                tempAliasFromDb.addAll(existAliasSet);
+
+                for (ExcelUnsWrapDto wrapDto : secondCheckSuccessUnsList) {
+                    if (tempAliasFromDb.contains(wrapDto.getUns().getAlias())) {
+                        wrapDto.setCheckSuccess(false);
+                        context.addError(wrapDto.getBatchIndex(), I18nUtils.getMessage("uns.alias.has.exist"));
+                    }
                 }
+            }
+        }
+    }
+
+    private void checkRefer(ExcelImportContext context) {
+        Set<String> checkReferPaths = context.getCheckReferPaths();
+        Set<String> checkReferAliass = context.getCheckReferAliass();
+
+        Map<String, UnsPo> referAliasMap = new HashMap<>();
+        if (CollectionUtils.isNotEmpty(checkReferAliass)) {
+            List<UnsPo> referList = unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).select(UnsPo::getId, UnsPo::getAlias, UnsPo::getDataType).eq(UnsPo::getPathType, 2).in(UnsPo::getAlias, checkReferAliass));
+            referAliasMap.putAll(referList.stream().collect(Collectors.toMap(UnsPo::getAlias, Function.identity(), (k1, k2) -> k2)));
+        }
+
+        Map<String, UnsPo> referPathMap = new HashMap<>();
+        if (CollectionUtils.isNotEmpty(checkReferPaths)) {
+            List<UnsPo> referList = unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).select(UnsPo::getId, UnsPo::getAlias, UnsPo::getPath, UnsPo::getDataType).eq(UnsPo::getPathType, 2).in(UnsPo::getPath, checkReferPaths));
+            referPathMap.putAll(referList.stream().collect(Collectors.toMap(UnsPo::getPath, Function.identity(), (k1, k2) -> k2)));
+        }
+
+        for (ExcelUnsWrapDto wrapDto : context.getUnsList()) {
+            if (wrapDto.isCheckSuccess() && wrapDto.getRefers() != null) {
+                for (InstanceField refer : wrapDto.getRefers()) {
+                    UnsPo existRefer = null;
+                    if (StringUtils.isNotBlank(refer.getAlias())) {
+                        // alias 存在就直接校验alias
+                        existRefer = referAliasMap.get(refer.getAlias());
+                        if (existRefer == null) {
+                            wrapDto.setCheckSuccess(false);
+                            context.addError(wrapDto.getBatchIndex(), I18nUtils.getMessage("uns.refer.alias.noexist"));
+                            continue;
+                        }
+                    } else if (StringUtils.isNotBlank(refer.getPath())) {
+                        // 其次才会校验path
+                        existRefer = referPathMap.get(refer.getPath());
+                        if (existRefer == null) {
+                            wrapDto.setCheckSuccess(false);
+                            context.addError(wrapDto.getBatchIndex(), I18nUtils.getMessage("uns.refer.path.noexist"));
+                            continue;
+                        }
+                    }
+                    if (existRefer != null) {
+                        if (existRefer.getDataType() == Constants.TIME_SEQUENCE_TYPE || existRefer.getDataType() == Constants.RELATION_TYPE) {
+                            refer.setAlias(existRefer.getAlias());
+                            refer.setId(existRefer.getId());
+                            refer.setPath(null);
+                        } else {
+                            wrapDto.setCheckSuccess(false);
+                            context.addError(wrapDto.getBatchIndex(), I18nUtils.getMessage("uns.refer.datatype.invalid"));
+                            continue;
+                        }
+                    }
+                }
+                wrapDto.getUns().setRefers(wrapDto.getRefers());
             }
         }
     }

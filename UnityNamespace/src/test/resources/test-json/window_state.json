@@ -1,0 +1,27 @@
+{
+  "addFlow": false,
+  "addDashBoard": false,
+  "topic": "/hseqd/nstream",
+  "referTopic": "/hseqd/dev3",
+  "alias": "nstream",
+  "dataType": 4,
+  "fields": [
+    {
+      "name": "avgVal",
+      "type": "double",
+      "index": "avg(val)"
+    }
+  ],
+  "modelDescription": "流模型",
+  "instanceDescription": "流实例",
+  "streamOptions": {
+    "window": {
+      "windowType": "STATE_WINDOW",
+      "options": {
+        "field": "_qos"
+      }
+    },
+    "trigger": "AT_ONCE",
+    "waterMark": "100s"
+  }
+}

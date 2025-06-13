@@ -20,9 +20,9 @@ public class ServiceApiController {
     private NodeRedAdapterService nodeRedAdapterService;
 
 
-    @PostMapping({"/service-api/supos/flow/by/topics"})
-    public ResultDTO<List<NodeFlowVO>> batchQueryByTopic(@RequestBody BatchQueryRequest batchQueryRequest) {
-        List<NodeFlowVO> result = nodeRedAdapterService.selectByTopics(batchQueryRequest.getTopics());
+    @PostMapping({"/service-api/supos/flow/by/aliases"})
+    public ResultDTO<List<NodeFlowVO>> batchQueryByAlias(@RequestBody BatchQueryRequest batchQueryRequest) {
+        List<NodeFlowVO> result = nodeRedAdapterService.selectByAliases(batchQueryRequest.getAliases());
         if (result.isEmpty()) {
             return ResultDTO.successWithData(null);
         }

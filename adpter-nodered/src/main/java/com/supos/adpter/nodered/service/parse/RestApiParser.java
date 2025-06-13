@@ -5,17 +5,13 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.parser.Feature;
 import com.supos.adpter.nodered.util.IDGenerator;
-import com.supos.common.dto.FieldDefine;
-import com.supos.common.dto.protocol.KeyValuePair;
-import com.supos.common.enums.IOTProtocol;
-import com.supos.common.dto.protocol.RestConfigDTO;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
+import com.supos.common.dto.protocol.RestConfigDTO;
+import com.supos.common.enums.IOTProtocol;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 @Service("restApiParser")
 public class RestApiParser extends ParserApi {
@@ -58,10 +54,7 @@ public class RestApiParser extends ParserApi {
 
         // 替换定时任务，轮询时间间隔
         jsonFlowStr = jsonFlowStr.replace("$repeat", restConfig.getSyncRate().getSeconds() + "");
-        // 替换模型topic
-        jsonFlowStr = jsonFlowStr.replace("$model_topic", uns.getUnsTopic());
         // 替换模型数据 json字符串
-        jsonFlowStr = jsonFlowStr.replace("$schema_json_string", uns.getUnsJsonString());
         // 替换body
         jsonFlowStr = jsonFlowStr.replace("$http_body", restConfig.getBody().replace("\"", "\\\""));
         // 替换url
@@ -75,6 +68,10 @@ public class RestApiParser extends ParserApi {
             jsonArr.getJSONObject(i).put("y", maxHeight + intervalHeight);
             // 添加header
             String nodeType = jsonArr.getJSONObject(i).getString("type");
+            if ("supmodel".equals(nodeType)) {
+                jsonArr.getJSONObject(i).put("model", uns.getModel());
+            }
+
             if ("http request".equals(nodeType)) {
                 JSONArray headerArray = jsonArr.getJSONObject(i).getJSONArray("headers");
                 List<JSONObject> newHeaders = buildHeadersJsonObject(restConfig);
@@ -107,22 +104,6 @@ public class RestApiParser extends ParserApi {
             }
         }
         return newHeaders;
-    }
-
-    @Override
-    public Map<String, ?> buildMapping(List<FieldDefine> fields, String topic, boolean isArray) {
-        return null;
-    }
-
-    private String buildHeaderString(List<KeyValuePair<String>> headers) {
-        if (headers == null || headers.isEmpty()) {
-            return "{}";
-        }
-        JSONObject jsonObj = new JSONObject();
-        for (KeyValuePair<String> kv : headers) {
-            jsonObj.put(kv.getKey(), kv.getValue());
-        }
-        return jsonObj.toJSONString();
     }
 
 }

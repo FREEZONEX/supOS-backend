@@ -73,7 +73,7 @@ public class ProcessService extends ServiceImpl<ProcessDefinitionMapper,ProcessD
         }).collect(Collectors.toList());
         PageResultDTO.PageResultDTOBuilder<ProcessDefinitionVo> pageBuilder = PageResultDTO.<ProcessDefinitionVo>builder()
                 .total(iPage.getTotal()).pageNo(params.getPageNo()).pageSize(params.getPageSize());
-        return pageBuilder.code(0).data(voList).build();
+        return pageBuilder.code(200).data(voList).build();
     }
 
     /**

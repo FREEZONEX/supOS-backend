@@ -1,7 +1,6 @@
 package com.supos.common.utils;
 
 import com.google.common.primitives.Doubles;
-import com.supos.common.Constants;
 import com.supos.common.annotation.DateTimeConstraint;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.FieldDefines;
@@ -10,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
 import java.lang.reflect.Array;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -97,7 +97,15 @@ public class FindDataListUtils {
         return typeMatchScore(obj, fieldType, maxLen != null ? maxLen.intValue() : FieldDefines.DEFAULT_MAX_STR_LEN);
     }
 
-    static final int ERR_STR_TO_LONG = -101;
+    static final int ERR_OUT_OF_RANGE = -101;
+    private static BigDecimal maxInt = java.math.BigDecimal.valueOf(Integer.MAX_VALUE);
+    private static BigDecimal minInt = java.math.BigDecimal.valueOf(Integer.MIN_VALUE);
+    private static BigDecimal maxLong = java.math.BigDecimal.valueOf(Long.MAX_VALUE);
+    private static BigDecimal minLong = java.math.BigDecimal.valueOf(Long.MIN_VALUE);
+    private static BigDecimal maxFloat = java.math.BigDecimal.valueOf(Float.MAX_VALUE);
+    private static BigDecimal minFloat = java.math.BigDecimal.valueOf(Float.MIN_VALUE);
+    private static BigDecimal maxDouble = java.math.BigDecimal.valueOf(Double.MAX_VALUE);
+    private static BigDecimal minDouble = java.math.BigDecimal.valueOf(Double.MIN_VALUE);
 
     public static int typeMatchScore(AtomicReference<Object> vHolder, FieldType fieldType, int maxStrLen) {
         if (fieldType == null) {
@@ -110,22 +118,14 @@ public class FindDataListUtils {
         Class clazz = obj.getClass();
         int score = 0;
         if (fieldType.isNumber) {
-            Number vNum = null;
-            if (Number.class.isAssignableFrom(clazz)) {
-                score = 100;
-                vNum = (Number) obj;
-            } else {
-                String str = obj.toString();
-                int strLen = str.length();
-                char c1;
-                Double vDouble;
-                if (strLen > 0 && (Character.isDigit(c1 = str.charAt(0)) || (c1 == '-' && strLen > 1 && Character.isDigit(str.charAt(1))))
-                        && (vDouble = Doubles.tryParse(str)) != null) {
-                    score = 99;
-                    vNum = vDouble;
-                }
+            BigDecimal vNum;
+            try {
+                vNum = new BigDecimal(obj.toString());
+                score = 99;
+            } catch (Exception ex) {
+                return -1;
             }
-            if (vNum != null) {
+            if (vNum.intValue() == 0) {
                 switch (fieldType) {
                     case INT:
                         vHolder.set(vNum.intValue());
@@ -140,11 +140,38 @@ public class FindDataListUtils {
                         vHolder.set(vNum.doubleValue());
                         break;
                 }
+                return score;
+            }
+            switch (fieldType) {
+                case INT:
+                    if (vNum.compareTo(minInt) < 0 || vNum.compareTo(maxInt) > 0) {
+                        return ERR_OUT_OF_RANGE;
+                    }
+                    vHolder.set(vNum.intValue());
+                    break;
+                case LONG:
+                    if (vNum.compareTo(minLong) < 0 || vNum.compareTo(maxLong) > 0) {
+                        return ERR_OUT_OF_RANGE;
+                    }
+                    vHolder.set(vNum.longValue());
+                    break;
+                case FLOAT:
+                    if (vNum.compareTo(minFloat) < 0 || vNum.compareTo(maxFloat) > 0) {
+                        return ERR_OUT_OF_RANGE;
+                    }
+                    vHolder.set(vNum.floatValue());
+                    break;
+                case DOUBLE:
+                    if (vNum.compareTo(minDouble) < 0 || vNum.compareTo(maxDouble) > 0) {
+                        return ERR_OUT_OF_RANGE;
+                    }
+                    vHolder.set(vNum.doubleValue());
+                    break;
             }
         } else if (fieldType == FieldType.STRING) {
             String s = obj.toString();
             if (maxStrLen > 0 && s.length() > maxStrLen) {
-                score = ERR_STR_TO_LONG;
+                score = ERR_OUT_OF_RANGE;
             } else if (clazz == String.class) {
                 score = 100;
             } else {
@@ -179,6 +206,10 @@ public class FindDataListUtils {
                     vHolder.set(Boolean.TRUE);
                 }
             }
+        } else if (fieldType == FieldType.BLOB || fieldType == FieldType.LBLOB) {
+            if (clazz == String.class) {
+                score = 100;
+            }
         }
         return score;
     }
@@ -195,7 +226,7 @@ public class FindDataListUtils {
                 for (Map.Entry<String, FieldDefine> entry : fieldTypes.entrySet()) {
                     FieldDefine f = entry.getValue();
                     String fieldName = f.getName();
-                    if (!fieldName.startsWith(Constants.SYSTEM_FIELD_PREV)) {
+                    if (!f.isSystemField()) {
                         int matchScore = typeMatchScore(vh, f);
                         if (matchScore > score) {
                             score = matchScore;
@@ -353,7 +384,7 @@ public class FindDataListUtils {
                         fd = fdIdx;
                         errCode = ecB;
                     }
-                    if (errCode != ERR_STR_TO_LONG) {
+                    if (errCode != ERR_OUT_OF_RANGE) {
                         rs.errorField = fd.getName();
                     } else {
                         rs.toLongField = fd.getName();

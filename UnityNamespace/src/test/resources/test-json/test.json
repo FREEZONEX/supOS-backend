@@ -1,0 +1,45 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "id": "007c43dbfeef35e149c08c161bc7686c",
+    "topic": "/hseqd_stream/stream_dev3",
+    "dataType": 4,
+    "dataPath": "/hseqd/dev3",
+    "fields": [
+      {
+        "name": "avgVal",
+        "type": "double",
+        "index": "avg(wq)"
+      }
+    ],
+    "createTime": 1736842968122,
+    "protocol": {
+      "window": {
+        "options": {
+          "intervalValue": "30s",
+          "intervalOffset": "1s"
+        },
+        "windowType": "INTERVAL"
+      },
+      "trigger": "AT_ONCE",
+      "waterMark": "100s",
+      "whereCondition": "fgh > 0"
+    },
+    "instanceDescription": "流实例",
+    "withFlow": false,
+    "withDashboard": false,
+    "withSave2db": true,
+    "alias": "stream_dev3",
+    "refers": [
+      {
+        "topic": "/hseqd/dev3",
+        "field": "wq"
+      }
+    ],
+    "labelList": [],
+    "name": "stream_dev3",
+    "modelId": "b40867ad665e085a0500cdc47d97094d",
+    "modelName": "/hseqd_stream/*"
+  }
+}

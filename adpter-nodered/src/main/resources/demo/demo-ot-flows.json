@@ -1,0 +1,601 @@
+[
+    {
+        "id": "a31fc03999fc4828",
+        "type": "OpcUa-Client",
+        "z": "74f596bd621ef1e2",
+        "endpoint": "5428d46dc586979e",
+        "action": "subscribe",
+        "deadbandtype": "a",
+        "deadbandvalue": 1,
+        "time": 2,
+        "timeUnit": "s",
+        "certificate": "n",
+        "localfile": "",
+        "localkeyfile": "",
+        "securitymode": "None",
+        "securitypolicy": "None",
+        "useTransport": false,
+        "maxChunkCount": 1,
+        "maxMessageSize": 8192,
+        "receiveBufferSize": 8192,
+        "sendBufferSize": 8192,
+        "name": "",
+        "x": 580,
+        "y": 280,
+        "wires": [
+            [
+                "ea53bafb70c799c7"
+            ],
+            [],
+            []
+        ]
+    },
+    {
+        "id": "5170558cdd55bd30",
+        "type": "inject",
+        "z": "74f596bd621ef1e2",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 1,
+        "topic": "multiple",
+        "payload": "[{\"nodeId\":\"ns=1;s=realTimePower\"},{\"nodeId\":\"ns=1;s=irradiance\"},{\"nodeId\":\"ns=1;s=operationStatus\"}]",
+        "payloadType": "json",
+        "x": 210,
+        "y": 280,
+        "wires": [
+            [
+                "a31fc03999fc4828"
+            ]
+        ]
+    },
+    {
+        "id": "c17531f1ed2d5a08",
+        "type": "mqtt out",
+        "z": "74f596bd621ef1e2",
+        "name": "",
+        "topic": "",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "85bb67b2dbefe3ba",
+        "x": 1290,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "5f0551d08c980cc6",
+        "type": "modbus-flex-getter",
+        "z": "74f596bd621ef1e2",
+        "name": "",
+        "showStatusActivities": false,
+        "showErrors": true,
+        "showWarnings": true,
+        "logIOActivities": false,
+        "server": "c1da63979f2907f8",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,
+        "keepMsgProperties": true,
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "x": 610,
+        "y": 380,
+        "wires": [
+            [
+                "1028c7c90c0c3d53"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "889b3b2a712748f9",
+        "type": "inject",
+        "z": "74f596bd621ef1e2",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "5",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "[{\"address\":0,\"quantity\":1,\"unitid\":1,\"fc\":3}]",
+        "payloadType": "json",
+        "x": 210,
+        "y": 380,
+        "wires": [
+            [
+                "e89233eff2d22139"
+            ]
+        ]
+    },
+    {
+        "id": "e89233eff2d22139",
+        "type": "function",
+        "z": "74f596bd621ef1e2",
+        "name": "Loop",
+        "func": "let arr = msg.payload;\nfor (let i in arr) {\n    msg.payload=arr[i];\n    msg.model=arr[i].model;\n  node.send(msg);\n}\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 380,
+        "wires": [
+            [
+                "5f0551d08c980cc6"
+            ]
+        ]
+    },
+    {
+        "id": "1781f734ffb17d4f",
+        "type": "mqtt out",
+        "z": "74f596bd621ef1e2",
+        "name": "",
+        "topic": "",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "85bb67b2dbefe3ba",
+        "x": 1290,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "ea53bafb70c799c7",
+        "type": "supmodel",
+        "z": "74f596bd621ef1e2",
+        "name": "",
+        "protocol": "opcua",
+        "selectedModel": "",
+        "models": [
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-1/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_1_guang_38d734c6992b4a469508",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-1/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_1_guang_38d734c6992b4a469508",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-1/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_1_guang_38d734c6992b4a469508",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-1/",
+                "PVBaseStation-B-T",
+                "_guangfuquyu_1_guang_1c02d9ba724f4878b390",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-1/",
+                "PVBaseStation-B-T",
+                "_guangfuquyu_1_guang_1c02d9ba724f4878b390",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-1/",
+                "PVBaseStation-B-T",
+                "_guangfuquyu_1_guang_1c02d9ba724f4878b390",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-1/",
+                "PVBaseStation-C-T",
+                "_guangfuquyu_1_guang_8b2ffcb8619b41128a56",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-1/",
+                "PVBaseStation-C-T",
+                "_guangfuquyu_1_guang_8b2ffcb8619b41128a56",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-1/",
+                "PVBaseStation-C-T",
+                "_guangfuquyu_1_guang_8b2ffcb8619b41128a56",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_2_guang_dce8745af9d940a0af5d",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_2_guang_dce8745af9d940a0af5d",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_2_guang_dce8745af9d940a0af5d",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-B-T",
+                "_guangfuquyu_2_guang_1b7fc63e02784707ab44",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-B-T",
+                "_guangfuquyu_2_guang_1b7fc63e02784707ab44",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-B-T",
+                "_guangfuquyu_2_guang_1b7fc63e02784707ab44",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-C-T",
+                "_guangfuquyu_2_guang_a42f30c2d11c42e5b3e6",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-C-T",
+                "_guangfuquyu_2_guang_a42f30c2d11c42e5b3e6",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-C-T",
+                "_guangfuquyu_2_guang_a42f30c2d11c42e5b3e6",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-D-T",
+                "_guangfuquyu_2_guang_0a38a501b42f487396f5",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-D-T",
+                "_guangfuquyu_2_guang_0a38a501b42f487396f5",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-D-T",
+                "_guangfuquyu_2_guang_0a38a501b42f487396f5",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-E-T",
+                "_guangfuquyu_2_guang_37398abf84ff4720ae7b",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-E-T",
+                "_guangfuquyu_2_guang_37398abf84ff4720ae7b",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/CentralArea/PVArea-2/",
+                "PVBaseStation-E-T",
+                "_guangfuquyu_2_guang_37398abf84ff4720ae7b",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/NorthChina/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_d27959ea339749ae834f",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/NorthChina/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_d27959ea339749ae834f",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/NorthChina/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_d27959ea339749ae834f",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/Northeast/PVArea-1/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_1_guang_8d4aa55d233842c7be0c",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/Northeast/PVArea-1/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_1_guang_8d4aa55d233842c7be0c",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/Northeast/PVArea-1/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_1_guang_8d4aa55d233842c7be0c",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/Northwest/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_520a25ef83c84123bcdd",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/Northwest/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_520a25ef83c84123bcdd",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/Northwest/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_520a25ef83c84123bcdd",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/Southwest/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_8a1506cd702f46a7b93c",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/Southwest/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_8a1506cd702f46a7b93c",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/Southwest/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_8a1506cd702f46a7b93c",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ],
+            [
+                "NewEnergyPVPowerStation/Southwest/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_8a1506cd702f46a7b93c",
+                "realTimePower",
+                "float",
+                "ns=1;s=realTimePower"
+            ],
+            [
+                "NewEnergyPVPowerStation/Southwest/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_8a1506cd702f46a7b93c",
+                "irradiance",
+                "float",
+                "ns=1;s=irradiance"
+            ],
+            [
+                "NewEnergyPVPowerStation/Southwest/PVArea-A/",
+                "PVBaseStation-A-T",
+                "_guangfuquyu_A_guang_8a1506cd702f46a7b93c",
+                "operationStatus",
+                "int",
+                "ns=1;s=operationStatus"
+            ]
+        ],
+        "tableValid": true,
+        "x": 960,
+        "y": 280,
+        "wires": [
+            [
+                "c17531f1ed2d5a08"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "1028c7c90c0c3d53",
+        "type": "supmodel",
+        "z": "74f596bd621ef1e2",
+        "name": "",
+        "protocol": "modbus",
+        "selectedModel": "",
+        "models": [
+            [
+                "NewEnergyPVPowerStation/EastChina/",
+                "PVBaseStation-Modbus",
+                "_guangfujizhan_Modbus_fae14a885fab4546b1ab",
+                "realTimePower",
+                "long",
+                "0"
+            ]
+        ],
+        "tableValid": true,
+        "x": 940,
+        "y": 380,
+        "wires": [
+            [
+                "1781f734ffb17d4f"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "5428d46dc586979e",
+        "type": "OpcUa-Endpoint",
+        "endpoint": "opc.tcp://127.0.0.1:53889",
+        "secpol": "None",
+        "secmode": "None",
+        "none": true,
+        "login": false,
+        "usercert": false,
+        "usercertificate": "",
+        "userprivatekey": ""
+    },
+    {
+        "id": "85bb67b2dbefe3ba",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "emqx",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "c1da63979f2907f8",
+        "type": "modbus-client",
+        "z": "74f596bd621ef1e2",
+        "name": "nodered:10502@1",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "queueLogEnabled": false,
+        "failureLogEnabled": true,
+        "tcpHost": "nodered",
+        "tcpPort": "10502",
+        "tcpType": "DEFAULT",
+        "serialPort": "/dev/ttyUSB",
+        "serialType": "RTU-BUFFERD",
+        "serialBaudrate": "9600",
+        "serialDatabits": "8",
+        "serialStopbits": "1",
+        "serialParity": "none",
+        "serialConnectionDelay": "100",
+        "serialAsciiResponseStartDelimiter": "0x3A",
+        "unit_id": "1",
+        "commandDelay": "1",
+        "clientTimeout": "1000",
+        "reconnectOnTimeout": true,
+        "reconnectTimeout": "2000",
+        "parallelUnitIdsAllowed": true,
+        "showErrors": false,
+        "showWarnings": true,
+        "showLogs": true
+    }
+]

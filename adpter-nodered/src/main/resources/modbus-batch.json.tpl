@@ -76,9 +76,9 @@
         "id_server": "$id_modbus_client",
         "type": "supmodel",
         "z": "",
-        "selectedModel": "Auto",
-        "modelSchema": "$schema_json_string",
-        "modelMapping": "$mapping_string",
+        "protocol": "modbus",
+        "models": [],
+        "mappings": "",
         "x": 910,
         "y": 100,
         "wires": [

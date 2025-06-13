@@ -4,12 +4,8 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
-import com.supos.common.dto.FieldDefine;
+import com.supos.common.Constants;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 /**
  * 解析关系模型对应的node-red模版文件
@@ -17,11 +13,15 @@ import java.util.UUID;
 @Service("relationalParser")
 public class RelationalParser extends ParserApi {
 
-    private String tplFile = "/relational.json.tpl";
+    private String tplGmqttFile = "/relational-gmatt.json.tpl";
+    private String tplEmqxFile = "/relational-emqx.json.tpl";
 
     @Override
     public String readTplFromCache(BatchImportRequestVO.UnsVO uns) {
-        return readFromTpl(tplFile);
+        if ("gmqtt".equals(Constants.MQTT_PLUGIN)) {
+            return readFromTpl(tplGmqttFile);
+        }
+        return readFromTpl(tplEmqxFile);
     }
 
     @Override
@@ -39,10 +39,15 @@ public class RelationalParser extends ParserApi {
                 .replaceAll("\\$id_func", funcNodeId)
                 .replaceAll("\\$id_mqtt", mqttNodeId);
         // 替换模型topic
-        jsonFlowStr = jsonFlowStr.replace("$model_topic", uns.getUnsTopic());
+        jsonFlowStr = jsonFlowStr.replace("$model_alias", uns.getAlias());
         // 替换mock数据
+        if (Constants.useAliasAsTopic) {
+            jsonFlowStr = jsonFlowStr.replace("$alias_path_topic", uns.getAlias());
+        } else {
+            jsonFlowStr = jsonFlowStr.replace("$alias_path_topic", uns.getUnsTopic());
+        }
         jsonFlowStr = jsonFlowStr.replace("$payload", uns.getJsonExample());
-        jsonFlowStr = jsonFlowStr.replace("$disabled", uns.isMockData() ? "false" : "true");
+        jsonFlowStr = jsonFlowStr.replace("$disabled", "false");
 
         JSONArray jsonArr = JSON.parseArray(jsonFlowStr);
         // 设置节点高度
@@ -52,8 +57,4 @@ public class RelationalParser extends ParserApi {
         fullNodes.addAll(jsonArr);
     }
 
-    @Override
-    public Map<String, ?> buildMapping(List<FieldDefine> fields, String topic, boolean isArray) {
-        return null;
-    }
 }

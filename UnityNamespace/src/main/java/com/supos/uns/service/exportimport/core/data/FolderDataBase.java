@@ -17,9 +17,11 @@ public class FolderDataBase implements ExportImportData {
     @ExcelProperty(index = 1)
     private String alias;
     @ExcelProperty(index = 2)
-    private String templateAlias;
+    private String displayName;
     @ExcelProperty(index = 3)
-    private String fields;
+    private String templateAlias;
     @ExcelProperty(index = 4)
+    private String fields;
+    @ExcelProperty(index = 5)
     private String description;
 }

@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
+
 import java.util.*;
 
 @Data
@@ -14,17 +15,9 @@ import java.util.*;
 @AllArgsConstructor
 @Valid
 public class SaveDataDto implements Cloneable {
-
-    String topic;
+    Long id;
 
     String table;
-
-    public String getTable() {
-        if (table == null) {
-            return topic;
-        }
-        return table;
-    }
 
     FieldDefines fieldDefines;
     CreateTopicDto createTopicDto;
@@ -38,8 +31,8 @@ public class SaveDataDto implements Cloneable {
 
     Iterator<Map<String, Object>> listItr;
 
-    public SaveDataDto(String topic, String table, FieldDefines fieldDefines, List<Map<String, Object>> list) {
-        this.topic = topic;
+    public SaveDataDto(Long id, String table, FieldDefines fieldDefines, List<Map<String, Object>> list) {
+        this.id = id;
         this.table = table;
         this.fieldDefines = fieldDefines;
         this.list = list;
@@ -55,7 +48,7 @@ public class SaveDataDto implements Cloneable {
         try {
             rs = (SaveDataDto) super.clone();
         } catch (CloneNotSupportedException e) {
-            rs = new SaveDataDto(topic, table, fieldDefines, list);
+            rs = new SaveDataDto(id, table, fieldDefines, list);
             rs.createTopicDto = this.createTopicDto;
         }
         rs.setList(list != null && !list.isEmpty() ? new LinkedList<>(list) : new LinkedList<>());

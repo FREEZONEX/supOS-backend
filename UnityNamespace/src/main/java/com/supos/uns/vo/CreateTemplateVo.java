@@ -1,29 +1,31 @@
 package com.supos.uns.vo;
 
+import com.supos.common.annotation.AliasValidator;
+import com.supos.common.dto.FieldDefine;
 import com.supos.common.utils.PathUtil;
-import com.supos.common.vo.FieldDefineVo;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import java.util.List;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @NoArgsConstructor
 public class CreateTemplateVo {
 
+    @Hidden
     int batch;
+    @Hidden
     int index;
-
+    @AliasValidator
+    @Schema(description = "别名，唯一，最长63，可用字符：a-zA-Z0-9_")
     String alias;
 
     public String getAlias() {
-        if (alias == null && path != null) {
-            alias = PathUtil.generateAlias(path,1);
+        if (alias == null && name != null) {
+            alias = PathUtil.generateAlias(name,1);
         }
         return alias;
     }
@@ -31,22 +33,29 @@ public class CreateTemplateVo {
     /**
      * 模板名称
      */
-    @NotEmpty(message = "The template name cannot be empty")
+    @NotEmpty(message = "模板名称不可为空")
+    @Size(max = 63 , message = "名称最多63个字符")
     @Schema(description = "模板名称")
-    String path;
+    String name;
     /**
      * 字段定义
      */
-    @NotNull(message = "The fields cannot be null")
+    @NotEmpty(message = "字段定义不可为空")
     @Schema(description = "字段定义")
-    FieldDefineVo[] fields;
+    FieldDefine[] fields;
     /**
      * 模板描述
      */
     @Schema(description = "模板描述")
+    @Size(max = 255 , message = "模板描述最多255个字符")
     String description;
 
     public String gainBatchIndex() {
         return String.format("%d-%d", batch, index);
+    }
+
+    public CreateTemplateVo(String name, @NotNull(message = "The fields cannot be null") FieldDefine[] fields) {
+        this.name = name;
+        this.fields = fields;
     }
 }

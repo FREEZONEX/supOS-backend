@@ -3,9 +3,9 @@
         "id": "$id_model_selector",
         "type": "supmodel",
         "z": "",
-        "selectedModel": "$model_topic",
-        "modelSchema": "$schema_json_string",
-        "modelMapping": "$mapping_string",
+        "protocol": "",
+        "models": [],
+        "mappings": "",
         "x": 870,
         "y": 80,
         "wires": [

@@ -10,12 +10,8 @@ import java.util.List;
 public class LabelVo {
 
     @Schema(description = "标签ID：已有标签时必传，新建标签时不需要传")
-    private Long id;
+    private String id;
 
     @Schema(description = "标签名称，新建标签时，必传")
     private String labelName;
-
-    @Schema(description = "文件列表")
-    private List<FileVo> fileVoList;
-
 }

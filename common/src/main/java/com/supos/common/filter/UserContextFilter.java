@@ -9,6 +9,7 @@ import com.supos.common.Constants;
 import com.supos.common.utils.UserContext;
 import com.supos.common.vo.UserInfoVo;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.Resource;
@@ -48,8 +49,10 @@ public class UserContextFilter implements Filter {
                 }
             }
             filterChain.doFilter(servletRequest, servletResponse);
+        } catch (ClientAbortException ignore) {
+            // 客户端断开连接，无需处理
         } catch (Exception e) {
-            log.error("do doFilter exception", e);
+            log.error("UserContextFilter Exception", e);
         } finally {
             UserContext.clear();
         }

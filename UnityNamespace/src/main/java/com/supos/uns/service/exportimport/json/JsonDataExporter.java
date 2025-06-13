@@ -13,6 +13,7 @@ import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.utils.ApplicationContextUtils;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.service.UnsExcelService;
 import com.supos.uns.service.UnsManagerService;
 import com.supos.uns.service.exportimport.core.DataExporter;
 import com.supos.uns.service.exportimport.core.ExcelExportContext;
@@ -44,7 +45,7 @@ public class JsonDataExporter extends DataExporter {
     }
 
     @Override
-    public String exportData(ExcelExportContext context, List<ExportNode> exportFolderList, List<ExportNode> exportFileList, List<UnsLabelPo> labels) {
+    public String exportData(ExcelExportContext context) {
         try {
             String datePath = DateUtil.format(new Date(), "yyyyMMddHHmmss");
             String path = String.format("%s%s%s", Constants.EXCEL_ROOT, datePath, Constants.JSON_OUT_PATH);
@@ -67,8 +68,9 @@ public class JsonDataExporter extends DataExporter {
             // 导出标签
             jsonGenerator.writeFieldName(ExcelTypeEnum.Label.getCode());
             jsonGenerator.writeStartArray();
-            if (CollectionUtils.isNotEmpty(labels)) {
-                for (UnsLabelPo label : labels) {
+            Map<Long, UnsLabelPo> labels = context.getLabelMap();
+            if (MapUtils.isNotEmpty(labels)) {
+                for (UnsLabelPo label : labels.values()) {
                     jsonGenerator.writePOJO(ExportImportUtil.createRow(label).getExportImportData());
                 }
             }
@@ -77,6 +79,7 @@ public class JsonDataExporter extends DataExporter {
             // 导出文件夹
             jsonGenerator.writeFieldName(ExcelTypeEnum.Folder.getCode());
             jsonGenerator.writeStartArray();
+            List<ExportNode> exportFolderList = context.getExportFolderList();
             if (CollectionUtils.isNotEmpty(exportFolderList)) {
                 for (ExportNode exportNode : exportFolderList) {
                     jsonGenerator.writePOJO(ExportImportUtil.createRow(exportNode.getUnsPo(), context).getExportImportData());
@@ -86,48 +89,21 @@ public class JsonDataExporter extends DataExporter {
 
             //if (CollectionUtils.isNotEmpty(exportFileList)) {
                 // 导出文件
-                for (ExportNode file : exportFileList) {
-                    UnsPo unsPo = file.getUnsPo();
-                    ExportImportUtil.RowWrapper rowWrapper = ExportImportUtil.createRow(unsPo, context);
-                    file.setRowWrapper(rowWrapper);
+            List<ExportNode> exportFileList = context.getExportFileList();
+            Map<ExcelTypeEnum, List<ExportImportUtil.RowWrapper>> rowWrapperMap = exportFileList.stream().map(file -> ExportImportUtil.createRow(file.getUnsPo(), context)).collect(Collectors.groupingBy(ExportImportUtil.RowWrapper::getExcelType));
+
+            List<ExcelTypeEnum> fileTypes = ExcelTypeEnum.listFile();
+            for(ExcelTypeEnum excelType : fileTypes) {
+                jsonGenerator.writeFieldName(excelType.getCode());
+                jsonGenerator.writeStartArray();
+                List<ExportImportUtil.RowWrapper> rowWrappers = rowWrapperMap.get(excelType);
+                if (CollectionUtils.isNotEmpty(rowWrappers)) {
+                    for (ExportImportUtil.RowWrapper rowWrapper : rowWrappers) {
+                        jsonGenerator.writePOJO(rowWrapper.getExportImportData());
+                    }
                 }
-
-/*                Map<Long, UnsPo> referFileIdMap = new HashMap<>();
-                Map<String, UnsPo> referFileAliadMap = new HashMap<>();
-                if (CollectionUtils.isNotEmpty(context.getRefers())) {
-                    Set<Long> referFileIds = context.getRefers().stream().filter(f -> f.getId() != null).map(InstanceField::getId).collect(Collectors.toSet());
-                    Set<String> referFileAliass = context.getRefers().stream().filter(f -> f.getAlias() != null).map(InstanceField::getAlias).collect(Collectors.toSet());
-
-                    if (CollectionUtils.isNotEmpty(referFileIds)) {
-                        List<UnsPo> referFilesByIds =unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).in(UnsPo::getId, referFileIds));
-
-                        referFileIdMap.putAll(referFilesByIds.stream().collect(Collectors.toMap(UnsPo::getId, Function.identity(), (k1, k2) -> k2)));
-                    }
-                    if (CollectionUtils.isNotEmpty(referFileAliass)) {
-                        List<UnsPo> referFilesByAliass =unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).in(UnsPo::getAlias, referFileAliass));
-
-                        referFileAliadMap.putAll(referFilesByAliass.stream().collect(Collectors.toMap(UnsPo::getAlias, Function.identity(), (k1, k2) -> k2)));
-                    }
-                }*/
-
-                Map<ExcelTypeEnum, List<ExportImportUtil.RowWrapper>> rowWrapperMap = exportFileList.stream().map(file -> {
-                    ExportImportUtil.RowWrapper rowWrapper = file.getRowWrapper();
-                    //rowWrapper.handleRefer(referFileIdMap, referFileAliadMap);
-                    return rowWrapper;
-                }).collect(Collectors.groupingBy(ExportImportUtil.RowWrapper::getExcelType));
-
-                List<ExcelTypeEnum> fileTypes = ExcelTypeEnum.listFile();
-                for(ExcelTypeEnum excelType : fileTypes) {
-                    jsonGenerator.writeFieldName(excelType.getCode());
-                    jsonGenerator.writeStartArray();
-                    List<ExportImportUtil.RowWrapper> rowWrappers = rowWrapperMap.get(excelType);
-                    if (CollectionUtils.isNotEmpty(rowWrappers)) {
-                        for (ExportImportUtil.RowWrapper rowWrapper : rowWrappers) {
-                            jsonGenerator.writePOJO(rowWrapper.getExportImportData());
-                        }
-                    }
-                    jsonGenerator.writeEndArray();
-                }
+                jsonGenerator.writeEndArray();
+            }
             //}
 
             jsonGenerator.writeEndObject();

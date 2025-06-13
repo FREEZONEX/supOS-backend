@@ -90,8 +90,8 @@
         "id": "$id_model_selector",
         "type": "supmodel",
         "z": "",
-        "selectedModel": "$model_topic",
-        "modelSchema": "$schema_json_string",
+        "protocol": "rest",
+        "models": [],
         "x": 850,
         "y": 200,
         "wires": [

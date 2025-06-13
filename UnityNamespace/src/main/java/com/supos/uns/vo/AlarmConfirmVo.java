@@ -14,7 +14,7 @@ public class AlarmConfirmVo  {
     @NotNull
     private Integer confirmType;
 
-    private String topic;
+    private Long unsId;
 
     /**
      * 是否已读

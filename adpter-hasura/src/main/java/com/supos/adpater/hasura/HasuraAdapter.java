@@ -1,6 +1,5 @@
 package com.supos.adpater.hasura;
 
-import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.http.HttpGlobalConfig;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSON;
@@ -37,8 +36,6 @@ public class HasuraAdapter {
     static final String TRACK = "pg_track_table";
     static final String UnTRACK = "pg_untrack_table";
 
-    private static AtomicBoolean hasInited = new AtomicBoolean(false);
-    private static final Integer relationDirect = com.supos.common.Constants.RELATION_TYPE;// 过滤，只track直接写pg的类型
     private static final int timeout = Integer.parseInt(System.getProperty("hasura.timeout", "7000"));
 
     static {
@@ -51,7 +48,7 @@ public class HasuraAdapter {
     void onBatchCreateTableEvent(BatchCreateTableEvent event) {
         CreateTopicDto[] topics = event.topics.get(SrcJdbcType.Postgresql);
         if (topics != null) {
-            List<CreateTopicDto> topicDtos = Arrays.stream(topics).filter(t -> relationDirect.equals(t.getDataType())).collect(Collectors.toList());
+            List<CreateTopicDto> topicDtos = Arrays.stream(topics).filter(HasuraAdapter::shouldTack).collect(Collectors.toList());
             if (!topicDtos.isEmpty()) {
                 notifyHasura(hasuraNotifyUrl, pgSchema, TRACK, topicDtos.stream().map(CreateTopicDto::getTable).collect(Collectors.toList()));
                 createRestApi(hasuraNotifyUrl, topicDtos);
@@ -63,11 +60,15 @@ public class HasuraAdapter {
     @Order(200)
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
         if (event.jdbcType == SrcJdbcType.Postgresql) {
-            Collection<String> tables = event.topics.values().stream().filter(t -> relationDirect.equals(t.getDataType())).map(SimpleUnsInstance::getTableName).collect(Collectors.toSet());
+            Collection<String> tables = event.topics.values().stream().filter(t -> t.getDataType() != null && com.supos.common.Constants.RELATION_TYPE == t.getDataType()).map(SimpleUnsInstance::getTableName).collect(Collectors.toSet());
             if (!tables.isEmpty()) {
                 notifyHasura(hasuraNotifyUrl, pgSchema, UnTRACK, tables);
             }
         }
+    }
+
+    private static boolean shouldTack(CreateTopicDto dto) {
+        return (dto.getDataType() != null && dto.getFlags() != null && com.supos.common.Constants.RELATION_TYPE == dto.getDataType() && com.supos.common.Constants.withSave2db(dto.getFlags()));
     }
 
     static void notifyHasura(String url, String pgSchema, final String type, final Collection<String> tables) {
@@ -173,34 +174,34 @@ public class HasuraAdapter {
             createCollection(url);
         }
 
-            StringBuilder args = new StringBuilder();
-            for (CreateTopicDto topic : topics) {
-                StringBuilder fieldQuery = new StringBuilder();
-                for (FieldDefine field : topic.getFields()) {
-                    fieldQuery.append(field.getName()).append("\\r\\n");
-                }
-                String addQuery = String.format(Constants.CREATE_REST_ARGS_ADD_QUERY_FORMATE, topic.getTable(), topic.getTable(), topic.getTable(), fieldQuery);
-                String createRest = String.format(Constants.CREATE_REST_ARGS_CREATE_REST_FORMATE, topic.getTable(), topic.getTable(), topic.getTable());
-                args.append(addQuery).append(",").append(createRest).append(',');
+        StringBuilder args = new StringBuilder();
+        for (CreateTopicDto topic : topics) {
+            StringBuilder fieldQuery = new StringBuilder();
+            for (FieldDefine field : topic.getFields()) {
+                fieldQuery.append(field.getName()).append("\\r\\n");
             }
-            if (args.length() == 0) {
-                return;
-            }
-            String restQuery = String.format(Constants.CREATE_REST_CMD_FORMATE, args.substring(0, args.length() - 1));
+            String addQuery = String.format(Constants.CREATE_REST_ARGS_ADD_QUERY_FORMATE, topic.getTable(), topic.getTable(), topic.getTable(), fieldQuery);
+            String createRest = String.format(Constants.CREATE_REST_ARGS_CREATE_REST_FORMATE, topic.getTable(), topic.getTable(), topic.getTable());
+            args.append(addQuery).append(",").append(createRest).append(',');
+        }
+        if (args.length() == 0) {
+            return;
+        }
+        String restQuery = String.format(Constants.CREATE_REST_CMD_FORMATE, args.substring(0, args.length() - 1));
 
-            try {
-                HttpUtil.createPost(url).body(restQuery).then(httpResponse -> {
-                    log.debug("notifyHasura createRestApi[{}]: request: {}", url, restQuery);
-                    final int status = httpResponse.getStatus();
-                    final String respBody = httpResponse.body();
-                    log.info("createRestApiResp[{}]: body[{}], head[{}]", status, respBody, httpResponse.headers());
-                    if (status != 200 && respBody != null) {
-                        log.error("createRestApiResp error!");
-                    }
-                });
-            } catch (Exception ex) {
-                log.error("createRestApi[{}]: request: {}", url, restQuery, ex);
-            }
+        try {
+            HttpUtil.createPost(url).body(restQuery).then(httpResponse -> {
+                log.debug("notifyHasura createRestApi[{}]: request: {}", url, restQuery);
+                final int status = httpResponse.getStatus();
+                final String respBody = httpResponse.body();
+                log.info("createRestApiResp[{}]: body[{}], head[{}]", status, respBody, httpResponse.headers());
+                if (status != 200 && respBody != null) {
+                    log.error("createRestApiResp error!");
+                }
+            });
+        } catch (Exception ex) {
+            log.error("createRestApi[{}]: request: {}", url, restQuery, ex);
+        }
 //        });
     }
 

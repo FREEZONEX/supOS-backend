@@ -2,21 +2,28 @@ package com.supos.uns.bo;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.supos.common.utils.I18nUtils;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class RunningStatus {
+    @Schema(description = "状态码 200表示成功")
     int code;
     String msg;
     String errTipFile;
     Integer n;
     Integer i;
+    @Schema(description = "任务名称")
     String task;
-
     Long spendMills;
+    @Schema(description = "是否完成")
     Boolean finished;
+    @Schema(description = "进度：0-100")
     Double progress; // 进度 [0,100]
+
+    private Long startTime;
+    private Long endTime;
 
     public RunningStatus(int code, String msg) {
         this.code = code;
@@ -59,6 +66,16 @@ public class RunningStatus {
 
     public RunningStatus setTask(String task) {
         this.task = task;
+        return this;
+    }
+
+    public RunningStatus setStartTime(Long startTime) {
+        this.startTime = startTime;
+        return this;
+    }
+
+    public RunningStatus setEndTime(Long endTime) {
+        this.endTime = endTime;
         return this;
     }
 }

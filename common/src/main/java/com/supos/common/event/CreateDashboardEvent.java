@@ -7,13 +7,13 @@ import org.springframework.context.ApplicationEvent;
  * 创建grafana dashboard 数据库记录
  */
 public class CreateDashboardEvent extends ApplicationEvent {
-    public final String id;
+    public final String uuid;
     public final String name;
     public final String description;
 
-    public CreateDashboardEvent(Object source, String id, String name, String description) {
+    public CreateDashboardEvent(Object source, String uuid, String name, String description) {
         super(source);
-        this.id = id;
+        this.uuid = uuid;
         this.name = name;
         this.description = description;
     }

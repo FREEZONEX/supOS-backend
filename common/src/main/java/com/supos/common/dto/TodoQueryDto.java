@@ -1,5 +1,6 @@
 package com.supos.common.dto;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -9,7 +10,7 @@ public class TodoQueryDto extends PaginationDTO{
     /**
      * 模块编码
      */
-    @Schema(description = "模块名称")
+    @Schema(description = "模块编码")
     private String moduleCode;
 
     /**
@@ -26,5 +27,11 @@ public class TodoQueryDto extends PaginationDTO{
 
     @Schema(description = "事项信息")
     private String todoMsg;
+
+    /**
+     * 处理人用户名
+     */
+    @Hidden
+    private String handlerUsername;
 
 }

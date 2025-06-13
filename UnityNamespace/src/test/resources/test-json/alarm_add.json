@@ -1,0 +1,22 @@
+{
+  "name": "htwes1",
+  "description": "自测告警1",
+  "withFlags": 16,
+  "refers": [
+    {
+      "id": 1910622842216095744,
+      "field": "wq"
+    }
+  ],
+  "protocol": {
+    "condition": ">",
+    "limitValue": 120
+  },
+  "userList": [
+    {
+      "id": "d5065907-0ae7-4820-9dbf-bc5cbd10b4dd",
+      "preferredUsername": "xiaozhengtest"
+    }
+  ],
+  "expression": "a1>100"
+}

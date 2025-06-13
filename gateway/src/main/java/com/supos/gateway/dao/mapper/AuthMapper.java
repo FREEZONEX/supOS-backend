@@ -2,6 +2,7 @@ package com.supos.gateway.dao.mapper;
 
 import com.baomidou.dynamic.datasource.annotation.DS;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.supos.common.dto.UserAttributeDto;
 import com.supos.common.dto.auth.ResourceDto;
 import com.supos.common.dto.auth.RoleDto;
 import org.apache.ibatis.annotations.Mapper;
@@ -47,4 +48,7 @@ public interface AuthMapper extends BaseMapper {
 
     @Select("SELECT id FROM keycloak_role where name = 'supos-default' LIMIT 1")
     String getDefaultRoleId();
+
+    @Select("select name,value from user_attribute where user_id = #{userId}")
+    List<UserAttributeDto> getUserAttribute(@Param("userId") String userId);
 }

@@ -1,7 +1,6 @@
 package com.supos.uns.dao.po;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
@@ -22,12 +21,12 @@ public class TodoPo {
     private Long id;
 
     /**
-     * 用户ID
+     * 接收人用户ID
      */
     private String userId;
 
     /**
-     * 用户名
+     * 接收人用户名
      */
     private String username;
 
@@ -36,6 +35,11 @@ public class TodoPo {
      * @see com.supos.common.enums.SysModuleEnum
      */
     private String moduleCode;
+
+    /**
+     * 模块名称
+     */
+    private String moduleName;
 
     /**
      * 代办状态：0-未处理 1-已处理
@@ -50,7 +54,7 @@ public class TodoPo {
     /**
      * 业务主键
      */
-    private String businessId;
+    private Long businessId;
 
     /**
      * 链接

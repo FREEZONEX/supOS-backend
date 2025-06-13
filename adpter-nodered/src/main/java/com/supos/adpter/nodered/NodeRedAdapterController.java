@@ -56,9 +56,9 @@ public class NodeRedAdapterController {
         return nodeRedAdapterService.selectList(fuzzyName, Integer.parseInt(pageNo), Integer.parseInt(pageSize));
     }
 
-    @GetMapping({"/inter-api/supos/flow/by/topic"})
-    public ResultDTO<NodeFlowVO> getByTopic(@RequestParam("t") String topic) {
-        List<NodeFlowVO> result = nodeRedAdapterService.getByTopic(topic);
+    @GetMapping({"/inter-api/supos/flow/uns/alias"})
+    public ResultDTO<NodeFlowVO> getByAlias(@RequestParam("alias") String alias) {
+        List<NodeFlowVO> result = nodeRedAdapterService.getByAlias(alias);
         return ResultDTO.successWithData(result);
     }
 

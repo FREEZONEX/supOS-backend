@@ -6,24 +6,22 @@ import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.dto.*;
 import com.supos.common.enums.FieldType;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 @Slf4j
-@Data
+@Getter @Setter
 public class TopicDefinition {
     FieldDefines fieldDefines;
     ConcurrentHashMap<String, Object> lastMsg;
     ConcurrentHashMap<String, Long> lastDt;
     Long lastDateTime;
-    Set<String> referCalcTopics;// 被引用的计算实例topic
+    Set<Long> referCalcUns; // 被引用的计算实例
     CreateTopicDto createTopicDto;
     boolean save2db;
 
@@ -31,16 +29,16 @@ public class TopicDefinition {
         this.initByCreateTopicDto(createTopicDto, true);
     }
 
-    public void addReferCalcTopic(String topic) {
-        if (referCalcTopics == null) {
-            referCalcTopics = new ConcurrentHashSet<>(4);
+    public void addReferCalcTopic(Long id) {
+        if (referCalcUns == null) {
+            referCalcUns = new ConcurrentHashSet<>(4);
         }
-        referCalcTopics.add(topic);
+        referCalcUns.add(id);
     }
 
-    public void removeReferCalcTopic(String topic) {
-        if (referCalcTopics != null) {
-            referCalcTopics.remove(topic);
+    public void removeReferCalcTopic(Long id) {
+        if (referCalcUns != null) {
+            referCalcUns.remove(id);
         }
     }
 
@@ -79,8 +77,7 @@ public class TopicDefinition {
     private void initByCreateTopicDto(CreateTopicDto dto, boolean init) {
         FieldDefine[] fields = dto.getFields();
         if (fields != null && fields.length > 0) {
-            Map<String, FieldDefine> fieldDefineMap = Arrays.stream(fields).collect(Collectors.toMap(FieldDefine::getName, p -> p,
-                    (a, b) -> a, LinkedHashMap::new));
+            Map<String, FieldDefine> fieldDefineMap = dto.getFieldDefines().getFieldsMap();
             if (lastMsg != null && !lastMsg.isEmpty()) {
                 for (String k : lastMsg.keySet()) {
                     if (!fieldDefineMap.containsKey(k)) {
@@ -91,7 +88,7 @@ public class TopicDefinition {
                     }
                 }
             }
-            this.fieldDefines = new FieldDefines(fieldDefineMap);
+            this.fieldDefines = dto.getFieldDefines();
         } else if (init) {
             this.fieldDefines = new FieldDefines();
         } else if (createTopicDto != null) {
@@ -115,15 +112,21 @@ public class TopicDefinition {
                 }
                 fieldDefines.setCalcField(rsField);
             } else {
-                fieldDefines.setCalcField(getCalcField(fieldDefines));
+                fieldDefines.setCalcField(getCalcField(dto));
             }
         }
     }
 
-    static FieldDefine getCalcField(FieldDefines calc) {
+    static FieldDefine getCalcField(CreateTopicDto dto) {
+        FieldDefine[] fields = dto.getFields();
+        if (fields == null) {
+            return null;
+        }
         FieldDefine calcField = null;
-        for (FieldDefine cv : calc.getFieldsMap().values()) {
-            if (!cv.getName().startsWith(Constants.SYSTEM_FIELD_PREV)) {
+        final String ct = dto.getTimestampField(), qos = dto.getQualityField();
+        for (FieldDefine cv : fields) {
+            final String name = cv.getName();
+            if (!name.equals(ct) && !name.equals(qos) && !name.startsWith(Constants.SYSTEM_FIELD_PREV)) {
                 calcField = cv;
                 break;
             }

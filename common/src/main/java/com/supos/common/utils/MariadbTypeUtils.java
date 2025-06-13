@@ -33,5 +33,10 @@ public class MariadbTypeUtils {
         dbType2FieldTypeMap.put("time", FieldType.DATETIME.name);
         dbType2FieldTypeMap.put("datetime", FieldType.DATETIME.name);
         dbType2FieldTypeMap.put("TIMESTAMP", FieldType.DATETIME.name);
+
+        dbType2FieldTypeMap.put("tinyblob", FieldType.BLOB.name);
+        dbType2FieldTypeMap.put("blob", FieldType.BLOB.name);
+        dbType2FieldTypeMap.put("mediumblob", FieldType.BLOB.name);
+        dbType2FieldTypeMap.put("longblob", FieldType.BLOB.name);
     }
 }

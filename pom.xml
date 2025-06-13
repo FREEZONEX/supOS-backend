@@ -1,295 +1,286 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.1.0</version>
-        <relativePath/> <!-- lookup parent from repository -->
-    </parent>
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.1.0</version>
+    <relativePath/> <!-- lookup parent from repository -->
+  </parent>
 
-    <groupId>com.supos</groupId>
-    <artifactId>base</artifactId>
-    <version>${revision}</version>
-    <packaging>pom</packaging>
-    <name>supOS community Version</name>
-    <properties>
-        <!-- The version of the current project uses flatten and only needs to modify this one place -->
-        <revision>2.0.0-SNAPSHOT</revision>
-        <maven.compiler.target>17</maven.compiler.target>
-        <maven.compiler.source>17</maven.compiler.source>
-        <java.version>17</java.version>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <!-- skip test -->
-        <maven.test.skip>true</maven.test.skip>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <elasticsearch.version>7.10.2</elasticsearch.version>
-    </properties>
-    <modules>
-        <module>bootstrap</module>
-        <module>common</module>
-        <module>adpter-grafana</module>
-        <module>adpter-postgresql</module>
-        <module>adpter-tdengine</module>
-        <module>UnityNamespace</module>
-        <module>adapter-mqtt</module>
-        <module>app-manager</module>
-        <module>adpter-kong</module>
-        <module>adpter-nodered</module>
-        <module>adpter-hasura</module>
-        <module>gateway</module>
-        <module>adpter-elasticsearch</module>
-        <module>adpter-minio</module>
-        <module>webhook</module>
-        <module>adpter-camunda</module>
-        <module>adpter-eventflow</module>
-    </modules>
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>cn.hutool</groupId>
-                <artifactId>hutool-all</artifactId>
-                <version>5.8.32</version>
-            </dependency>
-            <dependency>
-                <groupId>com.google.guava</groupId>
-                <artifactId>guava</artifactId>
-                <version>32.1.3-jre</version>
-            </dependency>
-            <dependency>
-                <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus</artifactId>
-            </dependency>
-            <dependency>
-                <groupId>com.alibaba</groupId>
-                <artifactId>fastjson</artifactId>
-                <version>2.0.53</version>
-            </dependency>
-            <dependency>
-                <groupId>com.alibaba</groupId>
-                <artifactId>transmittable-thread-local</artifactId>
-                <version>2.14.5</version>
-            </dependency>
-            <dependency>
-                <groupId>org.elasticsearch.client</groupId>
-                <artifactId>elasticsearch-rest-high-level-client</artifactId>
-                <version>${elasticsearch.version}</version>
-            </dependency>
+  <groupId>com.supos</groupId>
+  <artifactId>base</artifactId>
+  <version>2.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>supOS community Version</name>
+  <properties>
+    <!-- The version of the current project uses flatten and only needs to modify this one place -->
+    <revision>2.0.0-SNAPSHOT</revision>
+    <maven.compiler.target>17</maven.compiler.target>
+    <maven.compiler.source>17</maven.compiler.source>
+    <java.version>17</java.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- skip test -->
+    <maven.test.skip>true</maven.test.skip>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <elasticsearch.version>7.10.2</elasticsearch.version>
+  </properties>
+  <modules>
+    <module>bootstrap</module>
+    <module>common</module>
+    <module>adpter-grafana</module>
+    <module>adpter-postgresql</module>
+    <module>adpter-tdengine</module>
+    <module>UnityNamespace</module>
+    <module>adapter-mqtt</module>
+    <module>adpter-kong</module>
+    <module>adpter-nodered</module>
+    <module>adpter-hasura</module>
+    <module>gateway</module>
+    <module>adpter-elasticsearch</module>
+    <module>adpter-minio</module>
+    <module>adpter-camunda</module>
+    <module>adpter-eventflow</module>
+    <module>supos-websocket</module>
+  </modules>
 
-            <!-- Elasticsearch Rest Client -->
-            <dependency>
-                <groupId>org.elasticsearch.client</groupId>
-                <artifactId>elasticsearch-rest-client</artifactId>
-                <version>${elasticsearch.version}</version>
-            </dependency>
-
-            <!-- Elasticsearch Core -->
-            <dependency>
-                <groupId>org.elasticsearch</groupId>
-                <artifactId>elasticsearch</artifactId>
-                <version>${elasticsearch.version}</version>
-            </dependency>
- <!--           <dependency>
-                <groupId>org.mybatis</groupId>
-                <artifactId>mybatis-spring</artifactId>
-                <version>2.1.2</version>
-            </dependency>-->
-            <!-- Comes with package -->
-            <dependency>
-                <groupId>ai.chat2db</groupId>
-                <artifactId>chat2db-server-tools-base</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>ai.chat2db</groupId>
-                <artifactId>chat2db-server-tools-common</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>ai.chat2db</groupId>
-                <artifactId>chat2db-spi</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>ai.chat2db</groupId>
-                <artifactId>chat2db-mysql</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>ai.chat2db</groupId>
-                <artifactId>chat2db-plugins</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.commons</groupId>
-                <artifactId>commons-collections4</artifactId>
-                <version>4.4</version>
-            </dependency>
-            <dependency>
-                <groupId>commons-beanutils</groupId>
-                <artifactId>commons-beanutils</artifactId>
-                <version>1.9.4</version>
-            </dependency>
-            <!-- druid -->
-            <dependency>
-                <groupId>com.alibaba</groupId>
-                <artifactId>druid</artifactId>
-                <version>1.2.24</version>
-            </dependency>
-
-            <!-- Sa-Token Permission authentication, online documentation:https://sa-token.cc -->
-            <dependency>
-                <groupId>cn.dev33</groupId>
-                <artifactId>sa-token-spring-boot3-starter</artifactId>
-                <version>1.34.0</version>
-            </dependency>
-            <!-- Sa-Token matching jwt -->
-            <dependency>
-                <groupId>cn.dev33</groupId>
-                <artifactId>sa-token-jwt</artifactId>
-                <version>1.34.0</version>
-                <exclusions>
-                    <exclusion>
-                        <artifactId>hutool-jwt</artifactId>
-                        <groupId>cn.hutool</groupId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
-
-            <!-- http -->
-            <dependency>
-                <groupId>com.dtflys.forest</groupId>
-                <artifactId>forest-spring</artifactId>
-                <version>1.5.32</version>
-            </dependency>
-            <dependency>
-                <groupId>com.dtflys.forest</groupId>
-                <artifactId>forest-core</artifactId>
-                <version>1.5.32</version>
-            </dependency>
-
-            <!-- Database version management -->
-            <dependency>
-                <groupId>org.flywaydb</groupId>
-                <artifactId>flyway-core</artifactId>
-                <version>9.19.4</version>
-            </dependency>
-            <dependency>
-                <groupId>org.flywaydb</groupId>
-                <artifactId>flyway-mysql</artifactId>
-                <version>9.19.4</version>
-            </dependency>
-
-            <dependency>
-                <groupId>com.unfbx</groupId>
-                <artifactId>chatgpt-java</artifactId>
-                <version>1.0.8</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>org.slf4j</groupId>
-                        <artifactId>slf4j-simple</artifactId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
-            <dependency>
-                <groupId>com.theokanning.openai-gpt3-java</groupId>
-                <artifactId>service</artifactId>
-                <version>0.12.0</version>
-            </dependency>
-
-            <!-- https://mvnrepository.com/artifact/org.zalando/logbook-spring-boot-starter -->
-            <dependency>
-                <groupId>org.zalando</groupId>
-                <artifactId>logbook-spring-boot-starter</artifactId>
-                <version>3.3.0</version>
-            </dependency>
-
-            <!-- mapstruct -->
-            <dependency>
-                <groupId>org.mapstruct</groupId>
-                <artifactId>mapstruct</artifactId>
-                <version>1.5.5.Final</version>
-            </dependency>
-            <dependency>
-                <groupId>org.mapstruct</groupId>
-                <artifactId>mapstruct-processor</artifactId>
-                <version>1.5.5.Final</version>
-            </dependency>
-            <!-- Make sure to generate lombok first and then mapstruct -->
-            <dependency>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok-mapstruct-binding</artifactId>
-                <version>0.2.0</version>
-            </dependency>
-            <dependency>
-                <groupId>com.alibaba.fastjson2</groupId>
-                <artifactId>fastjson2</artifactId>
-                <version>2.0.37</version>
-            </dependency>
-            <!-- mybatis-plus -->
-            <!-- https://mvnrepository.com/artifact/com.baomidou/mybatis-plus-boot-starter -->
-   <!--         <dependency>
-                <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus</artifactId>
-                <version>3.5.3.1</version>
-            </dependency>-->
-    <!--        <dependency>
-                <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus-generator</artifactId>
-                <version>3.5.3.1</version>
-            </dependency>-->
-            <dependency>
-                <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus-boot-starter</artifactId>
-                <version>3.5.10.1</version>
-            </dependency>
-            <dependency>
-                <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus</artifactId>
-                <version>3.5.10.1</version>
-            </dependency>
-            <dependency>
-                <groupId>com.zaxxer</groupId>
-                <artifactId>HikariCP</artifactId>
-                <version>5.0.1</version>
-            </dependency>
-            <dependency>
-                <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus-bom</artifactId>
-                <version>3.5.10.1</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
+  <dependencyManagement>
     <dependencies>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <scope>provided</scope>
-        </dependency>
-        <!-- Make sure to generate lombok first and then mapstruct -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok-mapstruct-binding</artifactId>
-            <scope>provided</scope>
-        </dependency>
-    </dependencies>
-    <repositories>
-        <repository>
-            <id>nexus-releases</id>
-            <name>private nexus</name>
-            <url>http://nexus.scm2.bluetron.cn/repository/maven-releases/</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
+      <dependency>
+        <groupId>com.supos</groupId>
+        <artifactId>common</artifactId>
+        <version>${revision}</version>
+      </dependency>
 
-    </repositories>
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-lang3</artifactId>
+        <version>3.16.0</version>
+      </dependency>
+
+      <dependency>
+        <groupId>cn.hutool</groupId>
+        <artifactId>hutool-all</artifactId>
+        <version>5.8.32</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.guava</groupId>
+        <artifactId>guava</artifactId>
+        <version>32.1.3-jre</version>
+      </dependency>
+      <dependency>
+        <groupId>com.baomidou</groupId>
+        <artifactId>mybatis-plus</artifactId>
+      </dependency>
+      <dependency>
+        <groupId>com.alibaba</groupId>
+        <artifactId>fastjson</artifactId>
+        <version>2.0.53</version>
+      </dependency>
+      <dependency>
+        <groupId>com.alibaba</groupId>
+        <artifactId>transmittable-thread-local</artifactId>
+        <version>2.14.5</version>
+      </dependency>
+      <dependency>
+        <groupId>org.elasticsearch.client</groupId>
+        <artifactId>elasticsearch-rest-high-level-client</artifactId>
+        <version>${elasticsearch.version}</version>
+      </dependency>
+
+      <!-- Elasticsearch Rest Client -->
+      <dependency>
+        <groupId>org.elasticsearch.client</groupId>
+        <artifactId>elasticsearch-rest-client</artifactId>
+        <version>${elasticsearch.version}</version>
+      </dependency>
+
+      <!-- Elasticsearch Core -->
+      <dependency>
+        <groupId>org.elasticsearch</groupId>
+        <artifactId>elasticsearch</artifactId>
+        <version>${elasticsearch.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-collections4</artifactId>
+        <version>4.4</version>
+      </dependency>
+      <dependency>
+        <groupId>commons-beanutils</groupId>
+        <artifactId>commons-beanutils</artifactId>
+        <version>1.9.4</version>
+      </dependency>
+      <!-- druid -->
+      <dependency>
+        <groupId>com.alibaba</groupId>
+        <artifactId>druid</artifactId>
+        <version>1.2.24</version>
+      </dependency>
+
+      <!-- Sa-Token Permission authentication, online documentation:https://sa-token.cc -->
+      <dependency>
+        <groupId>cn.dev33</groupId>
+        <artifactId>sa-token-spring-boot3-starter</artifactId>
+        <version>1.34.0</version>
+      </dependency>
+      <!-- Sa-Token matching jwt -->
+      <dependency>
+        <groupId>cn.dev33</groupId>
+        <artifactId>sa-token-jwt</artifactId>
+        <version>1.34.0</version>
+        <exclusions>
+          <exclusion>
+            <artifactId>hutool-jwt</artifactId>
+            <groupId>cn.hutool</groupId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+
+      <!-- http -->
+      <dependency>
+        <groupId>com.dtflys.forest</groupId>
+        <artifactId>forest-spring</artifactId>
+        <version>1.5.32</version>
+      </dependency>
+      <dependency>
+        <groupId>com.dtflys.forest</groupId>
+        <artifactId>forest-core</artifactId>
+        <version>1.5.32</version>
+      </dependency>
+
+      <!-- Database version management -->
+      <dependency>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-core</artifactId>
+        <version>9.19.4</version>
+      </dependency>
+      <dependency>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-mysql</artifactId>
+        <version>9.19.4</version>
+      </dependency>
+
+      <dependency>
+        <groupId>com.unfbx</groupId>
+        <artifactId>chatgpt-java</artifactId>
+        <version>1.0.8</version>
+        <exclusions>
+          <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>com.theokanning.openai-gpt3-java</groupId>
+        <artifactId>service</artifactId>
+        <version>0.12.0</version>
+      </dependency>
+
+      <!-- https://mvnrepository.com/artifact/org.zalando/logbook-spring-boot-starter -->
+      <dependency>
+        <groupId>org.zalando</groupId>
+        <artifactId>logbook-spring-boot-starter</artifactId>
+        <version>3.3.0</version>
+      </dependency>
+
+      <!-- mapstruct -->
+      <dependency>
+        <groupId>org.mapstruct</groupId>
+        <artifactId>mapstruct</artifactId>
+        <version>1.5.5.Final</version>
+      </dependency>
+      <dependency>
+        <groupId>org.mapstruct</groupId>
+        <artifactId>mapstruct-processor</artifactId>
+        <version>1.5.5.Final</version>
+      </dependency>
+      <!-- Make sure to generate lombok first and then mapstruct -->
+      <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok-mapstruct-binding</artifactId>
+        <version>0.2.0</version>
+      </dependency>
+      <dependency>
+        <groupId>com.alibaba.fastjson2</groupId>
+        <artifactId>fastjson2</artifactId>
+        <version>2.0.37</version>
+      </dependency>
+      <!-- mybatis-plus -->
+      <!-- https://mvnrepository.com/artifact/com.baomidou/mybatis-plus-boot-starter -->
+      <!--         <dependency>
+                   <groupId>com.baomidou</groupId>
+                   <artifactId>mybatis-plus</artifactId>
+                   <version>3.5.3.1</version>
+               </dependency>-->
+      <!--        <dependency>
+                  <groupId>com.baomidou</groupId>
+                  <artifactId>mybatis-plus-generator</artifactId>
+                  <version>3.5.3.1</version>
+              </dependency>-->
+      <dependency>
+        <groupId>com.baomidou</groupId>
+        <artifactId>mybatis-plus-boot-starter</artifactId>
+        <version>3.5.10.1</version>
+      </dependency>
+      <dependency>
+        <groupId>com.baomidou</groupId>
+        <artifactId>mybatis-plus</artifactId>
+        <version>3.5.10.1</version>
+      </dependency>
+      <dependency>
+        <groupId>com.zaxxer</groupId>
+        <artifactId>HikariCP</artifactId>
+        <version>5.0.1</version>
+      </dependency>
+      <dependency>
+        <groupId>com.baomidou</groupId>
+        <artifactId>mybatis-plus-bom</artifactId>
+        <version>3.5.10.1</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <!-- Make sure to generate lombok first and then mapstruct -->
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok-mapstruct-binding</artifactId>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+  <repositories>
+    <repository>
+      <id>nexus-releases</id>
+      <name>private nexus</name>
+      <url>http://nexus.scm2.bluetron.cn/repository/maven-releases/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+
+  </repositories>
+  <build>
+    <plugins>
+      <!--  -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>versions-maven-plugin</artifactId>
+        <version>2.18.0</version>
+      </plugin>
+    </plugins>
+  </build>
 </project>

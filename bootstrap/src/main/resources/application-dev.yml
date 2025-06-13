@@ -3,6 +3,14 @@ springdoc:
     path: /swagger-ui
   api-docs:
     path: /swagger-ui/v3/api-docs
+grpc:
+  server:
+    port: 19099
+  thread-pool:
+    core-size: 16      # 核心线程数（建议为 CPU核数 × 2）
+    max-size: 64       # 最大线程数（建议为 CPU核数 × 4）
+    queue-capacity: 200 # 队列容量
+    keep-alive-time: 60 # 线程空闲存活时间（秒）
 spring:
   main:
     allow-circular-references: true
@@ -57,6 +65,7 @@ hasura:
   url: ${HASURA_URL:http://office.unibutton.com:11488/hasura/home/v1/metadata}
 
 mybatis-plus:
+  type-handlers-package: com.supos.uns.config
   configuration:
     # 开启下划线转驼峰
     map-underscore-to-camel-case: true

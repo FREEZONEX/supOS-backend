@@ -7,8 +7,8 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.http.Method;
+import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
-import com.supos.common.adpater.DataSourceProperties;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.grafana.GrafanaDataSourceDto;
@@ -70,7 +70,7 @@ public class GrafanaEventHandlerTest {
 
     @Test
     public void testCreateDashboard(){
-        GrafanaUtils.createDashboard("authentication_execution",SrcJdbcType.Postgresql,"public","demo1","id,authenticator");
+        GrafanaUtils.createDashboard("authentication_execution",SrcJdbcType.Postgresql,"public","demo1","id,authenticator", Constants.SYS_FIELD_CREATE_TIME);
     }
 
     @Test
@@ -78,15 +78,15 @@ public class GrafanaEventHandlerTest {
         FieldDefine[] fields = new FieldDefine[]{new FieldDefine("a", FieldType.STRING,false,"1", null, null)};
 
         CreateTopicDto d1 = new CreateTopicDto();
-        d1.setTopic("t1");
+        d1.setPath("t1");
         d1.setFields(fields);
 
         CreateTopicDto d2 = new CreateTopicDto();
-        d2.setTopic("t2");
+        d2.setPath("t2");
         d2.setFields(fields);
 
         CreateTopicDto d3 = new CreateTopicDto();
-        d3.setTopic("t3");
+        d3.setPath("t3");
         d3.setFields(fields);
         CreateTopicDto[] topics = new CreateTopicDto[]{d1,d2,d3};
 //        GrafanaUtils.createTdListDashboard(topics,"test");

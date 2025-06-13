@@ -16,7 +16,7 @@ public class AlarmRuleDefine {
     public static final String FIELD_CURRENT_VALUE = "current_value";
     public static final String FIELD_LIMIT_VALUE = "limit_value";
 
-    public static final String FIELD_TOPIC = "topic";
+    public static final String FIELD_UNS_ID = "uns";
     public static final String READ_STATUS = "read_status";
 
     /**

@@ -30,7 +30,7 @@ public class AlarmRuleSearchResult {
     /**
      * 引用的实例
      */
-    String refTopic;
+    String refUns;
 
     /**
      * 字段JSON

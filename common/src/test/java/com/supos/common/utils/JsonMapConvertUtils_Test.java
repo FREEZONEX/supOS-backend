@@ -50,17 +50,17 @@ public class JsonMapConvertUtils_Test {
         Assert.assertEquals("id", user.params.get(0).key);
         Assert.assertEquals(123, user.params.get(1).value);
 
-        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
-        Validator validator = factory.getValidator();
-        Set<ConstraintViolation<User>> violations = validator.validate(user);
-
-        if (!violations.isEmpty()) {
-            for (ConstraintViolation<User> violation : violations) {
-                System.out.println(violation);
-            }
-        } else {
-            System.out.println("校验通过");
-        }
+//        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+//        Validator validator = factory.getValidator();
+//        Set<ConstraintViolation<User>> violations = validator.validate(user);
+//
+//        if (!violations.isEmpty()) {
+//            for (ConstraintViolation<User> violation : violations) {
+//                System.out.println(violation);
+//            }
+//        } else {
+//            System.out.println("校验通过");
+//        }
     }
 }
 

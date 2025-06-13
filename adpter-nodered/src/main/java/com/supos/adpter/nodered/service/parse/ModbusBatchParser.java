@@ -6,17 +6,16 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.parser.Feature;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
-import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.protocol.MappingDTO;
 import com.supos.common.dto.protocol.ModbusConfigDTO;
+import com.supos.common.dto.protocol.SimpleModelDTO;
 import com.supos.common.enums.FunctionCode;
 import com.supos.common.enums.IOTProtocol;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 批量topic处理
@@ -43,18 +42,30 @@ public class ModbusBatchParser extends ParserApi {
 
         JSONObject injectNode = getInjectByServerId(fullNodes, serverId);
         JSONObject mc = buildPayloadString(modbusConfig, uns.getUnsTopic());
+        Map<String, List<MappingDTO>> ms = buildMapping(uns.getFields(), uns.getUnsTopic());
+
         if (injectNode != null) {
             String payloadString = injectNode.getString("payload");
             JSONArray payloadArray = JSONArray.parseArray(payloadString);
             payloadArray.add(mc);
             injectNode.put("payload", payloadArray.toJSONString());
 
-
             JSONObject supModelNode = getSupModelByServerId(fullNodes, serverId);
-            String mappings = supModelNode.getString("modelMapping");
-            JSONObject jsonObject = JSON.parseObject(mappings);
-            jsonObject.putAll(buildMapping(uns.getFields(), uns.getUnsTopic(), true));
-            supModelNode.put("modelMapping", jsonObject.toJSONString());
+            Map<String, List<MappingDTO>> nowMap = supModelNode.getObject("mappings", Map.class);
+            for (Map.Entry<String, List<MappingDTO>> entry : ms.entrySet()) {
+                List<MappingDTO> tmp = nowMap.get(entry.getKey());
+                if (tmp == null) {
+                    nowMap.put(entry.getKey(), entry.getValue());
+                } else {
+                    tmp.addAll(entry.getValue());
+                    nowMap.put(entry.getKey(), tmp);
+                }
+            }
+            supModelNode.put("mappings", nowMap);
+
+            SimpleModelDTO smd = supModelNode.getObject("model", SimpleModelDTO.class);
+            smd.setTopic("Auto");
+            supModelNode.put("model", smd);
 
             String injectName = injectNode.getString("name");
             if (!StringUtils.hasText(injectName)) {
@@ -91,14 +102,11 @@ public class ModbusBatchParser extends ParserApi {
         // 给modbus服务端起一个名字
         jsonFlowStr = jsonFlowStr.replace("$modbus_client_name", modbusConfig.getServerName());
         // 替换模型数据 json字符串
-        jsonFlowStr = jsonFlowStr.replace("$schema_json_string", uns.getUnsJsonString());
         // 将modbus client配置动态放入inject中
         JSONArray payloads = new JSONArray();
         payloads.add(mc);
         String configString = payloads.toJSONString().replace("\"", "\\\"");
         jsonFlowStr = jsonFlowStr.replace("$modbus_config_json_array", configString);
-        Map<String, Map<String, String>> ms = buildMapping(uns.getFields(), uns.getUnsTopic(), true);
-        jsonFlowStr = jsonFlowStr.replace("$mapping_string", JSON.toJSONString(ms).replace("\"", "\\\""));
 
         JSONArray jsonArr = JSON.parseArray(jsonFlowStr);
         // 设置节点高度
@@ -109,6 +117,11 @@ public class ModbusBatchParser extends ParserApi {
                 y += highSpace;
             }
             jsonArr.getJSONObject(i).put("y", y);
+            String nodeType = jsonArr.getJSONObject(i).getString("type");
+            if ("supmodel".equals(nodeType)) {
+                jsonArr.getJSONObject(i).put("mappings", ms);
+                jsonArr.getJSONObject(i).put("model", uns.getModel());
+            }
         }
         fullNodes.addAll(jsonArr);
     }
@@ -126,16 +139,7 @@ public class ModbusBatchParser extends ParserApi {
         return null;
     }
 
-    public Map<String, Map<String, String>> buildMapping(List<FieldDefine> fields, String topic, boolean isArray) {
-        // key=topic  value=[array index]
-        Map<String, Map<String, String>> mappings = new HashMap<>();
-        Map<String, String> indexMap = new HashMap<>();
-        for (FieldDefine f : fields) {
-            indexMap.put(f.getName(), f.getIndex());
-        }
-        mappings.put(topic, indexMap);
-        return mappings;
-    }
+
 
     private JSONObject getInjectByServerId(JSONArray fullNodes, String serverId) {
         for (int i = 0; i < fullNodes.size(); i++) {

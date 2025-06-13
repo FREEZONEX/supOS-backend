@@ -12,7 +12,7 @@ import java.util.List;
 /**
  * @author sunlifang
  * @version 1.0
- * @description: TODO
+ * @description: 将拓扑日志保存至拓扑日志文件
  * @date 2024/12/24 14:38
  */
 @Data
@@ -22,15 +22,15 @@ public class TopologyLog {
 
     private static final Logger LOG = LoggerFactory.getLogger("topology");
 
-    private String instanceTopic;
+    private String unsId;
     private String topologyNode;
     private String eventCode;
     private String eventMessage;
     private Long eventTime;
 
-    public static void log(String instanceTopic, String topologyNode, String eventCode, String eventMessage) {
+    public static void log(Long unsId, String topologyNode, String eventCode, String eventMessage) {
         TopologyLog topologyLog = new TopologyLog();
-        topologyLog.setInstanceTopic(instanceTopic);
+        topologyLog.setUnsId(String.valueOf(unsId));
         topologyLog.setTopologyNode(topologyNode);
         topologyLog.setEventCode(eventCode);
         topologyLog.setEventMessage(eventMessage);
@@ -39,10 +39,10 @@ public class TopologyLog {
         LOG.info(JsonUtil.toJson(topologyLog));
     }
 
-    public static void log(Collection<String> instanceTopics, String topologyNode, String eventCode, String eventMessage) {
-        for (String instanceTopic : instanceTopics) {
+    public static void log(Collection<Long> unsIds, String topologyNode, String eventCode, String eventMessage) {
+        for (Long unsId : unsIds) {
             TopologyLog topologyLog = new TopologyLog();
-            topologyLog.setInstanceTopic(instanceTopic);
+            topologyLog.setUnsId(String.valueOf(unsId));
             topologyLog.setTopologyNode(topologyNode);
             topologyLog.setEventCode(eventCode);
             topologyLog.setEventMessage(eventMessage);
@@ -54,7 +54,7 @@ public class TopologyLog {
 
     public static void log(String topologyNode, String eventCode, String eventMessage) {
         TopologyLog topologyLog = new TopologyLog();
-        topologyLog.setInstanceTopic("_ALL");
+        topologyLog.setUnsId("_ALL");
         topologyLog.setTopologyNode(topologyNode);
         topologyLog.setEventCode(eventCode);
         topologyLog.setEventMessage(eventMessage);

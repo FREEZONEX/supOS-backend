@@ -13,20 +13,8 @@ public class MqttTest {
     public void testMqttPublish() {
 //        String topic = "/hkx/dev/1";
         Map<String, String[]> topicMsg = new HashMap<>();
-//        {
-//            String topic = "/motbus/9";
-//            String[] contents = new String[]{
-//                    "{\n" +
-//                            " \"0\":{\"v\":\"supos\",\"q\":1}\n" +
-//                            " ,\"2\":{\"v\":\"5.0\",\"q\":1,\"t\":1731561954214}\n" +
-//                            "}",
-//                    "{\"0\":{\"v\":\"Lite\",\"q\":100}, \"2\":{\"v\":\"3.6.0\",\"q\":1,\"t\":1731561954214} }",
-//                    "[13.2,28.3]",
-//            };
-//            topicMsg.put(topic, contents);
-//        }
         {
-            String topic = "/hseqd/dev4" ;
+            String topic = "c9porn";
             String[] contents = new String[]{
                     String.format("{\"wq\":%s, \"tm\":\"%s\"}", 20.12, 1.5),
                     String.format("{\"wq\":%s, \"tm\":\"%s\"}", 30.13, -3.4),
@@ -34,40 +22,11 @@ public class MqttTest {
             };
             topicMsg.put(topic, contents);
         }
-        {
-            String topic = "/11/a/b/c/d/e/r/t";
-            String[] contents = new String[]{
-                    String.format("{\"wq\":%d, \"vaf\":\"%s\"}", 1, 1.3),
-                    String.format("{\"wq\":%d, \"vaf\":\"%s\"}", 2, 1.4),
-                    String.format("{\"wq\":%d, \"vaf\":\"%s\"}", 3, 1.5),
-            };
-            topicMsg.put(topic, contents);
-        }
 //        {
-//            String topic = "/_origin/none";
-//            String[] contents = new String[]{"10","12","25"
-//            };
-//            topicMsg.put(topic, contents);
+//            String topic ="1910632724419862528";//  "$alarms/htwes1";
+//            String msg = "{\"_ct\":1744367879637,\"is_alarm\":\"true\",\"limit_value\":\"120.0\",\"uns\":1910632724419862528,\"_id\":1910643488249704448,\"current_value\":612.95}";
+//            topicMsg.put(topic, new String[]{msg});
 //        }
-        {
-            String topic = "/ddx/1";
-            String[] contents = new String[]{"10","12","25"
-            };
-            topicMsg.put(topic, contents);
-        }
-        {
-            String topic = "/ddy/1";
-            String[] contents = new String[]{"10","12","25"
-            };
-            topicMsg.put(topic, contents);
-        }
-        {
-            String topic = "/ddy/2";
-            String[] contents = new String[]{"12","12","25"
-            };
-            topicMsg.put(topic, contents);
-        }
-
 
 //        content = "[23.5,18.2]";
         int qos = 2;
@@ -121,7 +80,7 @@ public class MqttTest {
 
         try {
             // 创建 MQTT 客户端
-            MqttClient client = new MqttClient(broker, clientId);
+            MqttClient client = new MqttClient(broker, clientId, new MemoryPersistence());
 
             // 设置连接选项
             MqttConnectOptions options = new MqttConnectOptions();

@@ -19,11 +19,16 @@ import java.util.stream.Collectors;
 @AllArgsConstructor
 public enum ExcelTypeEnum {
 
-    Template("Template", null, 0),
-    Label("Label", null, 1),
-    Folder("Folder", null, 2),
-    FILE_TIMESERIES("File-timeseries", Constants.TIME_SEQUENCE_TYPE, 3),
-    FILE_RELATION("File-relation", Constants.RELATION_TYPE, 4),
+    Explanation("Explanation", null, 0),
+    Template("Template", null, 1),
+    Label("Label", null, 2),
+    Folder("Folder", null, 3),
+
+    FILE_TIMESERIES("File-timeseries", Constants.TIME_SEQUENCE_TYPE, 4),
+    FILE_RELATION("File-relation", Constants.RELATION_TYPE, 5),
+    FILE_CALCULATE("File-calculate", Constants.CALCULATION_REAL_TYPE, 6),
+    FILE_AGGREGATION("File-aggregation", Constants.MERGE_TYPE, 7),
+    FILE_REFERENCE("File-reference", Constants.CITING_TYPE, 8),
 
     ERROR("error", 0, -1);
 
@@ -63,7 +68,7 @@ public enum ExcelTypeEnum {
     }
 
     public static List<ExcelTypeEnum> listFile() {
-        return Lists.newArrayList(ExcelTypeEnum.FILE_TIMESERIES, ExcelTypeEnum.FILE_RELATION/*, ExcelTypeEnum.FILE_CALCULATE, ExcelTypeEnum.FILE_AGGREGATION, ExcelTypeEnum.FILE_REFERENCE*/);
+        return Lists.newArrayList(ExcelTypeEnum.FILE_TIMESERIES, ExcelTypeEnum.FILE_RELATION, ExcelTypeEnum.FILE_CALCULATE, ExcelTypeEnum.FILE_AGGREGATION, ExcelTypeEnum.FILE_REFERENCE);
     }
 
     public static void main(String[] args) {

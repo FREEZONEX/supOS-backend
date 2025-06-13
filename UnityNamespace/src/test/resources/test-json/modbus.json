@@ -1,0 +1,27 @@
+{
+  "alias": "_gg_zz2",
+  "dataType": 1,
+  "topic": "/dd/ee/gg/zz2",
+  "addDashBoard": false,
+  "addFlow": true,
+  "protocol": {
+    "protocol": "modbus",
+    "serverName": "modbus1",
+    "unitId": "1",
+    "fc": "Coil",
+    "address": "44",
+    "quantity": "1",
+    "pollRate": {
+      "value": 1,
+      "unit": "ms"
+    }
+  },
+  "fields": [
+    {
+      "name": "a",
+      "type": "long",
+      "index": 1
+    }
+  ]
+
+}

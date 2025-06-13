@@ -10,6 +10,4 @@ public interface MQTTPublisher {
     void subscribe(Collection<String> topics, boolean throwException);
 
     void unSubscribe(Collection<String> topics);
-
-    double[] statisticsThroughput();
 }

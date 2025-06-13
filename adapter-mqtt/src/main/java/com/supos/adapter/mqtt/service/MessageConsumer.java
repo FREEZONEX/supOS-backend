@@ -1,13 +1,11 @@
 package com.supos.adapter.mqtt.service;
 
+import com.supos.adapter.mqtt.dto.LastMessage;
 import com.supos.adapter.mqtt.dto.TopicDefinition;
 
 import java.util.Map;
 
 public interface MessageConsumer {
-
-    boolean isSendTopic();
-    void setSendTopic(boolean sendTopic);
 
     long getQueueFrontIndex();
 
@@ -27,7 +25,11 @@ public interface MessageConsumer {
 
     String getQueueHead();
 
-    Map<String, TopicDefinition> getTopicDefinitionMap();
+    Map<Long, TopicDefinition> getTopicDefinitionMap();
 
-    void onMessage(String topic, int msgId, String payload);
+    void onMessage(String topic, int msgId, byte[] payload);
+
+    double[] statisticsThroughput();
+
+    LastMessage getLastMessage();
 }

@@ -1,24 +1,21 @@
 package com.supos.common.utils;
 
 import cn.hutool.core.util.ArrayUtil;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 import org.springframework.context.NoSuchMessageException;
 import org.springframework.context.i18n.LocaleContextHolder;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
 import java.util.Locale;
 
-@Component
 public class I18nUtils {
 
     private static MessageSource messageSource;
 
     private static String lang = System.getenv("SYS_OS_LANG");
 
-    public I18nUtils(@Autowired MessageSource messageSource) {
+    public I18nUtils(MessageSource messageSource) {
         I18nUtils.messageSource = messageSource;
     }
 

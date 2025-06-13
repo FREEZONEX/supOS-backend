@@ -1,16 +1,15 @@
 package com.supos.common.config;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @Data
-@Component
 @AllArgsConstructor
 @NoArgsConstructor
 @ConfigurationProperties(prefix = "sys.os")
@@ -20,6 +19,7 @@ public class SystemConfig {
     /**
      * 系统版本
      */
+    @Schema(description = "系统版本")
     private String version;
 
     /**
@@ -51,6 +51,7 @@ public class SystemConfig {
 
     /**
      * 登录页url
+     *
      * @法约
      */
     private String loginPath = "/supos-login";
@@ -68,12 +69,32 @@ public class SystemConfig {
     /**
      * 单双topic
      */
-    private boolean multipleTopic;
+    private Boolean multipleTopic;
+
+    /**
+     * 是否使用别名alias作为 mqtt topic,false 则使用文件路径作为 mqtt topic
+     */
+    private Boolean useAliasPathAsTopic;
 
     /**
      * 系统容器
      * key:容器名称
      * value:容器信息
      */
-    Map<String,ContainerInfo> containerMap = new HashMap<>();
+    private Map<String, ContainerInfo> containerMap = new HashMap<>();
+
+    /**
+     * 质量码字段名称
+     */
+    private String qualityName = "status";
+
+    /**
+     * 系统时间字段名称
+     */
+    private String timestampName = "timeStamp";
+
+    /**
+     * 是否启用UNS树懒加载模式
+     */
+    private Boolean lazyTree = false;
 }

@@ -5,10 +5,12 @@ import com.alibaba.excel.metadata.data.WriteCellData;
 import com.alibaba.excel.write.handler.CellWriteHandler;
 import com.alibaba.excel.write.metadata.holder.WriteSheetHolder;
 import com.alibaba.excel.write.metadata.holder.WriteTableHolder;
+import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.ss.usermodel.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author sunlifang
@@ -20,10 +22,15 @@ public class ExcelErrorWriteHandler implements CellWriteHandler {
 
     private CellStyle cellStyle;
 
+    private ExcelImportContext context;
+
+    public ExcelErrorWriteHandler(ExcelImportContext context) {
+        this.context = context;
+    }
+
     @Override
     public void afterCellDispose(WriteSheetHolder writeSheetHolder, WriteTableHolder writeTableHolder, List<WriteCellData<?>> cellDataList, Cell cell, Head head, Integer relativeRowIndex, Boolean isHead) {
-        String value = cell.getStringCellValue();
-        if (StringUtils.startsWith(value, "Import Error:")) {
+        if (hasError(writeSheetHolder.getSheetNo(), cell.getRowIndex())) {
             Workbook workbook = writeSheetHolder.getSheet().getWorkbook();
             if (this.cellStyle == null) {
                 CellStyle cellStyle = workbook.createCellStyle();
@@ -34,5 +41,16 @@ public class ExcelErrorWriteHandler implements CellWriteHandler {
 
             cell.setCellStyle(this.cellStyle);
         }
+    }
+
+    private boolean hasError(int sheetNo, int rowIndex) {
+        Map<Integer, String> subErrorMap = context.getError().get(sheetNo);
+        if (subErrorMap != null) {
+            String error = subErrorMap.get(rowIndex);
+            if (StringUtils.isNotBlank(error)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

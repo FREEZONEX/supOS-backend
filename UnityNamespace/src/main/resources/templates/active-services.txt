@@ -1,0 +1,2 @@
+emqx,nodered,hasura,keycloak,kong,postgresql,fuxa,grafana,minio,timescale
+--profile fuxa --profile grafana --profile minio --profile tdengine

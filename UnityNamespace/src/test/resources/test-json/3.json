@@ -1,0 +1,30 @@
+{
+  "_source_": {
+    "value": {
+      "dataType": "Null",
+      "arrayType": "Scalar"
+    },
+    "statusCode": {
+      "value": 2150891520
+    },
+    "sourcePicoseconds": 0,
+    "serverTimestamp": "2025-04-01T11:25:53.438Z",
+    "serverPicoseconds": 0
+  },
+  "_resource_": {
+    "_qos": -1,
+    "_ct": null,
+    "t1": {
+      "value": {
+        "dataType": "Null",
+        "arrayType": "Scalar"
+      },
+      "statusCode": {
+        "value": 2150891520
+      },
+      "sourcePicoseconds": 0,
+      "serverTimestamp": "2025-04-01T11:25:53.438Z",
+      "serverPicoseconds": 0
+    }
+  }
+}

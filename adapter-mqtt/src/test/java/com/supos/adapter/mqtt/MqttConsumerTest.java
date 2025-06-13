@@ -1,17 +1,21 @@
 package com.supos.adapter.mqtt;
 
 import org.eclipse.paho.client.mqttv3.*;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MqttConsumerTest {
     public static void main(String[] args) throws InterruptedException {
-        final MqttClient client = testMqttConsume();
+        String broker = "tcp://100.100.100.20:31017"; // EMQX 服务器地址
+        broker = "tcp://localhost:1883";
+        final MqttClient client = testMqttConsume(broker, "JavaClient:" + System.currentTimeMillis());
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.submit(() -> {
             while (true) {
@@ -30,14 +34,17 @@ public class MqttConsumerTest {
         Thread.sleep(1800 * 1000);
     }
 
-    static MqttClient testMqttConsume() {
-        String broker = "tcp://100.100.100.20:31017"; // EMQX 服务器地址
-        String clientId = "JavaClient";
-        String topic = "/#";
+    static MqttClient testMqttConsume(String broker, String clientId) {
+
+        String[] topics = new String[]{
+//                "#"
+                "dhbimport1/aaaaaaaaaa/bbbbbbbbbb/cccccccccc/dddddddddd/#",
+                "auto_1"
+        };
         MqttClient client = null;
         try {
             // 创建 MQTT 客户端
-            client = new MqttClient(broker, clientId);
+            client = new MqttClient(broker, clientId, new MemoryPersistence());
 
             // 设置连接选项
             MqttConnectOptions options = new MqttConnectOptions();
@@ -68,9 +75,9 @@ public class MqttConsumerTest {
             });
 
             // 订阅主题
-            client.subscribe(topic);
-            client.unsubscribe("/_origin/#");
-            System.out.println("Subscribed to topic: " + topic);
+            client.subscribe(topics);
+            System.out.println("client_Id: " + clientId);
+            System.out.println("Subscribed to topics: " + Arrays.toString(topics));
 
         } catch (MqttException e) {
             e.printStackTrace();

@@ -9,6 +9,7 @@ import com.alibaba.excel.read.metadata.holder.ReadHolder;
 import com.alibaba.excel.read.metadata.holder.ReadSheetHolder;
 import com.alibaba.excel.write.metadata.WriteSheet;
 import com.supos.common.enums.ExcelTypeEnum;
+import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import com.supos.uns.util.ExportImportUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -26,7 +27,7 @@ import java.util.Map;
 @Slf4j
 public class ExcelRowErrorHandler implements ReadListener<Map<Integer, String>> {
 
-    private Map<Integer, Map<Integer, String>> error;
+    private ExcelImportContext context;
 
     private ExcelWriter excelWriter;
 
@@ -34,8 +35,8 @@ public class ExcelRowErrorHandler implements ReadListener<Map<Integer, String>> 
 
     private List<Map<Integer, String>> dataList = new ArrayList<>(200);
 
-    public ExcelRowErrorHandler(ExcelWriter excelWriter, WriteSheet writeSheet, Map<Integer, Map<Integer, String>> error) {
-        this.error = error;
+    public ExcelRowErrorHandler(ExcelWriter excelWriter, WriteSheet writeSheet, ExcelImportContext context) {
+        this.context = context;
         this.excelWriter = excelWriter;
         this.writeSheet = writeSheet;
     }
@@ -70,24 +71,24 @@ public class ExcelRowErrorHandler implements ReadListener<Map<Integer, String>> 
 
             ExcelTypeEnum excelType = ExcelTypeEnum.valueOfIndex(sheetNo);
             switch (excelType) {
-/*                case Explanation:
+                case Explanation:
                     dataList.add(data);
                     if (dataList.size() % 500 == 0) {
                         write();
                     }
-                    break;*/
+                    break;
                 case Template:
                 case Label:
                 case Folder:
                 case FILE_TIMESERIES:
                 case FILE_RELATION:
-/*                case FILE_CALCULATE:
+                case FILE_CALCULATE:
                 case FILE_AGGREGATION:
-                case FILE_REFERENCE:*/
+                case FILE_REFERENCE:
                     if (rowIndex < 4) {
                         return;
                     }
-                    dataList.add(addError(sheetNo, rowIndex, data));
+                    dataList.add(addError(excelType, sheetNo, rowIndex, data));
                     if (dataList.size() % 500 == 0) {
                         write();
                     }
@@ -96,21 +97,27 @@ public class ExcelRowErrorHandler implements ReadListener<Map<Integer, String>> 
         }
     }
 
-    private Map<Integer, String> addError(int sheetNo, int rowIndex, Map<Integer, String> data) {
-        Map<Integer, String> subErrorMap = error.get(sheetNo);
+    private Map<Integer, String> addError(ExcelTypeEnum excelType, int sheetNo, int rowIndex, Map<Integer, String> data) {
+        String error = null;
+        Map<Integer, String> subErrorMap = context.getError().get(sheetNo);
         if (subErrorMap != null) {
-            String error = subErrorMap.get(rowIndex);
-            if (StringUtils.isNotBlank(error)) {
-                ExcelTypeEnum  excelType = ExcelTypeEnum.valueOfIndex(sheetNo);
-                // 填充空单元格
-                int errorIndex = ExportImportUtil.errorIndex(excelType);
-                if (data.size() < errorIndex) {
-                    for (int i = data.size(); i < errorIndex; i++) {
-                        data.put(i, "");
-                    }
+            error = subErrorMap.get(rowIndex);
+
+        }
+
+        if (StringUtils.isNotBlank(error)) {
+            // 填充空单元格
+            int errorIndex = ExportImportUtil.errorIndex(excelType);
+            if (data.size() < errorIndex) {
+                for (int i = data.size(); i < errorIndex; i++) {
+                    data.put(i, "");
                 }
-                data.put(ExportImportUtil.errorIndex(excelType), String.format("Import Error:%s", error));
             }
+            data.put(ExportImportUtil.errorIndex(excelType), String.format("Import Error:%s", error));
+            context.setActiveExcelType(excelType);
+        } else {
+            int errorIndex = ExportImportUtil.errorIndex(excelType);
+            data.remove(errorIndex);
         }
         return data;
     }

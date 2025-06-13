@@ -5,16 +5,13 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.parser.Feature;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
-import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.protocol.MappingDTO;
 import com.supos.common.dto.protocol.ModbusConfigDTO;
 import com.supos.common.enums.IOTProtocol;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * 解析时序模型对应的node-red模版文件
@@ -63,10 +60,8 @@ public class ModbusParser extends ParserApi {
         jsonFlowStr = jsonFlowStr.replace("$modbus_port", modbusConfig.getServer().getPort().trim());
         // 给modbus服务端起一个名字
         jsonFlowStr = jsonFlowStr.replace("$modbus_client_name", modbusConfig.getServerName());
-        // 替换模型数据 json字符串
-        jsonFlowStr = jsonFlowStr.replace("$schema_json_string", uns.getUnsJsonString());
-        Map<String, Map<String, String>> ms = buildMapping(uns.getFields(), uns.getUnsTopic(), true);
-        jsonFlowStr = jsonFlowStr.replace("$mapping_string", JSON.toJSONString(ms).replace("\"", "\\\""));
+
+        Map<String, List<MappingDTO>> ms = buildMapping(uns.getFields(), uns.getUnsTopic());
 
         String serverConfigJson = JSON.toJSONString(modbusConfig.getServer());
         super.createServer(modbusConfig.getServerName(), IOTProtocol.MODBUS.getName(), serverConfigJson);
@@ -80,18 +75,13 @@ public class ModbusParser extends ParserApi {
                 y += highSpace;
             }
             jsonArr.getJSONObject(i).put("y", y);
+            String nodeType = jsonArr.getJSONObject(i).getString("type");
+            if ("supmodel".equals(nodeType)) {
+                jsonArr.getJSONObject(i).put("mappings", ms);
+                jsonArr.getJSONObject(i).put("model", uns.getModel());
+            }
         }
         fullNodes.addAll(jsonArr);
     }
 
-    public Map<String, Map<String, String>> buildMapping(List<FieldDefine> fields, String topic, boolean isArray) {
-        // key=topic  value=[array index]
-        Map<String, Map<String, String>> mappings = new HashMap<>();
-        Map<String, String> indexMap = new HashMap<>();
-        for (FieldDefine f : fields) {
-            indexMap.put(f.getName(), f.getIndex());
-        }
-        mappings.put(topic, indexMap);
-        return mappings;
-    }
 }

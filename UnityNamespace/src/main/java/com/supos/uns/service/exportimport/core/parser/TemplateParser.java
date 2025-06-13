@@ -2,20 +2,18 @@ package com.supos.uns.service.exportimport.core.parser;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.excel.ExcelTemplateDto;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.utils.I18nUtils;
-import com.supos.common.vo.FieldDefineVo;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import com.supos.uns.service.exportimport.core.data.ExportImportData;
-import com.supos.uns.service.exportimport.core.dto.ExcelTemplateDto;
+import com.supos.uns.service.exportimport.core.parser.AbstractParser;
 import com.supos.uns.vo.CreateTemplateVo;
 import jakarta.validation.ConstraintViolation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * @author sunlifang
@@ -55,23 +53,23 @@ public class TemplateParser extends AbstractParser {
         }
 
         CreateTemplateVo templateVo = new CreateTemplateVo();
-        templateVo.setPath(excelTemplateDto.getName());
+        templateVo.setName(excelTemplateDto.getName());
         templateVo.setAlias(excelTemplateDto.getAlias());
         templateVo.setDescription(excelTemplateDto.getDescription());
         templateVo.setBatch(excelTemplateDto.getBatch());
         templateVo.setIndex(excelTemplateDto.getIndex());
 
-        CreateTemplateVo templateInExcel = templateMap.get(templateVo.getPath());
+        CreateTemplateVo templateInExcel = templateMap.get(templateVo.getName());
         if (templateInExcel != null) {
             // excel 中存在重复的topic
-            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", ExcelTypeEnum.Template.getCode(), templateInExcel.getPath())));
+            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", ExcelTypeEnum.Template.getCode(), templateInExcel.getName())));
             return;
         }
 
         Pair<Boolean, FieldDefine[]> checkFieldResult = checkFields(batchIndex, excelTemplateDto.getFields(), context);
         if (checkFieldResult.getLeft()) {
             if (checkFieldResult.getRight() != null) {
-                templateVo.setFields(FieldDefineVo.convert(checkFieldResult.getRight()));
+                templateVo.setFields(checkFieldResult.getRight());
             } else {
                 context.addError(batchIndex, I18nUtils.getMessage("uns.field.empty"));
                 return;
@@ -80,7 +78,7 @@ public class TemplateParser extends AbstractParser {
             return;
         }
 
-        templateMap.put(templateVo.getPath(), templateVo);
+        templateMap.put(templateVo.getName(), templateVo);
         context.addTemplateVo(templateVo);
     }
 
@@ -113,23 +111,23 @@ public class TemplateParser extends AbstractParser {
         }
 
         CreateTemplateVo templateVo = new CreateTemplateVo();
-        templateVo.setPath(excelTemplateDto.getName());
+        templateVo.setName(excelTemplateDto.getName());
         templateVo.setAlias(excelTemplateDto.getAlias());
         templateVo.setDescription(excelTemplateDto.getDescription());
         templateVo.setBatch(excelTemplateDto.getBatch());
         templateVo.setIndex(excelTemplateDto.getIndex());
 
-        CreateTemplateVo templateInExcel = templateMap.get(templateVo.getPath());
+        CreateTemplateVo templateInExcel = templateMap.get(templateVo.getName());
         if (templateInExcel != null) {
             // excel 中存在重复的topic
-            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", ExcelTypeEnum.Template.getCode(), templateInExcel.getPath())));
+            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", ExcelTypeEnum.Template.getCode(), templateInExcel.getName())));
             return;
         }
 
         Pair<Boolean, FieldDefine[]> checkFieldResult = checkFields(batchIndex, excelTemplateDto.getFields(), context);
         if (checkFieldResult.getLeft()) {
             if (checkFieldResult.getRight() != null) {
-                templateVo.setFields(FieldDefineVo.convert(checkFieldResult.getRight()));
+                templateVo.setFields(checkFieldResult.getRight());
             } else {
                 context.addError(batchIndex, I18nUtils.getMessage("uns.field.empty"));
                 return;
@@ -138,7 +136,7 @@ public class TemplateParser extends AbstractParser {
             return;
         }
 
-        templateMap.put(templateVo.getPath(), templateVo);
+        templateMap.put(templateVo.getName(), templateVo);
         context.addTemplateVo(templateVo);
     }
 }

@@ -1,5 +1,7 @@
 package com.supos.uns.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.supos.uns.dao.mapper.UnsLabelRefMapper;
 import com.supos.uns.dao.po.UnsLabelRefPo;
@@ -13,4 +15,12 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class UnsLabelRefService extends ServiceImpl<UnsLabelRefMapper, UnsLabelRefPo> {
+
+
+    boolean revmoveUnsLabelRefByLabelId(Long unsId,Long labelId){
+        LambdaQueryWrapper<UnsLabelRefPo> qw = new LambdaQueryWrapper<>();
+        qw.eq(UnsLabelRefPo::getUnsId,unsId).eq(UnsLabelRefPo::getLabelId,labelId);
+        return remove(qw);
+    }
+
 }

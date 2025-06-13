@@ -1,8 +1,11 @@
 package com.supos.common.dto.auth;
 
+import com.supos.common.vo.UserAttributeVo;
 import lombok.Data;
 
 import jakarta.validation.constraints.NotEmpty;
+
+import java.util.Map;
 
 /**
  * @author xinwangji@supos.com
@@ -33,4 +36,9 @@ public class KeycloakCreateUserDto {
      * 名字
      */
     private String firstName;
+
+    /**
+     * 用户属性
+     */
+    private UserAttributeVo attributes;
 }

@@ -2,6 +2,7 @@ package com.supos.uns.config;
 
 import com.baomidou.dynamic.datasource.creator.DataSourceProperty;
 import com.baomidou.dynamic.datasource.creator.DefaultDataSourceCreator;
+import com.supos.common.utils.DateTimeUtils;
 import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
@@ -25,6 +26,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
 
 @Slf4j
@@ -80,6 +82,19 @@ public class DbScriptInitConfig implements BeanPostProcessor {
                 if (StringUtils.hasText(currentSchema)) {
                     try (Connection conn = ds.getConnection()) {
                         try (Statement statement = conn.createStatement()) {
+                            String checkSql = "select data_type FROM information_schema.columns where " +
+                                    " table_schema = '" + currentSchema + "' and table_name='uns_namespace' and column_name='id'";
+                            try (ResultSet resultSet = statement.executeQuery(checkSql)) {
+                                if (resultSet.next()) {
+                                    String dataType = resultSet.getString(1);
+                                    if (!"bigint".equalsIgnoreCase(dataType)) {
+                                        String backupSchema = "zzBackup_" + currentSchema + "_" + DateTimeUtils.dateSimple();
+                                        log.warn("数据类型定义不兼容， 重建 schema: {}， 备份为 {}", currentSchema, backupSchema);
+                                        statement.execute("ALTER SCHEMA " + currentSchema +
+                                                " RENAME TO " + backupSchema);
+                                    }
+                                }
+                            }
                             String ddl = "create schema if not exists " + currentSchema;
                             log.info("postgresql initSchema: {}, jdbcUrl = {}", currentSchema, url);
                             statement.execute(ddl);

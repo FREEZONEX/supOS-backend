@@ -91,7 +91,8 @@ public class MockOrderDTO {
         long endEpoch = LocalDateTime.of(2025, 1, 31, 23, 59).atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
         long randomEpoch = getRandomLong(startEpoch, endEpoch);
         LocalDateTime randomDateTime = LocalDateTime.ofEpochSecond(randomEpoch, 0, java.time.ZoneOffset.UTC);
-        return randomDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        return randomDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'"));
+
     }
 
     private int getRandomInt(int min, int max) {

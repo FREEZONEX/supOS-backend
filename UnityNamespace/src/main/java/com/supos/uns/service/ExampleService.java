@@ -8,20 +8,24 @@ import cn.hutool.core.util.ZipUtil;
 import cn.hutool.extra.spring.SpringUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
-import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.supos.common.Constants;
+import com.supos.common.SrcJdbcType;
+import com.supos.common.adpater.TimeSequenceDataStorageAdapter;
 import com.supos.common.config.SystemConfig;
+import com.supos.common.dto.JsonResult;
 import com.supos.common.dto.PageResultDTO;
 import com.supos.common.dto.PaginationDTO;
 import com.supos.common.dto.grafana.DashboardDto;
 import com.supos.common.dto.mock.MockDemoDTO;
 import com.supos.common.dto.mock.MockWeatherDTO;
 import com.supos.common.enums.IOTProtocol;
+import com.supos.common.event.EventBus;
+import com.supos.common.event.FlowInstallEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.I18nUtils;
@@ -29,6 +33,7 @@ import com.supos.common.utils.JsonUtil;
 import com.supos.uns.dao.mapper.ExampleMapper;
 import com.supos.uns.dao.po.ExamplePo;
 import com.supos.uns.util.FileUtils;
+import com.supos.uns.vo.ModelDetail;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -43,10 +48,7 @@ import org.springframework.stereotype.Service;
 import javax.sql.DataSource;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -67,6 +69,9 @@ public class ExampleService extends ServiceImpl<ExampleMapper, ExamplePo> {
     JdbcTemplate jdbcTemplate;
 
     @Autowired
+    private DataStorageServiceHelper storageServiceHelper;
+
+    @Autowired
     public void setSqlSessionTemplate(SqlSessionTemplate sqlSessionTemplate) {
         DataSource dataSource = sqlSessionTemplate.getConfiguration().getEnvironment().getDataSource();
         jdbcTemplate = new JdbcTemplate(dataSource);
@@ -75,6 +80,13 @@ public class ExampleService extends ServiceImpl<ExampleMapper, ExamplePo> {
 
     @Autowired
     UnsManagerService unsManagerService;
+
+    @Autowired
+    private UnsQueryService unsQueryService;
+    @Autowired
+    UnsRemoveService unsRemoveService;
+    @Autowired
+    UnsTemplateService unsTemplateService;
     @Resource
     private SystemConfig systemConfig;
 
@@ -135,6 +147,10 @@ public class ExampleService extends ServiceImpl<ExampleMapper, ExamplePo> {
                 }
             },false);
 
+            // flow 导入
+            String flowName = String.format("demo-%s-flows", FileUtil.getPrefix(demoName));
+            EventBus.publishEvent(new FlowInstallEvent(this, flowName, FlowInstallEvent.INSTALL));
+
             SystemConfig systemConfig = SpringUtil.getBean(SystemConfig.class);
             if (null != systemConfig.getContainerMap().get("fuxa")){
                 Arrays.stream(packageFiles).filter(file -> file.getName().startsWith(Constants.EXAMPLE_FUXA_FILE)).findFirst().ifPresent(file ->{
@@ -192,18 +208,35 @@ public class ExampleService extends ServiceImpl<ExampleMapper, ExamplePo> {
         String path = example.getType() == 1 ? "新能源光伏电站/" : "电气一厂/";
         if ("en-US".equals(System.getenv("SYS_OS_LANG"))){
             path = example.getType() == 1 ? "NewEnergyPVPowerStation/" : "ElectricalFactory1/";
-            unsManagerService.deleteTemplate("a240fa27925a635b08dc28c9e4f9216d");//订单
-            unsManagerService.deleteTemplate("eb951c9b55033e3207d4ec0bdf8c825b");//设备-光伏
-        } else {
-            unsManagerService.deleteTemplate("3b0efde0906bd41610c19a646902f132");//设备-光伏
-            unsManagerService.deleteTemplate("4c117f2037181c74559db1829298e041");//订单
+            //TODO 订单 demo 约定 其他 id
+//            unsTemplateService.deleteTemplate("a240fa27925a635b08dc28c9e4f9216d");//订单
+//            unsTemplateService.deleteTemplate("eb951c9b55033e3207d4ec0bdf8c825b");//设备-光伏
+        } else {//TODO 设备-光伏 demo 约定 其他 id
+//            unsTemplateService.deleteTemplate("3b0efde0906bd41610c19a646902f132");//设备-光伏
+//            unsTemplateService.deleteTemplate("4c117f2037181c74559db1829298e041");//订单
         }
-        unsManagerService.removeModelOrInstance(path,true,true,true);
+        String folderAlias = null;
+        if (example.getType() == 1) {
+            folderAlias = "xinnengyuanguangfudi_6d499cc25b7349a684ae";
+        } else {
+            folderAlias = "dianqiyichang__a837e8f2f2c94ca091c4";
+        }
+        JsonResult<ModelDetail> modelDetailJson = unsQueryService.getModelDefinition(null, folderAlias);
+        if (modelDetailJson.getData() != null &&  modelDetailJson.getData().getId() != null) {
+            unsRemoveService.removeModelOrInstance(Long.valueOf(modelDetailJson.getData().getId()),true,true,true);
+        }
+
         unsLabelService.deleteByName("modbus");
         unsLabelService.deleteByName("opcua");
         dashboardService.delete(example.getDashboardId());
         example.setStatus(1);
         updateById(example);
+
+
+        // flow 删除
+        String flowName = String.format("demo-%s-flows", FileUtil.getPrefix(new File(example.getPackagePath()).getName()));
+        EventBus.publishEvent(new FlowInstallEvent(this, flowName, FlowInstallEvent.UNINSTALL));
+
         //fuxa 删除
         if (null != systemConfig.getContainerMap().get("fuxa")){
             String url = Constants.FUXA_API_URL + "/api/project/" + example.getDashboardId();
@@ -214,15 +247,32 @@ public class ExampleService extends ServiceImpl<ExampleMapper, ExamplePo> {
     }
 
     public ResultVO initDemoItData(){
-        String sql = "SELECT tablename FROM pg_tables WHERE schemaname = 'public' and tablename like '%_guang%'";
-        List<String> tableNames = jdbcTemplate.queryForList(sql,String.class);
+        TimeSequenceDataStorageAdapter timeSequenceDataStorageAdapter = storageServiceHelper.getSequenceDbEnabled();
+        SrcJdbcType srcJdbcType = timeSequenceDataStorageAdapter.getJdbcType();
+        List<String> tableNames = new ArrayList<>();
+        JdbcTemplate jdbcTemplate1 = null;
+        if (srcJdbcType == SrcJdbcType.TdEngine) {
+            jdbcTemplate1 = timeSequenceDataStorageAdapter.getJdbcTemplate();
+            String sql = "show public.tables like '%_guang%'";
+            tableNames.addAll(jdbcTemplate1.queryForList(sql, String.class));
+
+        } else if (srcJdbcType == SrcJdbcType.TimeScaleDB) {
+            jdbcTemplate1 = timeSequenceDataStorageAdapter.getJdbcTemplate();
+            String sql = "SELECT tablename FROM pg_tables WHERE schemaname = 'public' and tablename like '%_guang%'";
+            tableNames.addAll(jdbcTemplate1.queryForList(sql,String.class));
+        }
+
         if (CollectionUtils.isNotEmpty(tableNames)){
             for (String tableName : tableNames) {
-                MockDemoDTO demoData = mockDemoData();
-                Object[] params = demoData.convertOrderToParams();
-                String insertSql = "INSERT INTO public.\"" + tableName + "\"  (\"id\", \"name\",\"installedCapacity\",\"dailyPowerGeneration\",\"owner\") VALUES (?, ?, ?, ?, ?)";
-                int c = jdbcTemplate.update(insertSql,params);
-                log.info(">>>>>>>>>>>>>>>>>初始化Demo表数据 表：{}，是否成功：{}",tableName,c > 0);
+                try {
+                    MockDemoDTO demoData = mockDemoData();
+                    Object[] params = demoData.convertOrderToParams(srcJdbcType);
+                    String insertSql = "INSERT INTO public.\"" + tableName + "\"  (\""+ Constants.SYS_FIELD_CREATE_TIME +"\", \"id\", \"name\",\"installedCapacity\",\"dailyPowerGeneration\",\"owner\") VALUES (?, ?, ?, ?, ?, ?)";
+                    int c = jdbcTemplate1.update(insertSql,params);
+                    log.info(">>>>>>>>>>>>>>>>>初始化Demo表数据 表：{}，是否成功：{}",tableName,c > 0);
+                } catch (Exception e) {
+                    log.error(">>>>>>>>>>>>>>>>>初始化Demo表数据 表：{}",tableName,e);
+                }
             }
         }
         return ResultVO.successWithData(tableNames);

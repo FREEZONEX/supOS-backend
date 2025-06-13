@@ -1,9 +1,5 @@
 package com.supos.common;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-
 public enum SrcJdbcType {
     TdEngine(1, "tdengine-datasource", "td", Constants.TIME_SEQUENCE_TYPE),
     Postgresql(2, "postgresql", "pg", Constants.RELATION_TYPE),
@@ -24,17 +20,28 @@ public enum SrcJdbcType {
     }
 
     public static SrcJdbcType getById(Integer id) {
-        return idMap.get(id);
+        if (id == null) {
+            return null;
+        }
+        int index = id;
+        return index <= MAX_ID && index>= 0 ? types[index] : null;
     }
 
-    public static final Map<Integer, SrcJdbcType> idMap;
+    private static final SrcJdbcType[] types;
+    private static final int MAX_ID;
 
     static {
-        HashMap<Integer, SrcJdbcType> map = new HashMap<>(4);
+        int maxId = -1;
         for (SrcJdbcType v : SrcJdbcType.values()) {
-            map.put(v.id, v);
+            if (v.id > maxId) {
+                maxId = v.id;
+            }
         }
-        idMap = Collections.unmodifiableMap(map);
+        MAX_ID = maxId;
+        types = new SrcJdbcType[maxId + 1];
+        for (SrcJdbcType v : SrcJdbcType.values()) {
+            types[v.id] = v;
+        }
     }
 
     public String toString() {

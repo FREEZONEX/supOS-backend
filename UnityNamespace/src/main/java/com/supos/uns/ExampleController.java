@@ -78,8 +78,8 @@ public class ExampleController {
      * @return
      */
     @GetMapping("/mock/restapi/order")
-    public ResultVO<List<MockOrderDTO>> mockOrderData(){
-        return ResultVO.successWithData(Collections.singletonList(new MockOrderDTO()));
+    public List<MockOrderDTO> mockOrderData(){
+        return Collections.singletonList(new MockOrderDTO());
     }
 
     /**

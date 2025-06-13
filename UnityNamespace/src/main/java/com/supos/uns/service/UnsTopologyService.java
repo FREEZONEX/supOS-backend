@@ -2,6 +2,7 @@ package com.supos.uns.service;
 
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.exceptions.ExceptionUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import com.alibaba.fastjson.JSONObject;
@@ -17,13 +18,13 @@ import com.supos.common.event.NamespaceChangeEvent;
 import com.supos.common.event.TopicMessageEvent;
 import com.supos.common.event.UnsTopologyChangeEvent;
 import com.supos.common.utils.JsonUtil;
-import com.supos.common.utils.RuntimeUtil;
 import com.supos.uns.bo.InstanceTopologyData;
 import com.supos.uns.bo.PathTypeCount;
 import com.supos.uns.bo.ProtocolCount;
 import com.supos.uns.dao.mapper.AlarmMapper;
 import com.supos.uns.dao.mapper.UnsTopologyMapper;
 import com.supos.uns.vo.ICMPStateVO;
+import jakarta.annotation.Resource;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -41,7 +42,7 @@ import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
+import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -76,8 +77,13 @@ public class UnsTopologyService {
     private Long timeHorizon;
     @Value("${ELASTICSEARCH_VERSION:7.10.2}")
     private String version;
-    @Value("${elk.enabled:true}")
-    private String enableElk;
+
+    private boolean enableElk;
+
+    @Value("${elk.enabled:}")
+    public void setEnableElk(String enable) {
+        enableElk = Boolean.parseBoolean(enable);
+    }
 
     @Resource
     private UnsTopologyMapper unsTopologyMapper;
@@ -93,11 +99,12 @@ public class UnsTopologyService {
 
     @EventListener(classes = ContextRefreshedEvent.class)
     private void init() {
+        if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+            return;// windows环境不要拓扑 干扰调试
+        }
         // 平台启动，初始化统计信息
         statisticsExecutor.scheduleAtFixedRate(this::refresh, 2, 10, TimeUnit.SECONDS);
     }
-
-    private static final boolean isLocalDebug = RuntimeUtil.isLocalRuntime();
 
     private void refresh() {
         try {
@@ -134,8 +141,7 @@ public class UnsTopologyService {
 
             //报警数
             topologyData.setAlarmNum(alarmMapper.selectCount(null));
-
-            if (!isLocalDebug) {
+            try {
                 //emqx 连接数
                 HttpResponse httpResponse = HttpRequest.get("http://emqx:18083/api/v5/monitor_current")
                         .basicAuth(Constants.EMQX_API_KEY, Constants.EMQX_SECRET_KEY)
@@ -145,6 +151,8 @@ public class UnsTopologyService {
                     topologyData.setLiveConnections(data.getLong("live_connections"));
                     topologyData.setAllConnections(data.getLong("connections"));
                 }
+            } catch (Exception ex) {
+                log.error("mqtt 连不上 {}", ex.getMessage());
             }
 
             if (!topologyData.equals(globalTopologyData)) {
@@ -187,6 +195,7 @@ public class UnsTopologyService {
 
     /**
      * 监听icmp数据推送
+     *
      * @param event
      */
     @EventListener(classes = TopicMessageEvent.class)
@@ -221,16 +230,15 @@ public class UnsTopologyService {
     }
 
 
-
     /**
-     * 获取实例的拓扑节点状态
+     * 获取文件的拓扑节点状态
      *
-     * @param topic
+     * @param unsId
      */
-    public List<InstanceTopologyData> gainTopologyDataOfInstance(String topic) {
+    public List<InstanceTopologyData> gainTopologyDataOfFile(Long unsId) {
 
         // windows does not support topologies
-        if (StringUtils.equals(systemConfig.getPlatformType(), "windows") || "false".equals(enableElk)) {
+        if (!enableElk || StringUtils.equals(systemConfig.getPlatformType(), "windows")) {
             return createDefaultTopologyData();
         }
 
@@ -240,10 +248,20 @@ public class UnsTopologyService {
         String today = DateUtil.format(calendar.getTime(), "yyyy.MM.dd");
         String index = String.format(INDEX_REX, version, today);
 
-        if (!elasticsearchAdpterService.isIndexExist(index) || !elasticsearchAdpterService.isFieldExist(index, "instanceTopic")) {
-            log.warn("index:{} or field:instanceTopic is not exist!", index);
+        try {
+            if (!elasticsearchAdpterService.isIndexExist(index) || !elasticsearchAdpterService.isFieldExist(index, "unsId")) {
+                log.warn("index:{} or field:unsId is not exist!", index);
+                return createDefaultTopologyData();
+            }
+        } catch (Throwable ex) {
+            Throwable cause = ExceptionUtil.getRootCause(ex);
+            log.warn("连不上 elasticsearch", ex);
+            if (cause instanceof UnknownHostException) {
+                enableElk = false;// 连不上以后不再重试
+            }
             return createDefaultTopologyData();
         }
+
 
         List<String> topologyNodes = TopologyLog.topologyNodes;
         List<InstanceTopologyData> topologyDatas = new ArrayList<>(topologyNodes.size());
@@ -251,7 +269,7 @@ public class UnsTopologyService {
             InstanceTopologyData topologyData = new InstanceTopologyData();
             topologyData.setTopologyNode(topologyNode);
             SearchRequest searchRequest = new SearchRequest(index);
-            searchRequest.source(createSearchSourceBuilder(topic, topologyNode, startTime));
+            searchRequest.source(createSearchSourceBuilder(unsId, topologyNode, startTime));
 
             SearchHits hits = elasticsearchAdpterService.search(searchRequest);
             if (hits != null && hits.getHits() != null && hits.getHits().length >= 1) {
@@ -300,25 +318,25 @@ public class UnsTopologyService {
      * 创建查询条件：
      * 查询出时间范围内，符合条件的最新一条数据
      *
-     * @param topic
+     * @param unsId
      * @param topologyNode
      * @param startTime
      * @return
      */
-    private SearchSourceBuilder createSearchSourceBuilder(String topic, String topologyNode, long startTime) {
+    private SearchSourceBuilder createSearchSourceBuilder(Long unsId, String topologyNode, long startTime) {
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
 
         boolQueryBuilder.must(QueryBuilders.termQuery("topologyNode", topologyNode));
         boolQueryBuilder.must(QueryBuilders.boolQuery()
-                .should(QueryBuilders.termQuery("instanceTopic", "_ALL"))
-                .should(QueryBuilders.termQuery("instanceTopic", topic)));
+                .should(QueryBuilders.termQuery("unsId", "_ALL"))
+                .should(QueryBuilders.termQuery("unsId", String.valueOf(unsId))));
 
         RangeQueryBuilder rangeQueryBuilder = QueryBuilders.rangeQuery("eventTime")
                 .gte(startTime); // 起始时间
         boolQueryBuilder.filter(rangeQueryBuilder);
 
-        searchSourceBuilder.fetchSource(new String[]{"instanceTopic", "topologyNode", "eventCode", "eventMessage", "eventTime"}, new String[]{});
+        searchSourceBuilder.fetchSource(new String[]{"unsId", "topologyNode", "eventCode", "eventMessage", "eventTime"}, new String[]{});
         searchSourceBuilder.query(boolQueryBuilder);
         searchSourceBuilder.size(1); // 设置为1获取最多一条记录
         searchSourceBuilder.sort("eventTime", SortOrder.DESC);

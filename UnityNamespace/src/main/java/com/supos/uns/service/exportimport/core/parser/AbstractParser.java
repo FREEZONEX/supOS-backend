@@ -1,6 +1,7 @@
 package com.supos.uns.service.exportimport.core.parser;
 
 import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.InstanceField;
 import com.supos.common.utils.FieldUtils;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.JsonUtil;
@@ -36,7 +37,7 @@ public abstract class AbstractParser implements ParserAble {
         }
         for (Object value : dataMap.values()) {
             if (value != null) {
-                if (value instanceof CharSequence && StringUtils.isNotBlank((String) value)) {
+                if (StringUtils.isNotBlank(value.toString())) {
                     return false;
                 }
             }
@@ -48,7 +49,7 @@ public abstract class AbstractParser implements ParserAble {
         for (ConstraintViolation<Object> v : violations) {
             String t = v.getRootBeanClass().getSimpleName();
             String msg = I18nUtils.getMessage(v.getMessage());
-            er.append('[').append(v.getPropertyPath()).append(' ').append(msg).append(']');
+            er.append("[{").append(v.getPropertyPath()).append("} ").append(msg).append(']');
         }
     }
 
@@ -85,15 +86,36 @@ public abstract class AbstractParser implements ParserAble {
         return Pair.of(true, null);
     }
 
+    protected Pair<Boolean, InstanceField[]> checkRefers(String batchIndex, String refers, ExcelImportContext context) {
+        if (StringUtils.isNotBlank(refers)) {
+            InstanceField[] referList;
+            try {
+                referList = JsonUtil.fromJson(refers, InstanceField[].class);
+            } catch (Exception ex) {
+                context.addError(batchIndex, "refers json Err:" + ex.getMessage());
+                return Pair.of(false, null);
+            }
+
+            for (InstanceField refer : referList) {
+                if (StringUtils.isBlank(refer.getPath())) {
+                    context.addError(batchIndex, I18nUtils.getMessage("uns.refer.path.empty"));
+                    return Pair.of(false, null);
+                } else {
+                    refer.setPath(StringUtils.trim(refer.getPath()));
+                }
+            }
+            return Pair.of(true, referList);
+        }
+        return Pair.of(true, null);
+    }
+
     protected String getString(Map<String, Object> dataMap, String key, String defaultValue) {
         String finalValue = defaultValue;
         Object value = dataMap.get(key);
         if (value != null) {
-            if (value instanceof String) {
-                String tempValue = (String) value;
-                if (StringUtils.isNotBlank(tempValue)) {
-                    finalValue = tempValue;
-                }
+            String tempValue = value.toString();
+            if (StringUtils.isNotBlank(tempValue)) {
+                finalValue = tempValue;
             }
         }
 

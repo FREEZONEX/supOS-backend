@@ -19,7 +19,7 @@ public class RouteVO implements Serializable {
 
     private MenuVO menu;
 
-    private List<KeyValuePair> tags;
+    private List<KeyValuePair<String>> tags;
 
     private ServiceResponseVO service;
 

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.supos.uns.dao.mapper.UnsLabelMapper">
+
+
+    <select id="getUnsByKeywordExistsLabel">
+        select n.*,
+               CASE WHEN (SELECT COUNT(*) FROM uns_namespace c WHERE c.parent_id = n.id) > 0 THEN true ELSE false END AS hasChildren
+        from uns_namespace n where n.id in ( 1917411973415841792 ) and n.status=1
+
+
+    </select>
+
+</mapper>

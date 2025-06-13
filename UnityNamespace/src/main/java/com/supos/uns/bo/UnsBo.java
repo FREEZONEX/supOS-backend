@@ -13,19 +13,25 @@ import lombok.Data;
 import org.springframework.util.StringUtils;
 
 import jakarta.validation.Valid;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
 @Data
 public class UnsBo {
-    /**批次号*/
+    /**
+     * 批次号
+     */
     int batch;
-    /**批次内序号*/
+    /**
+     * 批次内序号
+     */
     int index;
-    String id;
+    Long id;
     String path;
     int pathType;
+    String layRec;
 
     Integer dataType;
     SrcJdbcType dataSrcId;
@@ -42,36 +48,42 @@ public class UnsBo {
 
     @JsonIgnore
     FieldDefine[] fieldDefines;
-    @JsonIgnore
-    transient String modelId;
-
     private String alias;
+    String modelAlias;
+    String folderAlias;
     String tableName;
 
     InstanceField[] refers;// 计算实例引用的其他实例字段
-    HashMap<String, Set<String>> refTopicFields;
+    HashMap<Long, Set<String>> refTopicFields;
 
     String expression;// 计算表达式
     Object compileExpression;
 
     String protocolType;
-    String referTopic;// 引用的其他实例主题
+    String referUns;// 引用的其他实例主题
+    String[] referAlais;// 引用的其他多个实例主题
     String referTable; // 引用的其他实例的表名
     @Valid
     StreamOptions streamOptions;// 流（历史）计算定义
     Integer withFlags;
     AlarmRuleDefine alarmRuleDefine;
-    Long frequencySeconds;;// 计算时间间隔
-    String[] referTopics;// 引用的其他多个实例主题
+    Long frequencySeconds;// 计算时间间隔
 
-    String folderId;
-    String extend;//扩展字段   workflow表主键ID
+    Map<String,Object> extend;//扩展字段   workflow表主键ID
 
     public UnsBo(String path) {
         this.path = path;
     }
 
-    public UnsBo(String id, String path, int pathType, Integer dataType, String fields) {
+    public UnsBo(String alias, String path, int pathType, Integer dataType, String fields) {
+        this.alias = alias;
+        this.path = path;
+        this.pathType = pathType;
+        this.dataType = dataType;
+        this.fields = fields;
+    }
+
+    public UnsBo(Long id, String path, int pathType, Integer dataType, String fields) {
         this.id = id;
         this.path = path;
         this.pathType = pathType;

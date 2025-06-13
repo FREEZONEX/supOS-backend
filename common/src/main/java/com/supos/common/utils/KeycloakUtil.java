@@ -10,14 +10,16 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.supos.common.config.OAuthKeyCloakConfig;
-import com.supos.common.dto.auth.AccessTokenDto;
+import com.supos.common.dto.auth.*;
 import com.supos.common.exception.BuzException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.Resource;
-import java.util.HashMap;
-import java.util.Map;
+import org.springframework.util.CollectionUtils;
+
+import java.util.*;
 
 @Slf4j
 @Component
@@ -212,4 +214,442 @@ public class KeycloakUtil {
         }
         return null;
     }
+
+    /**
+     * 获取用户信息
+     * @param username
+     * @return
+     */
+    public KeycloakUserInfoDto fetchUser(String username){
+        String url = getAdminApiUrl() + "/users";
+        Map<String, Object> params = new HashMap<>();
+        params.put("exact",true);
+        params.put("username",username);
+        log.info(">>>>>>>>>>>>Keycloak fetchUser URL：{},params:{}",url,JSONObject.toJSONString(params));
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.GET,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).form(params).execute();
+        log.info(">>>>>>>>>>>>Keycloak fetchUser response code：{},body:{}",response.getStatus(),response.body());
+        if (200 == response.getStatus()) {
+            String body = response.body();
+            if (StringUtils.isNotBlank(body) && JSONArray.isValidArray(body)) {
+                JSONArray array =JSONArray.parseArray(body);
+                if (array.size() > 0) {
+                    return array.getJSONObject(0).toJavaObject(KeycloakUserInfoDto.class);
+                }
+            }
+        }
+        return null;
+    }
+
+    // 查询email
+    public KeycloakUserInfoDto fetchUserByEmail(String email){
+        String url = getAdminApiUrl() + "/users";
+        Map<String, Object> params = new HashMap<>();
+        params.put("exact",true);
+        params.put("email",email);
+        log.info(">>>>>>>>>>>>Keycloak fetchUserByEmail URL：{},params:{}",url,JSONObject.toJSONString(params));
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.GET,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).form(params).execute();
+        log.info(">>>>>>>>>>>>Keycloak fetchUserByEmail response code：{},body:{}",response.getStatus(),response.body());
+        if (200 == response.getStatus()) {
+            String body = response.body();
+            if (StringUtils.isNotBlank(body) && JSONArray.isValidArray(body)) {
+                JSONArray array =JSONArray.parseArray(body);
+                if (array.size() > 0) {
+                    return array.getJSONObject(0).toJavaObject(KeycloakUserInfoDto.class);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 获取所有角色信息
+     * @return
+     */
+    public List<KeycloakRoleInfoDto> getAllRoles() {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/roles";
+        log.info(">>>>>>>>>>>>Keycloak getAllRoles URL：{}", url);
+
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.GET,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).execute();
+        log.info(">>>>>>>>>>>>Keycloak getAllRoles response code：{},body:{}",response.getStatus(),response.body());
+        if (200 == response.getStatus()) {
+            String body = response.body();
+            if (StringUtils.isNotBlank(body) && JSONArray.isValidArray(body)) {
+                return JSONArray.parseArray(body).toJavaList(KeycloakRoleInfoDto.class);
+            }
+        } else {
+            throw new BuzException("role.get.failed");
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * 获取角色信息
+     * @return
+     */
+    public KeycloakRoleInfoDto fetchRole(String roleName) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/roles/" + roleName;
+        log.info(">>>>>>>>>>>>Keycloak fetchRole URL：{}", url);
+
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.GET,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).execute();
+        log.info(">>>>>>>>>>>>Keycloak fetchRole response code：{},body:{}",response.getStatus(),response.body());
+        if (200 == response.getStatus()) {
+            String body = response.body();
+            if (StringUtils.isNotBlank(body)) {
+                return JSONObject.parseObject(body, KeycloakRoleInfoDto.class);
+            }
+        } else if (404 == response.getStatus()) {
+            return null;
+        } else {
+            throw new BuzException("role.get.failed");
+        }
+        return null;
+    }
+
+    /**
+     * 获取角色信息
+     * @param id
+     * @return
+     */
+    public KeycloakRoleInfoDto fetchRoleById(String id) {
+        String url = getAdminApiUrl() + "/roles-by-id/" + id;
+        log.info(">>>>>>>>>>>>Keycloak fetchRoleById URL：{}", url);
+
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.GET,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).execute();
+        log.info(">>>>>>>>>>>>Keycloak fetchRoleById response code：{},body:{}",response.getStatus(),response.body());
+        if (200 == response.getStatus()) {
+            String body = response.body();
+            if (StringUtils.isNotBlank(body)) {
+                return JSONObject.parseObject(body, KeycloakRoleInfoDto.class);
+            }
+        } else if (404 == response.getStatus()) {
+            return null;
+        } else {
+            throw new BuzException("role.get.failed");
+        }
+        return null;
+    }
+
+    /**
+     * 删除角色
+     * @param roleName
+     * @return
+     */
+    public boolean deleteRole(String roleName) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/roles/" + roleName;
+        log.info(">>>>>>>>>>>>Keycloak deleteRole URL：{}", url);
+
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.DELETE,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).execute();
+        log.info(">>>>>>>>>>>>Keycloak deleteRole response code：{},body:{}",response.getStatus(),response.body());
+        if (204 == response.getStatus()) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 创建角色
+     * @param roleName
+     * @param description
+     * @return
+     */
+    public boolean createRole(String roleName, String description) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/roles";
+        JSONObject body = new JSONObject();
+        body.put("name", roleName);
+        body.put("description", description);
+
+        String bodyStr = body.toJSONString();
+        log.info(">>>>>>>>>>>>Keycloak createRole URL：{}, body:{}", url, bodyStr);
+
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.POST,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).body(bodyStr).execute();
+        log.info(">>>>>>>>>>>>Keycloak createRole code：{},body:{}",response.getStatus(),response.body());
+        if (204 == response.getStatus()) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 根据名称获取资源信息
+     * @param name
+     * @return
+     */
+    public JSONObject fetchResource(String name) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/resource/search";
+        Map<String, Object> params = new HashMap<>();
+        params.put("exact",true);
+        params.put("name",name);
+
+        log.info(">>>>>>>>>>>>Keycloak fetchResource URL：{},params:{}",url,JSONObject.toJSONString(params));
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.GET,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).form(params).execute();
+        log.info(">>>>>>>>>>>>Keycloak fetchResource code：{},body:{}",response.getStatus(),response.body());
+        if (200 == response.getStatus() && JSONObject.isValidObject(response.body())) {
+            return JSONObject.parseObject(response.body());
+        }
+        return null;
+    }
+
+    /**
+     * 创建资源
+     * @param name
+     * @param type
+     * @param uris
+     * @return
+     */
+    public KeycloakResourceInfoDto createResource(String name, String type, Set<String> uris) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/resource";
+        JSONObject body = new JSONObject();
+        body.put("name", name);
+        body.put("displayName", name);
+        body.put("type", type);
+        body.put("uris", uris);
+
+        String bodyStr = body.toJSONString();
+        log.info(">>>>>>>>>>>>Keycloak createResource URL：{}, body:{}", url, bodyStr);
+
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.POST,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).body(bodyStr).execute();
+        log.info(">>>>>>>>>>>>Keycloak createResource code：{},body:{}",response.getStatus(),response.body());
+        if (201 == response.getStatus() && JSONObject.isValidObject(response.body())) {
+            return JSONObject.parseObject(response.body(), KeycloakResourceInfoDto.class);
+        }
+        return null;
+    }
+
+    /**
+     * 更新资源
+     * @param id
+     * @param object
+     * @return
+     */
+    public boolean updateResource(String id, JSONObject object) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/resource/" + id;
+
+        String bodyStr = object.toJSONString();
+        log.info(">>>>>>>>>>>>Keycloak updateResource URL：{}, body:{}", url, bodyStr);
+
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.PUT,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).body(bodyStr).execute();
+        log.info(">>>>>>>>>>>>Keycloak updateResource code：{},body:{}",response.getStatus(),response.body());
+        if (204 == response.getStatus()) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 删除资源
+     * @param name
+     * @return
+     */
+    public boolean deleteResource(String name) {
+        JSONObject resource = fetchResource(name);
+        if (resource != null) {
+            String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/resource/" + resource.getString("_id");
+            log.info(">>>>>>>>>>>>Keycloak deleteResource URL：{}", url);
+            HttpRequest httpRequest = HttpUtil.createRequest(Method.DELETE,url);
+            HttpResponse response = httpRequest.bearerAuth(getAdminToken()).execute();
+            log.info(">>>>>>>>>>>>Keycloak deleteResource code：{},body:{}",response.getStatus(),response.body());
+            if (204 == response.getStatus()) {
+                return true;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 根据名称获取策略信息
+     * @param name
+     * @return
+     */
+    public JSONObject fetchPolicy(String name) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/policy/search";
+        Map<String, Object> params = new HashMap<>();
+        params.put("exact",true);
+        params.put("name",name);
+
+        log.info(">>>>>>>>>>>>Keycloak fetchPolicy URL：{},params:{}",url,JSONObject.toJSONString(params));
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.GET,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).form(params).execute();
+        log.info(">>>>>>>>>>>>Keycloak fetchPolicy code：{},body:{}",response.getStatus(),response.body());
+        if (200 == response.getStatus() && JSONObject.isValidObject(response.body())) {
+            return JSONObject.parseObject(response.body());
+        }
+        return null;
+    }
+
+    // 创建策略
+    public KeycloakPolicyInfoDto createPolicy(String name, String description, String roleId) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/policy/role";
+        JSONObject body = new JSONObject();
+        body.put("name", name);
+        body.put("description", description);
+        body.put("fetchRoles", false);
+        body.put("logic", "POSITIVE");
+
+        JSONArray roles = new JSONArray();
+        JSONObject role = new JSONObject();
+        role.put("id", roleId);
+        role.put("required", false);
+        roles.add(role);
+
+        body.put("roles", roles);
+
+
+        String bodyStr = body.toJSONString();
+        log.info(">>>>>>>>>>>>Keycloak createPolicy URL：{}, body:{}", url, bodyStr);
+
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.POST,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).body(bodyStr).execute();
+        log.info(">>>>>>>>>>>>Keycloak createPolicy code：{},body:{}",response.getStatus(),response.body());
+        if (201 == response.getStatus() && JSONObject.isValidObject(response.body())) {
+            return JSONObject.parseObject(response.body(), KeycloakPolicyInfoDto.class);
+        }
+        return null;
+    }
+
+    /**
+     * 删除策略
+     * @param name
+     * @return
+     */
+    public boolean deletePolicy(String name) {
+        JSONObject policy = fetchPolicy(name);
+        if (policy != null) {
+            String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/policy/" + policy.getString("id");
+            log.info(">>>>>>>>>>>>Keycloak deletePolicy URL：{}", url);
+            HttpRequest httpRequest = HttpUtil.createRequest(Method.DELETE,url);
+            HttpResponse response = httpRequest.bearerAuth(getAdminToken()).execute();
+            log.info(">>>>>>>>>>>>Keycloak deletePolicy code：{},body:{}",response.getStatus(),response.body());
+            if (204 == response.getStatus()) {
+                return true;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 根据名称获取权限信息
+     * @param name
+     * @return
+     */
+    public JSONObject fetchPermission(String name) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/permission/search";
+        Map<String, Object> params = new HashMap<>();
+        params.put("exact",true);
+        params.put("name",name);
+
+        log.info(">>>>>>>>>>>>Keycloak fetchPermission URL：{},params:{}",url,JSONObject.toJSONString(params));
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.GET,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).form(params).execute();
+        log.info(">>>>>>>>>>>>Keycloak fetchPermission code：{},body:{}",response.getStatus(),response.body());
+        if (200 == response.getStatus() && JSONObject.isValidObject(response.body())) {
+            return JSONObject.parseObject(response.body());
+        }
+        return null;
+    }
+
+
+    // 创建权限
+    public boolean createPermission(String name, String description, String policyId, String resourceId) {
+        String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/permission/resource";
+        JSONObject body = new JSONObject();
+        body.put("name", name);
+        body.put("description", description);
+        body.put("decisionStrategy", "UNANIMOUS");
+
+        JSONArray policies = new JSONArray();
+        policies.add(policyId);
+        body.put("policies", policies);
+
+        JSONArray resources = new JSONArray();
+        resources.add(resourceId);
+        body.put("resources", resources);
+
+        String bodyStr = body.toJSONString();
+        log.info(">>>>>>>>>>>>Keycloak createPermission URL：{}, body:{}", url, bodyStr);
+
+        HttpRequest httpRequest = HttpUtil.createRequest(Method.POST,url);
+
+        HttpResponse response = httpRequest.bearerAuth(getAdminToken()).body(bodyStr).execute();
+        log.info(">>>>>>>>>>>>Keycloak createPermission code：{},body:{}",response.getStatus(),response.body());
+        if (201 == response.getStatus()) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 删除权限
+     * @param name
+     * @return
+     */
+    public boolean deletePermission(String name) {
+        JSONObject permission = fetchPermission(name);
+        if (permission != null) {
+            String url = getAdminApiUrl() + "/clients/" + getClientId() + "/authz/resource-server/permission/resource/" + permission.getString("id");
+            log.info(">>>>>>>>>>>>Keycloak deletePermission URL：{}", url);
+            HttpRequest httpRequest = HttpUtil.createRequest(Method.DELETE,url);
+            HttpResponse response = httpRequest.bearerAuth(getAdminToken()).execute();
+            log.info(">>>>>>>>>>>>Keycloak deletePermission code：{},body:{}",response.getStatus(),response.body());
+            if (204 == response.getStatus()) {
+                return true;
+            }
+        }
+        return true;
+    }
+
+
+    public void setLocale(String locale){
+        String token = getAdminToken();
+        String url = getAdminApiUrl();
+        HttpResponse response = HttpRequest.get(url).bearerAuth(token).execute();
+        if (response.getStatus() != 200 || StringUtils.isBlank(response.body())){
+            log.warn("设置Keycloak 语言退出，获取realms信息失败");
+            return;
+        }
+
+        JSONObject realmInfo = JSONObject.parseObject(response.body());
+        String defaultLocale = realmInfo.getString("defaultLocale");
+        JSONArray supportedLocales = realmInfo.getJSONArray("supportedLocales");
+        //如果当前语言和keycloak语言是一致的，无需修改
+        if (locale.equals(defaultLocale) || CollectionUtils.isEmpty(supportedLocales) || locale.equals(supportedLocales.getString(0))){
+            return;
+        }
+
+        realmInfo.put("internationalizationEnabled", true);
+        realmInfo.put("defaultLocale",locale);
+
+        JSONArray newSupportedLocales = new JSONArray();
+        supportedLocales.add(locale);
+        realmInfo.put("supportedLocales",newSupportedLocales);
+
+        HttpResponse putResponse = HttpRequest.put(url).bearerAuth(token).body(realmInfo.toJSONString()).execute();
+        if (putResponse.getStatus() == 204){
+            log.info("设置Keycloak 语言完成");
+        }
+    }
+
+
 }

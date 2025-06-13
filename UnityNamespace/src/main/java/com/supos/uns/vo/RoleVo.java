@@ -30,4 +30,6 @@ public class RoleVo {
 
 
     private List<ResourceDto> resourceList;
+
+    private List<ResourceDto> denyResourceList;
 }

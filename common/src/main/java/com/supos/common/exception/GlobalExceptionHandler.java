@@ -2,8 +2,11 @@ package com.supos.common.exception;
 
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.I18nUtils;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
@@ -15,8 +18,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.ConstraintViolationException;
 import java.util.Optional;
 import java.util.Set;
 
@@ -84,7 +85,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
     @ResponseBody
     public ResultVO handleError(HttpRequestMethodNotSupportedException e) {
-        log.error("method not support", e);
+        log.warn("method not support:{} {}", e.getBody(), e.getMessage());
         return ResultVO.fail("method not support");
     }
 
@@ -94,5 +95,13 @@ public class GlobalExceptionHandler {
     public ResultVO handleError(Throwable e) {
         log.error("system error", e);
         return ResultVO.fail(I18nUtils.getMessage("system.error"));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ResponseBody
+    public ResultVO handleError(HttpMessageNotReadableException e) {
+        log.error("JSON parse error", e);
+        return ResultVO.fail("JSON parse error");
     }
 }

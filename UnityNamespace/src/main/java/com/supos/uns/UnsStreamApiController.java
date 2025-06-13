@@ -35,8 +35,8 @@ public class UnsStreamApiController {
     @Operation(summary = "分页查询流计算定义")
     @GetMapping(path = "/inter-api/supos/uns/stream")
     public PaginationSearchResult<List<StreamDetail>> listStreams(@RequestParam(name = "k", required = false) @Parameter(description = "模糊搜索词") String key,
-                                                                  @RequestParam(name = "p", required = false, defaultValue = "1") @Parameter(description = "页码，默认1") Integer pageNo,
-                                                                  @RequestParam(name = "sz", required = false, defaultValue = "10") @Parameter(description = "每页条数，默认10") Integer pageSize
+                                                                  @RequestParam(name = "pageNo", required = false, defaultValue = "1") @Parameter(description = "页码，默认1") Integer pageNo,
+                                                                  @RequestParam(name = "pageSize", required = false, defaultValue = "10") @Parameter(description = "每页条数，默认10") Integer pageSize
     ) {
         return unsStreamService.listStreams(key, pageNo, pageSize);
     }

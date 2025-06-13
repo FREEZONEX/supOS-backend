@@ -4,9 +4,11 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import com.supos.adpter.tdengine.TdEngineEventHandler;
 import com.supos.common.adpater.DataSourceProperties;
+import com.supos.common.service.IUnsDefinitionService;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,12 +30,14 @@ public class TdEngineConfig {
     public TdEngineEventHandler tdEngineEventHandler(@Value("${td.jdbcUrl:}") String jdbcUrl,
                                                      @Value("${TD_ENGINE_ROOT_USER:root}") String user,
                                                      @Value("${TDENGINE_ROOT_PASSWORD:taosdata}") String password,
-                                                     @Value("${TDENGINE_DB_NAME:public}") String dbName) {
+                                                     @Value("${TDENGINE_DB_NAME:public}") String dbName,
+                                                     @Autowired IUnsDefinitionService unsDefinitionService
+    ) {
         JdbcTemplate jdbcTemplate = getJdbcTemplate(jdbcUrl, user, password, dbName);
         if (jdbcTemplate == null) {
             return null;
         }
-        return new TdEngineEventHandler(jdbcTemplate);
+        return new TdEngineEventHandler(jdbcTemplate, unsDefinitionService);
     }
 
     private JdbcTemplate getJdbcTemplate(String jdbcUrl,

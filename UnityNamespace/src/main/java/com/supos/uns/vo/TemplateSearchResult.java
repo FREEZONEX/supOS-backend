@@ -12,11 +12,8 @@ public class TemplateSearchResult {
 
     private String id;
 
-    /**
-     * 模板名称
-     */
     @Schema(description = "模板名称")
-    String path;
+    String name;
 
     /**
      * 模型描述

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "dataType": "Double",
+    "arrayType": "Scalar",
+    "value": 64.27876096869072
+  },
+  "statusCode": {
+    "value": 0
+  },
+  "sourceTimestamp": "2025-04-01T09:13:51.627Z",
+  "sourcePicoseconds": 0,
+  "serverTimestamp": "2025-04-01T09:13:51.659Z",
+  "serverPicoseconds": 0
+}

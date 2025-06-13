@@ -3,7 +3,18 @@ springdoc:
     path: /swagger-ui
   api-docs:
     path: /swagger-ui/v3/api-docs
+
+grpc:
+  server:
+    port: 19099
+  thread-pool:
+    core-size: 16      # 核心线程数（建议为 CPU核数 × 2）
+    max-size: 64       # 最大线程数（建议为 CPU核数 × 4）
+    queue-capacity: 200 # 队列容量
+    keep-alive-time: 60 # 线程空闲存活时间（秒）
 spring:
+  application:
+    name: backend-server
   main:
     allow-circular-references: true
   mvc:
@@ -13,13 +24,14 @@ spring:
     property-naming-strategy: SNAKE_CASE
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: -1
+      max-request-size: -1
   datasource:
     url: jdbc:postgresql://${ENV_DB_HOST:postgresql}:${ENV_DB_PORT:5432}/postgres?currentSchema=supos
     username: postgres
     password: ${POSTGRES_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
     dynamic:
       primary: supos   #supos设置为默认数据源
       strict: false
@@ -29,6 +41,15 @@ spring:
           username: postgres
           password: ${POSTGRES_PASSWORD:postgres}
           driver-class-name: org.postgresql.Driver
+          type: com.alibaba.druid.pool.DruidDataSource
+          druid:
+            initial-size: 5        # 初始连接数
+            min-idle: 5            # 最小空闲连接
+            max-active: 20         # 最大连接数（建议为 CPU 核心数*2）
+            max-wait: 60000        # 获取连接超时时间（毫秒）
+            test-while-idle: true  # 空闲时检测连接有效性
+            validation-query: SELECT 1  # 健康检查 SQL
+            time-between-eviction-runs-millis: 60000  # 检测间隔
         keycloak:
           url: jdbc:postgresql://${ENV_DB_HOST:postgresql}:${ENV_DB_PORT:5432}/keycloak?currentSchema=public
           username: postgres
@@ -58,6 +79,7 @@ hasura:
   url: ${HASURA_URL:http://hasura:8080/v1/metadata}
 
 mybatis-plus:
+  type-handlers-package: com.supos.uns.config
   configuration:
     # 开启下划线转驼峰
     map-underscore-to-camel-case: true

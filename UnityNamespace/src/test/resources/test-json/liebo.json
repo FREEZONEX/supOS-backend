@@ -1,0 +1,57 @@
+{
+  "alias": "calc_abs",
+  "dataType": 3,
+  "topic": "/calc/abs",
+  "fields": [
+    {
+      "name": "ws",
+      "type": "double"
+    }
+  ],
+  "expression": "ABS(a1)",
+  "refers": [
+    {
+      "topic": "/hseqd/dev4",
+      "field": "tm"
+    }
+  ]
+}
+
+{
+  "dataPath": "报警01",
+  "description": "报警01",
+  "protocol": {
+    "overTime": 3,
+    "condition": ">",
+    "limitValue": 100,
+    "deadBandType": 1,
+    "deadBand": 20
+  },
+  "refers": [
+    {
+      "topic": "/hseqd/dev4",
+      "field": "wq"
+    }
+  ],
+  "expression": "a1>100"
+}
+
+{
+  "id": "d1bf9f67fca056bc1244e451dbadc10f",
+  "dataPath": "报警01-hk",
+  "description": "报警01",
+  "protocol": {
+    "overTime": 3,
+    "condition": ">",
+    "limitValue": 130,
+    "deadBandType": 1,
+    "deadBand": 20
+  },
+  "refers": [
+    {
+      "topic": "/hseq/dev",
+      "field": "wq"
+    }
+  ],
+  "expression": "a1>130"
+}

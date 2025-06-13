@@ -29,16 +29,17 @@ public class UnsTopologyController {
 
     @Operation(summary = "获取实例拓扑状态")
     @GetMapping(path = {"/inter-api/supos/uns/topology"}, produces = "application/json")
-    public JsonResult<List<InstanceTopologyData>> instanceTopology(@RequestParam(name = "topic", required = false) @Parameter(description = "实例topic") String topic) throws Exception {
-        List<InstanceTopologyData> topologyDatas = unsTopologyService.gainTopologyDataOfInstance(topic);
+    public JsonResult<List<InstanceTopologyData>> instanceTopology(@RequestParam(name = "unsId", required = false) @Parameter(description = "文件unsId") Long unsId) throws Exception {
+        List<InstanceTopologyData> topologyDatas = unsTopologyService.gainTopologyDataOfFile(unsId);
 
         return new JsonResult<>(0, "ok", topologyDatas);
     }
 
     @Operation(summary = "设置实例拓扑状态")
     @GetMapping(path = {"/inter-api/supos/uns/topology-mock"})
-    public void mockInstanceTopology(@RequestParam(name = "topic", required = false) @Parameter(description = "实例topic") String topic,
-                                                                       @RequestParam(name = "node", required = false) @Parameter(description = "node") String node) throws Exception {
-        TopologyLog.log(topic, node, TopologyLog.EventCode.ERROR, "sd");
+    public void mockInstanceTopology(@RequestParam(name = "unsId", required = false) @Parameter(description = "文件unsId") Long unsId,
+            @RequestParam(name = "topic", required = false) @Parameter(description = "实例topic") String topic,
+            @RequestParam(name = "node", required = false) @Parameter(description = "node") String node) throws Exception {
+        TopologyLog.log(unsId, node, TopologyLog.EventCode.ERROR, "sd");
     }
 }

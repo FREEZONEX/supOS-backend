@@ -8,13 +8,17 @@ import com.supos.adpter.nodered.dao.mapper.NodeServerMapper;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
 import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.protocol.MappingDTO;
 import com.supos.common.dto.protocol.OpcDAConfigDTO;
 import com.supos.common.enums.IOTProtocol;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 解析时序模型对应的node-red模版文件
@@ -42,23 +46,22 @@ public class OpcDABatchParser extends ParserApi {
         String serverId = super.createServer(opcdaConfig.getServerName(), IOTProtocol.OPC_DA.getName(), serverConfigJson);
 
         JSONObject injectNode = getNodeByType(fullNodes, "inject", serverId);
+        Map<String, List<MappingDTO>> ms = buildMapping(uns.getFields(), uns.getUnsTopic());
         // 如果server节点已经存在，则只需要往inject节点添加topic数据
         if (injectNode != null) {
             JSONObject supModelNode = getNodeByType(fullNodes, "supmodel", serverId);
             if (supModelNode != null) {
-                String mappings = supModelNode.getString("modelMapping");
-                JSONObject jsonObject = JSON.parseObject(mappings);
-                Map<String, Set<String>> maps = buildMapping(uns.getFields(), uns.getUnsTopic(), false);
-                for (Map.Entry<String, Set<String>> entry : maps.entrySet()) {
-                    JSONArray jsonArray = jsonObject.getJSONArray(entry.getKey());
-                    if (jsonArray == null) {
-                        jsonObject.put(entry.getKey(), entry.getValue());
+                Map<String, List<MappingDTO>> nowMap = supModelNode.getObject("mappings", Map.class);
+                for (Map.Entry<String, List<MappingDTO>> entry : ms.entrySet()) {
+                    List<MappingDTO> tmp = nowMap.get(entry.getKey());
+                    if (tmp == null) {
+                        nowMap.put(entry.getKey(), entry.getValue());
                     } else {
-                        jsonArray.addAll(entry.getValue());
+                        tmp.addAll(entry.getValue());
+                        nowMap.put(entry.getKey(), tmp);
                     }
                 }
-                supModelNode.put("modelMapping", jsonObject.toJSONString());
-                supModelNode.put("selectedModel", "Auto");
+                supModelNode.put("mappings", JSON.toJSONString(nowMap));
             }
             JSONObject opcdaReadNode = getOpcdaReadClientByServer(fullNodes, serverId);
             if (opcdaReadNode != null) {
@@ -93,12 +96,7 @@ public class OpcDABatchParser extends ParserApi {
                 .replaceAll("\\$id_mqtt_out", mqttNodeId)
                 .replaceAll("\\$id_opcda_read", clientId)
                 .replaceAll("\\$id_opcda_server", serverId);
-        // 替换模型配置
-        jsonFlowStr = jsonFlowStr.replace("$schema_json_string", uns.getUnsJsonString());
-        jsonFlowStr = jsonFlowStr.replace("$select_model", uns.getUnsTopic());
-        // 替换点位和属性的映射关系
-        Map<String, Set<String>> ms = buildMapping(uns.getFields(), uns.getUnsTopic(), false);
-        jsonFlowStr = jsonFlowStr.replace("$mapping_string", JSON.toJSONString(ms).replace("\"", "\\\""));
+
         // 替换订阅采集频率
         jsonFlowStr = jsonFlowStr.replace("$pollRate", opcdaConfig.getPollRate().getSeconds() + "");
         jsonFlowStr = jsonFlowStr.replace("$opcda_server_host", opcdaConfig.getServer().getHost());
@@ -123,8 +121,13 @@ public class OpcDABatchParser extends ParserApi {
                 y += highSpace;
             }
             jsonArr.getJSONObject(i).put("y", y);
-            // 设置groupItems
+
             String type = jsonArr.getJSONObject(i).getString("type");
+            if ("supmodel".equals(type)) {
+                jsonArr.getJSONObject(i).put("mappings", ms);
+                jsonArr.getJSONObject(i).put("model", uns.getModel());
+            }
+            // 设置groupItems
             if ("opcda-read".equals(type)) {
                 JSONArray groupitems = jsonArr.getJSONObject(i).getJSONArray("groupitems");
                 List<FieldDefine> fields = uns.getFields();
@@ -159,20 +162,6 @@ public class OpcDABatchParser extends ParserApi {
             }
         }
         return null;
-    }
-
-    public Map<String, Set<String>> buildMapping(List<FieldDefine> fields, String topic, boolean isArray) {
-        // key=node  value=[topic:fieldName]
-        Map<String, Set<String>> mapping = new HashMap<>();
-        for (FieldDefine f : fields) {
-            Set<String> ls = mapping.get(f.getIndex());
-            if (ls == null) {
-                ls = new HashSet<>();
-            }
-            ls.add(topic + ":" + f.getName());
-            mapping.put(f.getIndex(), ls);
-        }
-        return mapping;
     }
 
     private JSONObject getMqttBrokerNode(JSONArray fullNodes) {

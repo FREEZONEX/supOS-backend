@@ -3,13 +3,18 @@ package com.supos.uns.service;
 import com.supos.uns.dao.mapper.UnsMapper;
 import org.junit.Test;
 
-import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class SqlTest {
 
     @Test
     public void testSql() {
-        String sql = UnsMapper.UnsRefUpdateProvider.updateRefUns("1", Arrays.asList("a", "b", "c"));
+        Map<Long, Integer> idDataTypes = new LinkedHashMap<>();
+        idDataTypes.put(3L, 1);
+        idDataTypes.put(6L, 5);
+        idDataTypes.put(9L, 7);
+        String sql = UnsMapper.UnsRefUpdateProvider.updateRefUns(1L, idDataTypes);
         System.out.println(sql);
     }
 }

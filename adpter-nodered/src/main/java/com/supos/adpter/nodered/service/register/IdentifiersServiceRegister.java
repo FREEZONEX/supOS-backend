@@ -1,6 +1,7 @@
 package com.supos.adpter.nodered.service.register;
 
 import com.supos.common.annotation.ProtocolIdentifierProvider;
+import com.supos.common.register.AbstractBeanRegister;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ApplicationContext;

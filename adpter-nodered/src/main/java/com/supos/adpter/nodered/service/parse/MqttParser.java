@@ -6,15 +6,12 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.parser.Feature;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
-import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.protocol.MqttConfigDTO;
 import com.supos.common.enums.IOTProtocol;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 解析时序模型对应的node-red模版文件
@@ -42,6 +39,18 @@ public class MqttParser extends ParserApi {
         // 只会存在一个mqtt out节点
         JSONObject mqttOutNode = getMqttOut(fullNodes);
         int maxHeight = super.getMaxHeight(fullNodes);
+        // 查找server对应的mqtt in节点
+        JSONObject mqttInNode = getMqttInByServerId(fullNodes, serverId);
+        if (mqttInNode != null) {
+            JSONObject supModelNode = handleDynamicNode(uns, mqttOutNode.getString("id"), maxHeight);
+            // mqtt in追加输出
+            JSONArray wires = mqttInNode.getJSONArray("wires");
+            JSONArray wire0 = wires.getJSONArray(0);
+            String supModeId = supModelNode.getString("id");
+            wire0.add(supModeId);
+            fullNodes.add(supModelNode);
+            return;
+        }
 
         JSONObject defaultMqttBrokerNode = getMqttBrokerNode(fullNodes,"", "emqx", "1883");
         if (defaultMqttBrokerNode != null && !serverId.equals(defaultMqttBrokerNode.getString("id"))) {
@@ -57,7 +66,6 @@ public class MqttParser extends ParserApi {
                 .replaceAll("\\$mqtt_broker_input_id", serverId);
         // 替换模型topic
         jsonFlowStr = jsonFlowStr.replace("$model_topic", uns.getUnsTopic());
-        jsonFlowStr = jsonFlowStr.replace("$schema_json_string", uns.getUnsJsonString());
 
         // 替换mqtt in名称
         jsonFlowStr = jsonFlowStr.replace("$mqtt_in_name", mqttConfig.getInputName());
@@ -87,6 +95,10 @@ public class MqttParser extends ParserApi {
                 y += highSpace;
             }
             jsonArr.getJSONObject(i).put("y", y);
+            String nodeType = jsonArr.getJSONObject(i).getString("type");
+            if ("supmodel".equals(nodeType)) {
+                jsonArr.getJSONObject(i).put("model", uns.getModel());
+            }
         }
         // 删除重复的mqtt out节点
         if (mqttOutNode != null) {
@@ -109,9 +121,9 @@ public class MqttParser extends ParserApi {
 
         tpl = tpl.replace("$id_model_selector", IDGenerator.generate());
         tpl = tpl.replace("$model_topic", uns.getUnsTopic());
-        tpl = tpl.replace("$schema_json_string", uns.getUnsJsonString());
         tpl = tpl.replace("$mqtt_out_id", mqttOutId);
         JSONObject supModelNode = JSON.parseObject(tpl);
+        supModelNode.put("model", uns.getModel());
         supModelNode.put("y", baseHeight + 30);
         return supModelNode;
     }
@@ -167,9 +179,5 @@ public class MqttParser extends ParserApi {
         return null;
     }
 
-    @Override
-    public Map<String, ?> buildMapping(List<FieldDefine> fields, String topic, boolean isArray) {
-        return null;
-    }
 
 }

@@ -1,0 +1,15 @@
+{
+  "dataType": 1,
+  "path": "hkj/c9porn",
+  "addDashBoard": false,
+  "addFlow": false,
+  "fields": [
+    {
+      "name": "tm",
+      "type": "long"
+    }, {
+      "name": "wq",
+      "type": "double"
+    }
+  ]
+}

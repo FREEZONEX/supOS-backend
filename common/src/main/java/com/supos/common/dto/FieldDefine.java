@@ -1,27 +1,38 @@
 package com.supos.common.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.supos.common.Constants;
 import com.supos.common.enums.FieldType;
 import com.supos.common.utils.JsonUtil;
-import lombok.Data;
-
+import io.swagger.v3.oas.annotations.Hidden;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import lombok.Data;
 
 @Data
 @Valid
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class FieldDefine implements Cloneable {
-    @NotEmpty
+    @NotEmpty(message = "uns.invalid.emptyFieldName")
+    @Schema(description = "字段名")
     private String name;//字段名
     @NotNull
+    @Schema(description = "字段类型：int, long, float, string, boolean")
     private FieldType type;// 字段类型：int, long, float, string, boolean
+    @Schema(description = "是否唯一约束，新建模板时，此参数不生效")
     private Boolean unique;// 是否唯一约束
+    @Schema(description = "对应的协议字段key，新建模板时，此参数不生效")
     private String index; // 对应的协议字段key
+    @Schema(description = "显式名")
     private String displayName;//显式名
+    @Schema(description = "备注")
     private String remark;//备注
+    @Schema(description = "最大长度(string字段类型生效)")
     private Integer maxLen;// 最大长度
+    @Hidden
+    private String tbValueName;
 
     public boolean isUnique() {
         return unique != null && unique;
@@ -66,6 +77,12 @@ public class FieldDefine implements Cloneable {
 
     public String toString() {
         return JsonUtil.toJsonUseFields(this);
+    }
+
+    //    @JsonIgnore
+    @Schema(description = "是否系统参数，新建模板时，此参数不生效")
+    public boolean isSystemField() {
+        return name.startsWith(Constants.SYSTEM_FIELD_PREV) || Constants.systemFields.contains(name);
     }
 
     public FieldDefine clone() {

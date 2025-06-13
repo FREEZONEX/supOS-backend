@@ -1,0 +1,17 @@
+{
+  "addFlow": false,
+  "addDashBoard": false,
+  "topic": "/hseqd/stream_dev3",
+  "referTopic": "/hseqd/dev3",
+  "alias": "stream_dev3",
+  "dataType": 4,
+  "fields": [
+    {
+      "name": "avgVal",
+      "type": "double",
+      "index": "avg(val)"
+    }
+  ],
+  "modelDescription": "流模型",
+  "instanceDescription": "流实例"
+}

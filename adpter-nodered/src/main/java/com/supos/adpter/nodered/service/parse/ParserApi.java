@@ -7,6 +7,7 @@ import com.supos.adpter.nodered.service.ProtocolServerService;
 import com.supos.adpter.nodered.vo.AddServerRequestVO;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
 import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.protocol.MappingDTO;
 import com.supos.common.exception.NodeRedException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +16,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,7 +73,19 @@ public abstract class ParserApi {
 
     public abstract void parse(String tpl, BatchImportRequestVO.UnsVO uns, JSONArray fullNodes);
 
-    public abstract Map<String, ?> buildMapping(List<FieldDefine> fields, String topic, boolean isArray);
+    public Map<String, List<MappingDTO>> buildMapping(List<FieldDefine> fields, String alias) {
+        // key=index  value=[{"alias": "", "name": ""}]
+        Map<String, List<MappingDTO>> mappings = new HashMap<>();
+        for (FieldDefine f : fields) {
+            List<MappingDTO> m = mappings.get(f.getIndex());
+            if (m == null) {
+                m = new ArrayList<>();
+            }
+            m.add(new MappingDTO(alias, f.getName()));
+            mappings.put(f.getIndex(), m);
+        }
+        return mappings;
+    }
 
     protected int getMaxHeight(JSONArray fullNodes) {
         int maxHeight = 0;

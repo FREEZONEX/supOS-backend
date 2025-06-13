@@ -12,5 +12,5 @@ import java.util.List;
  */
 public abstract class DataExporter {
 
-    public abstract String exportData(ExcelExportContext context, List<ExportNode> exportFolderList, List<ExportNode> exportFileList, List<UnsLabelPo> labels);
+    public abstract String exportData(ExcelExportContext context);
 }

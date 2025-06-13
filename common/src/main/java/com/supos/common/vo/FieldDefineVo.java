@@ -31,6 +31,8 @@ public class FieldDefineVo {
     private String displayName;//显式名
     @Schema(description = "备注")
     private String remark;//备注
+    @Schema(description = "最大长度")
+    private String maxLen;//最大长度
 
     public FieldDefineVo() {
     }

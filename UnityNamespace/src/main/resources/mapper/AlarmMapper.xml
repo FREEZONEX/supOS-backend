@@ -7,14 +7,14 @@
 
     <select id="pageList" resultType="com.supos.uns.vo.AlarmVo" parameterType="com.supos.uns.vo.AlarmQueryVo">
         SELECT
-            a._id, a.topic, a.current_value, a.limit_value, a.is_alarm, a.read_status, a._ct as createAt,
+            a._id, a.uns, a.current_value, a.limit_value, a.is_alarm, a.read_status, a._ct as createAt,
             b.data_path AS rule_name,b.expression,b.refers
         FROM
-        uns_alarms_data a LEFT JOIN uns_namespace b ON a.topic = b.path
+        uns_alarms_data a LEFT JOIN uns_namespace b ON a.uns = b.id
         WHERE
             b.status = 1
-        <if test="params.topic != null and params.topic != ''">
-            AND a.topic = #{params.topic}
+        <if test="params.unsId != null">
+            AND a.uns = #{params.unsId}
         </if>
         <if test="params.readStatus != null">
             AND a.read_status = #{params.readStatus}

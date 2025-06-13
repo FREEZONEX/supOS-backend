@@ -1,6 +1,7 @@
 package com.supos.common.utils;
 
 import cn.hutool.core.lang.UUID;
+import cn.hutool.core.util.HexUtil;
 import cn.hutool.extra.pinyin.PinyinUtil;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.HashFunction;
@@ -9,6 +10,8 @@ import com.supos.common.Constants;
 import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.regex.Pattern;
 
 /**
@@ -18,6 +21,17 @@ import java.util.regex.Pattern;
  * @date 2025/2/14 9:01
  */
 public class PathUtil {
+
+    static final MessageDigest PATH_ID_DIGEST;
+
+    static {
+        try {
+            PATH_ID_DIGEST = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     static final Pattern TOPIC_PATTERN = Pattern.compile(Constants.TOPIC_REG);
 
     static final Pattern ALIAS_PATTERN = Pattern.compile(Constants.ALIAS_REG);
@@ -83,7 +97,27 @@ public class PathUtil {
         return path;
     }
 
+    public static boolean isRootPath(String path) {
+        int st = 0, ed = path.length();
+        if (path.charAt(0) == '/') {
+            st++;
+        }
+        if (path.charAt(path.length() - 1) == '/') {
+            ed--;
+        }
+        for (int i = st; i < ed; i++) {
+            if (path.charAt(i) == '/') {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static String generateFileAlias(String path) {
+        return generateMd5Alias(path);
+    }
+
+    public static String generateMd5Alias(String path) {
         String aliasPath = path;
         final int LEN = path.length();
         if (LEN > 20) {
@@ -142,6 +176,76 @@ public class PathUtil {
             ed--;
         }
         int x = path.lastIndexOf('/', ed);
-        return x > 0 ? path.substring(0, x + 1) : null;
+        return x > 0 ? path.substring(0, x) : null;
+    }
+
+    public static final String genIdForPath(String path) {
+        return HexUtil.encodeHexStr(PATH_ID_DIGEST.digest(path.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    /**
+     * 以basePath作为父级节点，比对path找到basePath下一级的path
+     * @param basePath
+     * @param path
+     * @return null 不存在下一级path
+     */
+    public static String getNextNodeAfterBasePath(String basePath, String path) {
+        if (StringUtils.isBlank(basePath)) {
+            // 如果 basePath 为空，直接返回 path 的第一个节点
+            String[] pathParts = path.split("/");
+            return pathParts.length > 0 ? pathParts[0] : null;
+        } else {
+            // 判断 path 是否以 basePath 开头
+            if (path.startsWith(basePath)) {
+                // 获取 basePath 后面的部分
+                String remainingPath = path.substring(basePath.length());
+
+                // 如果剩余部分以 / 开头，去掉它
+                if (remainingPath.startsWith("/")) {
+                    remainingPath = remainingPath.substring(1);
+                }
+
+                // 返回剩余部分的第一个节点（以 / 为分隔符）
+                int nextSlashIndex = remainingPath.indexOf('/');
+                if (nextSlashIndex != -1) {
+                    return remainingPath.substring(0, nextSlashIndex);
+                } else {
+                    // 如果没有 /，说明这就是最后的节点
+                    return remainingPath;
+                }
+            }
+        }
+
+        // 如果 path 不是以 basePath 开头，返回 null 或者处理异常
+        return null;
+    }
+
+    /**
+     * 判断path是否是basePath的下级路径
+     * @param basePath
+     * @param path
+     * @return
+     */
+    public static boolean isNextLevelPath(String basePath, String path) {
+        if (basePath.isEmpty()) {
+            // 如果 basePath 为空，判断 path 是否是单层路径（没有 /）
+            return !path.contains("/");
+        }
+        int baseDepth = basePath.split("/").length;
+        // 判断是否以 basePath + "/" 开头，且层级是 baseDepth + 1
+        return path.startsWith(basePath + "/") && path.split("/").length == baseDepth + 1;
+    }
+
+    public static String escapeName(String name) {
+        char[] cs = name.toCharArray();
+        boolean changed = false;
+        for (int i = 0; i < cs.length; i++) {
+            char c = cs[i];
+            if (!Character.isJavaIdentifierPart(c) || c == '$') {
+                changed = true;
+                cs[i] = '_';
+            }
+        }
+        return changed ? new String(cs) : name;
     }
 }

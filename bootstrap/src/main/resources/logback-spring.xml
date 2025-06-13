@@ -5,6 +5,15 @@
         <include resource="logback-local.xml"/>
     </springProfile>
 
+    <springProfile name="33893">
+        <include resource="logback-33893.xml"/>
+    </springProfile>
+
+
+    <springProfile name="pride110">
+        <include resource="logback-pride100.xml"/>
+    </springProfile>
+
     <springProfile name="default">
         <include resource="logback-prod.xml"/>
     </springProfile>

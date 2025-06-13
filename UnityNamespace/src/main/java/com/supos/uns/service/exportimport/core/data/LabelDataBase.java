@@ -1,6 +1,7 @@
 package com.supos.uns.service.exportimport.core.data;
 
 import com.alibaba.excel.annotation.ExcelProperty;
+import com.supos.uns.service.exportimport.core.data.ExportImportData;
 import lombok.Data;
 
 /**

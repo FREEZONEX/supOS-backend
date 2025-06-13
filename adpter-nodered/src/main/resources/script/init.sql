@@ -13,9 +13,10 @@ CREATE TABLE if not exists supos_node_flows (
 CREATE TABLE if not exists supos_node_flow_models (
     parent_id bigint NULL,
 	topic varchar NULL,
+	alias varchar NULL,
 	create_time timestamptz NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX if not exists  idx_topic ON supos_node_flow_models (topic);
+CREATE INDEX if not exists  idx_flow_alias ON supos_node_flow_models (alias);
 
 CREATE TABLE if not exists supos_node_server (
     id varchar NOT NULL PRIMARY KEY,
@@ -37,3 +38,4 @@ CREATE TABLE if not exists supos_node_protocol (
 	update_time timestamptz NULL
 );
 
+alter table supos_node_flow_models add if not exists "alias" varchar(128) NULL;

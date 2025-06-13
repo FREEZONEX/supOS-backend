@@ -20,11 +20,11 @@ public class UnsLabelRefPo {
 
     private Long labelId;
 
-    private String unsId;
+    private Long unsId;
 
     private Date createAt;
 
-    public UnsLabelRefPo(Long labelId, String unsId) {
+    public UnsLabelRefPo(Long labelId, Long unsId) {
         this.labelId = labelId;
         this.unsId = unsId;
     }

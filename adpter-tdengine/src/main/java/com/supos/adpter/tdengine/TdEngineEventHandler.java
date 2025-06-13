@@ -6,18 +6,19 @@ import com.supos.common.SrcJdbcType;
 import com.supos.common.adpater.DataSourceProperties;
 import com.supos.common.adpater.StreamHandler;
 import com.supos.common.adpater.TimeSequenceDataStorageAdapter;
+import com.supos.common.adpater.historyquery.*;
 import com.supos.common.annotation.DateTimeConstraint;
 import com.supos.common.annotation.Description;
 import com.supos.common.dto.*;
 import com.supos.common.enums.FieldType;
 import com.supos.common.enums.StreamWindowType;
-import com.supos.common.event.BatchCreateTableEvent;
-import com.supos.common.event.RemoveTopicsEvent;
-import com.supos.common.event.SaveDataEvent;
+import com.supos.common.event.*;
+import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.ExpressionUtils;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
@@ -25,6 +26,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import java.sql.Timestamp;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -32,6 +34,40 @@ import static com.supos.common.utils.DateTimeUtils.getDateTimeStr;
 
 @Slf4j
 public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
+    final DefaultHistoryQueryService defaultHistoryQueryService;
+
+    public TdEngineEventHandler(JdbcTemplate jdbcTemplate, IUnsDefinitionService unsDefinitionService) {
+        this.jdbcTemplate = jdbcTemplate;
+        dataSourceProperties = (DataSourceProperties) jdbcTemplate.getDataSource();
+        dbName = dataSourceProperties.getSchema();
+        streamHandler = new TdStreamHandler(jdbcTemplate);
+        defaultHistoryQueryService = new DefaultHistoryQueryService(jdbcTemplate, unsDefinitionService, name()) {
+            @Override
+            protected String escape(String name) {
+                return '`' + name + '`';
+            }
+
+            @Override
+            protected String buildHistoryQuerySQL(String ct, String qos, List<Select> selects, String whereSql, HistoryQueryParams params) {
+                return TdEngineEventHandler.this.buildHistoryQuerySQL(ct, qos, selects, whereSql, params);
+            }
+
+            @Override
+            protected String buildGetNearestSQL(String alias, String ctField, boolean lessThanDate, String date) {
+                String dbTable = dbName + "." + escape(alias), CT = escape(ctField);
+                String op, direction;
+                if (lessThanDate) {
+                    op = " < '";
+                    direction = " DESC ";
+                } else {
+                    op = " > '";
+                    direction = " ASC ";
+                }
+                return "select * from " + dbTable + " WHERE " + CT + op + date + "' order by " + CT + direction + " limit 1";
+            }
+        };
+    }
+
     @Override
     public String name() {
         return "TdEngineAdapter";
@@ -53,6 +89,11 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
     }
 
     @Override
+    public JdbcTemplate getJdbcTemplate() {
+        return jdbcTemplate;
+    }
+
+    @Override
     public String execSQL(String sql) {
         if (sql.toLowerCase().startsWith("select")) {
             List<Map> rs = jdbcTemplate.query(sql, new BeanPropertyRowMapper<>(Map.class));
@@ -63,17 +104,66 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
         }
     }
 
+    @Override
+    public HistoryQueryResult queryHistory(HistoryQueryParams params) {
+        return defaultHistoryQueryService.queryHistory(params);
+    }
+
+    //SELECT  first(`timeStamp`)  FROM public.`_wenjian2_844252de0f8a4a6a9d62`
+    //where  `timeStamp`>= '2025-04-22T06:18:53.830z' and  `timeStamp`<= '2025-04-28 15:18:53.830'
+    //INTERVAL(1m) ;
+    //
+    //
+    //SELECT  *  FROM public.`_wenjian2_844252de0f8a4a6a9d62`
+    //where  `timeStamp`>= '2025-04-22T06:18:53.830z' and  `timeStamp`<= '2025-04-28 15:18:53.830'
+    protected String buildHistoryQuerySQL(final String ct, final String qos, List<Select> selects, String whereSql, HistoryQueryParams params) {
+        StringBuilder sql = new StringBuilder(256);
+        sql.append("select ");
+        boolean aggregation = selects.get(0).getFunction() != null;
+        if (aggregation) {
+            sql.append("first(`").append(ct).append("`) AS `#ts`,");
+        } else {
+            sql.append("`").append(ct).append("`,");
+        }
+        for (Select select : selects) {
+            SelectFunction function = select.getFunction();
+            if (function != null) {
+                sql.append(function.name()).append('(');
+            }
+            sql.append('`').append(select.getColumn()).append('`');
+            if (function != null) {
+                sql.append(')');
+            }
+            sql.append(" AS `").append(select.selectName()).append('`').append(',');
+        }
+        if (!aggregation && qos != null) {
+            sql.append('`').append(qos).append('`');
+        } else {
+            sql.setCharAt(sql.length() - 1, ' ');
+        }
+        sql.append(" FROM ").append(dbName).append('.').append('`').append(selects.get(0).getTable()).append('`').append(' ');
+        if (whereSql != null) {
+            sql.append(whereSql);
+        }
+        if (aggregation) {
+            IntervalWindow window = params.getIntervalWindow();
+            String interval = window.getInterval(), offset = window.getOffset();
+            sql.append(" INTERVAL (").append(interval);
+            if (org.apache.commons.lang3.StringUtils.isNotEmpty(offset)) {
+                sql.append(',').append(offset);
+            }
+            sql.append(')').append(' ');
+        }
+        sql.append(" order by ").append(aggregation ? "`#ts`" : '`' + ct + '`')
+                .append(params.isAscOrder() ? " ASC" : " DESC")
+                .append(" LIMIT ").append(params.getOffset()).append(',').append(params.getLimit());
+        return sql.toString();
+    }
+
     private final JdbcTemplate jdbcTemplate;
     private final TdStreamHandler streamHandler;
     private final DataSourceProperties dataSourceProperties;
     private final String dbName;
-
-    public TdEngineEventHandler(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-        dataSourceProperties = (DataSourceProperties) jdbcTemplate.getDataSource();
-        dbName = dataSourceProperties.getSchema();
-        streamHandler = new TdStreamHandler(jdbcTemplate);
-    }
 
 
     @EventListener(classes = BatchCreateTableEvent.class)
@@ -82,6 +172,15 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
     void onCreateTable(BatchCreateTableEvent event) {
         CreateTopicDto[] topics = event.topics.get(SrcJdbcType.TdEngine);
         if (topics != null && event.getSource() != this) {
+            batchCreateTables(topics, true);
+        }
+    }
+
+    @EventListener(classes = UpdateInstanceEvent.class)
+    @Order(5)
+    void onUpdateInstanceEvent(UpdateInstanceEvent event) {
+        CreateTopicDto[] topics = event.topics.stream().filter(t -> Boolean.TRUE.equals(t.getFieldsChanged()) && t.getDataSrcId() == SrcJdbcType.TdEngine).toArray(CreateTopicDto[]::new);
+        if (event.getSource() != this && ArrayUtils.isNotEmpty(topics)) {
             batchCreateTables(topics, true);
         }
     }
@@ -150,7 +249,7 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
             for (SaveDataDto dto : event.topicData) {
                 String[] dbTab = getDbAndTable(dto.getTable());
                 String tableName = dbTab[1];
-                String modelId = dto.getCreateTopicDto().getModelId();
+                Long modelId = dto.getCreateTopicDto().getModelId();
                 List<Map<String, Object>> list = dto.getList();
                 if (modelId != null) {// 写超级表
                     for (Map<String, Object> map : list) {
@@ -185,6 +284,8 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
                     String insertSQL = getInsertSQL(list, dbName, tableName, dto.getFieldDefines());
                     SQLs.add(new TopicSaveInfo(dto, tableName, insertSQL));
                 }
+                dto.getList().clear();
+                dto.setList(null);
             }
             List<List<TopicSaveInfo>> segments = Lists.partition(SQLs, Constants.SQL_BATCH_SIZE);
             for (List<TopicSaveInfo> sqlPairList : segments) {
@@ -209,17 +310,18 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
                         TopologyLog.log(TopologyLog.Node.DATA_PERSISTENCE, TopologyLog.EventCode.ERROR, I18nUtils.getMessage("uns.topology.db.td"));
                         return;
                     }
-                    Map<String, TopicSaveInfo> topics = sqlPairList.stream()
-                            .collect(Collectors.toMap(t -> t.dto.getTopic(), t -> t));
-                    TopologyLog.log(topics.keySet(), TopologyLog.Node.DATA_PERSISTENCE, TopologyLog.EventCode.ERROR, I18nUtils.getMessage("uns.topology.db.td"));
+                    Map<String, TopicSaveInfo> tables = sqlPairList.stream()
+                            .collect(Collectors.toMap(t -> t.dto.getTable(), t -> t));
+                    Set<Long> unsIds = sqlPairList.stream().map(sqlPair -> sqlPair.dto.getId()).collect(Collectors.toSet());
+                    TopologyLog.log(unsIds, TopologyLog.Node.DATA_PERSISTENCE, TopologyLog.EventCode.ERROR, I18nUtils.getMessage("uns.topology.db.td"));
 
                     // 表不存在，重新show tables, 尝试建表
-                    ArrayList<CreateTopicDto> mayBeShouldCreates = new ArrayList<>(topics.size());
-                    for (TopicSaveInfo info : topics.values()) {
+                    ArrayList<CreateTopicDto> mayBeShouldCreates = new ArrayList<>(tables.size());
+                    for (TopicSaveInfo info : tables.values()) {
                         mayBeShouldCreates.add(info.dto.getCreateTopicDto());
                     }
                     try {
-                        procTableConflict(topics.values());
+                        procTableConflict(tables.values());
                         batchCreateTables(mayBeShouldCreates.toArray(new CreateTopicDto[0]), false);
                         jdbcTemplate.batchUpdate(insertSQLs);
                         log.debug("TD retry success!");
@@ -281,7 +383,7 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
         HashSet<String> tables = new HashSet<>(topics.length + 128);
         for (CreateTopicDto dto : topics) {
             String tableName = dto.getTable();
-            String modelId = dto.getModelId();
+            Long modelId = dto.getModelId();
             if (modelId != null) {
                 String supperTable = SUPER_TABLE_PREV + modelId;
                 tables.add(supperTable);
@@ -304,7 +406,7 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
         for (CreateTopicDto dto : topics) {
             String tableName = dto.getTable();
 
-            String modelId = dto.getModelId();
+            Long modelId = dto.getModelId();
             final boolean isStream = dto.getStreamOptions() != null;
             if (!isStream && modelId != null) {
                 String supperTable = SUPER_TABLE_PREV + modelId;
@@ -399,7 +501,7 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
                 FieldDefine curType = curFieldTypes.remove(field);
                 if (curType == null) {
                     delFs.add(field);
-                } else if (oldType != null && !curType.getType().name.equals(oldType)) {
+                } else if (oldType != null && !oldType.equals(getTypeDefine(curType))) {
                     hasTypeChanged = true;
                     break;
                 }
@@ -415,18 +517,18 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
                 }
                 for (Map.Entry<String, FieldDefine> entry : curFieldTypes.entrySet()) {
                     FieldDefine def = entry.getValue();
-                    String field = entry.getKey(), type = fieldType2DBTypeMap.get(def.getType().name);
-                    type = getStringType(def, type);
+                    String field = entry.getKey(), type = getTypeDefine(def);
                     createTableSQLs.add(prev + " ADD COLUMN `" + field + "` " + type);
                 }
             }
         }
     }
 
-    private static String getStringType(FieldDefine def, String type) {
+    static String getTypeDefine(FieldDefine def) {
+        String type = fieldType2DBTypeMap.get(def.getType().name).toLowerCase();
         Integer len = def.getMaxLen();
         if (len != null && def.getType() == FieldType.STRING) {
-            type = "NCHAR(" + len + ")";
+            type = "VARCHAR(" + len + ")";
         }
         return type;
     }
@@ -441,28 +543,21 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
         return new String[]{dbName, tableName};
     }
 
-    static final Map<String, String> fieldType2DBTypeMap = new HashMap<>(8);
-    static final Map<String, String> dbType2FieldTypeMap = new HashMap<>(8);
+    static final Map<String, String> fieldType2DBTypeMap;
 
     static {
+        Map<String, String> _fieldType2DBTypeMap = new HashMap<>(16);
         // {"int", "long", "float", "string", "boolean", "datetime"}
-        fieldType2DBTypeMap.put(FieldType.INT.name, "INT");
-        fieldType2DBTypeMap.put(FieldType.LONG.name, "BIGINT");
-        fieldType2DBTypeMap.put(FieldType.FLOAT.name, "FLOAT");
-        fieldType2DBTypeMap.put(FieldType.DOUBLE.name, "DOUBLE");
-        fieldType2DBTypeMap.put(FieldType.STRING.name, "NCHAR(255)");
-        fieldType2DBTypeMap.put(FieldType.BOOLEAN.name, "BOOL");
-        fieldType2DBTypeMap.put(FieldType.DATETIME.name, "TIMESTAMP");
-
-        for (Map.Entry<String, String> entry : fieldType2DBTypeMap.entrySet()) {
-            String ft = entry.getKey(), dt = entry.getValue();
-            int q = dt.indexOf('(');
-            if (q > 0) {
-                dt = dt.substring(0, q);
-            }
-            dbType2FieldTypeMap.put(dt.toUpperCase(), ft);
-        }
-        dbType2FieldTypeMap.put("VARCHAR", FieldType.STRING.name);
+        _fieldType2DBTypeMap.put(FieldType.INT.name, "INT");
+        _fieldType2DBTypeMap.put(FieldType.LONG.name, "BIGINT");
+        _fieldType2DBTypeMap.put(FieldType.FLOAT.name, "FLOAT");
+        _fieldType2DBTypeMap.put(FieldType.DOUBLE.name, "DOUBLE");
+        _fieldType2DBTypeMap.put(FieldType.STRING.name, "VARCHAR(255)");
+        _fieldType2DBTypeMap.put(FieldType.BOOLEAN.name, "BOOL");
+        _fieldType2DBTypeMap.put(FieldType.DATETIME.name, "TIMESTAMP");
+        _fieldType2DBTypeMap.put(FieldType.BLOB.name, "VARCHAR(512)");
+        _fieldType2DBTypeMap.put(FieldType.LBLOB.name, "VARCHAR(512)");
+        fieldType2DBTypeMap = _fieldType2DBTypeMap;
     }
 
 
@@ -471,14 +566,13 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
         builder.append("create ").append(isSupperTable ? "STABLE" : "table")
                 .append(" IF NOT EXISTS ").append(db).append(".`").append(tableName).append("` (");
         for (FieldDefine def : fields) {
-            String type = fieldType2DBTypeMap.get(def.getType().name.toLowerCase());
+            String type = getTypeDefine(def);
             String name = def.getName();
             if (!"tbname".equals(name)) {
                 builder.append('`').append(name).append("` ");
             } else {
                 builder.append(name).append(' ');
             }
-            type = getStringType(def, type);
             builder.append(type);
             builder.append(',');
         }
@@ -589,9 +683,10 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
         }
 
         String timeCol = "";
-        String[] uks = fieldDefines.getUniqueKeys();
-        if (uks != null && uks.length > 0 && !columns.contains(uks[0])) {
-            columns.add(timeCol = uks[0]);
+        Set<String> uks = fieldDefines.getUniqueKeys();
+        String firstPk;
+        if (uks != null && !uks.isEmpty() && !columns.contains((firstPk = uks.iterator().next()))) {
+            columns.add(timeCol = firstPk);
             builder.append("`").append(timeCol).append("`,");
         }
         builder.setCharAt(builder.length() - 1, ')');
@@ -646,28 +741,90 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
         }
     }
 
-    static Map<String, TableInfo> listTableInfos(JdbcTemplate template, String db, Collection<String> tables) {
-        StringBuilder sql = new StringBuilder(128 + tables.size() * 64);
-        sql.append("SELECT table_name,table_type, col_name, col_type FROM information_schema.ins_columns WHERE table_name IN(");
-        for (String tableName : tables) {
-            sql.append('\'').append(tableName).append("',");
-        }
-        sql.setCharAt(sql.length() - 1, ')');
-        sql.append(" and db_name = '").append(db).append('\'');
+    static Map<String, TableInfo> listTableInfos(JdbcTemplate template, String db, Collection<String> tablesSet) {
+        Map<String, TableInfo> allMap = new TreeMap<>();
 
-        return template.query(sql.toString(), rs -> {
-            Map<String, TableInfo> map = new TreeMap<>();
-            while (rs.next()) {
-                String tableName = rs.getString(1), tableType = rs.getString(2);
-                String col = rs.getString(3), type = rs.getString(4).toUpperCase();
-                int qs = type.indexOf('(');
-                if (qs > 0) {
-                    type = type.substring(0, qs);
-                }
-                String fieldType = dbType2FieldTypeMap.get(type);
-                map.computeIfAbsent(tableName, k -> new TableInfo(tableType)).fieldTypes.put(col, fieldType);
+        for (List<String> tables : Lists.partition(new ArrayList<>(tablesSet), 999)) {
+            StringBuilder sql = new StringBuilder(128 + tables.size() * 64);
+            sql.append("SELECT table_name,table_type, col_name, col_type FROM information_schema.ins_columns WHERE table_name IN(");
+            for (String tableName : tables) {
+                sql.append('\'').append(tableName).append("',");
             }
-            return map;
-        });
+            sql.setCharAt(sql.length() - 1, ')');
+            sql.append(" and db_name = '").append(db).append('\'');
+            Map<String, TableInfo> map = new HashMap<>(1024);
+            template.query(sql.toString(), rs -> {
+                while (rs.next()) {
+                    String tableName = rs.getString(1), tableType = rs.getString(2);
+                    String col = rs.getString(3), type = rs.getString(4).toUpperCase();
+                    String fieldType = type.toLowerCase();// td 的 col_type 带长度
+                    map.computeIfAbsent(tableName, k -> new TableInfo(tableType)).fieldTypes.put(col, fieldType);
+                }
+                return map;
+            });
+            allMap.putAll(map);
+        }
+        return allMap;
+    }
+
+    @EventListener(classes = QueryDataEvent.class)
+    @Order(3)
+    void onQueryData(QueryDataEvent event) {
+        CreateTopicDto topic = event.getTopicDto();
+        if (topic != null) {
+            if (SrcJdbcType.TdEngine == topic.getDataSrcId() && event.getSource() != this) {
+                StringBuilder sts = new StringBuilder(256);
+
+                String[] dbTab = getDbAndTable(topic.getTable());
+                String tableName = dbTab[1];
+                sts.append("select *").append(" from ").append(dbName).append(".`").append(tableName).append("`");
+
+                if (!CollectionUtils.isEmpty(event.getEqConditions())) {
+                    sts.append(" where ");
+                    for (int i = 0; i < event.getEqConditions().size(); i++) {
+                        sts.append(event.getEqConditions().get(i).getFieldName()).append(" = ").append(event.getEqConditions().get(i).getValue()).append("");
+                        if (i < event.getEqConditions().size() - 1) {
+                            sts.append(" and ");
+                        }
+                    }
+
+                }
+
+                List<Map<String, Object>> values = jdbcTemplate.queryForList(sts.toString());
+                event.setValues(values);
+            }
+        }
+    }
+
+    @EventListener(classes = QueryLastMsgEvent.class)
+    void onQueryLastMsgEvent(QueryLastMsgEvent event) {
+        CreateTopicDto topic = event.uns;
+        if (getJdbcType() == topic.getDataSrcId() && event.getSource() != this) {
+            StringBuilder sql = new StringBuilder(256);
+
+            String[] dbTab = getDbAndTable(topic.getTable());
+            String tableName = dbTab[1];
+            final String ct = topic.getTimestampField();
+            sql.append("select *").append(" from ").append(dbTab[0]).append(".`").append(tableName).append("` ORDER BY `")
+                    .append(ct)
+                    .append("` DESC LIMIT 1");
+            List<Map<String, Object>> values;
+            try {
+                values = jdbcTemplate.queryForList(sql.toString());
+            } catch (Exception ex) {
+                log.warn("查询最新数据失败,尝试建表: " + tableName, ex);
+                CreateTopicDto[] topics = new CreateTopicDto[]{topic};
+                batchCreateTables(topics, true);
+                return;
+            }
+            if (!values.isEmpty()) {
+                Map<String, Object> msg = values.get(0);
+                Object tm = msg.get(ct);
+                if (tm instanceof Timestamp timestamp) {
+                    event.setMsgCreateTime(timestamp.getTime());
+                    event.setLastMessage(msg);
+                }
+            }
+        }
     }
 }

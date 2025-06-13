@@ -1,13 +1,10 @@
 package com.supos.adapter.mqtt.adapter;
 
 import cn.hutool.core.collection.CollectionUtil;
-import com.codahale.metrics.*;
 import com.supos.adapter.mqtt.config.MQTTConfig;
 import com.supos.adapter.mqtt.dto.ConnectionLossRecord;
-import com.supos.adapter.mqtt.dto.LastMessage;
 import com.supos.adapter.mqtt.service.MQTTPublisher;
 import com.supos.adapter.mqtt.service.MessageConsumer;
-import com.supos.adapter.mqtt.util.SuposMqttAsyncClient;
 import com.supos.common.dto.TopologyLog;
 import com.supos.common.utils.I18nUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +13,6 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Set;
@@ -26,8 +22,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static com.codahale.metrics.MetricRegistry.name;
-
 @Slf4j
 @Component
 public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
@@ -36,7 +30,6 @@ public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
 
     private final String clientId;
     private MqttClient mqttClient;
-    private SuposMqttAsyncClient publishClient;
     public final MemoryPersistence memoryPersistence = new MemoryPersistence();
 
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
@@ -72,9 +65,6 @@ public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
             client.connect(options);
             // 设置消息回调
             client.setCallback(this);
-
-            publishClient = new SuposMqttAsyncClient(client.getServerURI(), clientId + ":pub", memoryPersistence);
-            publishClient.connect(options).waitForCompletion();
         } catch (Exception ex) {
             TopologyLog.log(TopologyLog.Node.PULL_MQTT, TopologyLog.EventCode.ERROR, I18nUtils.getMessage("uns.topology.mqtt.init"));
             log.error("Fail to init MqttClient:" + config.getBroker(), ex);
@@ -130,12 +120,7 @@ public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
         return clientId;
     }
 
-    private final LastMessage lastMsg = new LastMessage();
     private final ConnectionLossRecord lossRecord = new ConnectionLossRecord();
-
-    public LastMessage getLastMessage() {
-        return lastMsg.clone();
-    }
 
     public ConnectionLossRecord getConnectionLossRecord() {
         return lossRecord.clone();
@@ -164,17 +149,12 @@ public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
 
     @Override
     public void messageArrived(String topic, MqttMessage message) {
-        requestCounter.inc();
-        timer.time();
-        String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
-        lastMsg.update(topic, message.getId(), payload); // update metric
-        log.trace("messageArrived[{}] {}", topic, payload);
         arrivedSize.incrementAndGet();
         try {
-            messageConsumer.onMessage(topic, message.getId(), payload);
+            messageConsumer.onMessage(topic, message.getId(), message.getPayload());
         } catch (Throwable ex) {
             TopologyLog.log(TopologyLog.Node.PULL_MQTT, TopologyLog.EventCode.ERROR, I18nUtils.getMessage("uns.topology.mqtt.consume"));
-            log.error("messageConsumeErr: topic=" + topic + ", payload=" + payload, ex);
+            log.error("messageConsumeErr: topic=" + topic + ", payload=" + new String(message.getPayload()), ex);
         }
     }
 
@@ -186,8 +166,8 @@ public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
     @Override
     public void publishMessage(String topic, byte[] msg, int qos) throws MqttException {
         MqttMessage message = new MqttMessage(msg);
-//        message.setQos(qos);
-        publishClient.publishAsync(topic, message);
+        message.setQos(qos);
+        mqttClient.publish(topic, message);
     }
 
     @Override
@@ -239,25 +219,4 @@ public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
         }
     }
 
-    private final MetricRegistry metrics = new MetricRegistry();
-    private final Counter requestCounter = metrics.counter("requests");
-    final Histogram throughputHistogram = metrics.histogram(name(getClass(), "result-counts"));
-    Timer timer = metrics.timer("request-timer");
-
-    {
-        AtomicLong last = new AtomicLong();
-        scheduledExecutorService.scheduleAtFixedRate(() -> {
-            long count = requestCounter.getCount();
-            long requestsInLastSecond = count - last.get();
-            last.set(count);
-            throughputHistogram.update(requestsInLastSecond);
-            publishClient.flush();
-        }, 1, 1, TimeUnit.SECONDS);
-    }
-
-
-    public double[] statisticsThroughput() {
-        Snapshot snapshot = throughputHistogram.getSnapshot();
-        return new double[]{snapshot.getMin(), snapshot.getMax(), snapshot.get75thPercentile(), snapshot.get95thPercentile(), snapshot.get999thPercentile()};
-    }
 }

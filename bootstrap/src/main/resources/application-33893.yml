@@ -1,0 +1,117 @@
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+  api-docs:
+    path: /swagger-ui/v3/api-docs
+grpc:
+  server:
+    port: 19099
+  thread-pool:
+    core-size: 16      # 核心线程数（建议为 CPU核数 × 2）
+    max-size: 64       # 最大线程数（建议为 CPU核数 × 4）
+    queue-capacity: 200 # 队列容量
+    keep-alive-time: 60 # 线程空闲存活时间（秒）
+spring:
+  application:
+    name: backend-server
+  main:
+    allow-circular-references: true
+  mvc:
+    pathmatch:
+      matching-strategy: ANT_PATH_MATCHER
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  datasource:
+    url: jdbc:postgresql://100.100.100.22:33890/postgres?currentSchema=supos
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    dynamic:
+      primary: supos   #supos设置为默认数据源
+      strict: false
+      datasource:
+        supos:
+          url: jdbc:postgresql://100.100.100.22:33890/postgres?currentSchema=supos
+          username: postgres
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        keycloak:
+          url: jdbc:postgresql://100.100.100.22:33890/keycloak?currentSchema=public
+          username: postgres
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+  batch:
+    jdbc:
+      initializeSchema: ALWAYS
+      schema: classpath*:script/*.sql
+  messages:
+    basename: i18n/messages
+    encoding: UTF-8
+mybatis:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.supos.**.dao.po
+  configuration:
+    map-underscore-to-camel-case: true
+kong:
+  host: kong
+  port: 8001
+node-red:
+  host: 100.100.100.20
+  port: 31013
+hasura:
+  url: ${HASURA_URL:http://office.unibutton.com:11488/hasura/home/v1/metadata}
+mybatis-plus:
+  type-handlers-package: com.supos.uns.config
+  configuration:
+    # 开启下划线转驼峰
+    map-underscore-to-camel-case: true
+    # 指定默认枚举类型的类型转换器
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    # 开启/关闭 banner 打印
+    banner: false
+    db-config:
+      # 逻辑删除（软删除）
+      logic-delete-value: NOW()
+      logic-not-delete-value: 'NULL'
+  # mapper路径位置
+  mapper-locations: classpath*:mapper/*.xml
+oauth:
+  keycloak:
+    client-name: ${OAUTH_CLIENT_NAME:supos}
+    client-id: ${OAUTH_CLIENT_ID:supos}
+    client-secret: ${OAUTH_CLIENT_SECRET:VaOS2makbDhJJsLlYPt4Wl87bo9VzXiO}
+    authorization-grant-type: ${OAUTH_GRANT_TYPE:authorization_code}
+    redirect-uri: ${OAUTH_REDIRECT_URI:http://office.unibutton.com:11488/inter-api/supos/auth/code}
+    supos-home: ${OAUTH_SUPOS_HOME:http://office.unibutton.com:11488/home}
+    issuer-uri: ${OAUTH_ISSUER_URI:http://office.unibutton.com:11488/keycloak/home/auth}
+    # 刷新token的时间 单位：秒 token小于这个时间会调用refreshToken接口刷新
+    refresh-token-time: ${OAUTH_REFRESH_TOKEN_TIME:600}
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://office.unibutton.com:11490}
+  accessKey: ${MINIO_ACCESSKEY:admin}
+  secreKey: ${MINIO_SECREKEY:adminpassword}
+camunda:
+  bpm:
+    database:
+      type: postgres
+    admin-user:
+      id: admin  #用户名
+      password: Supos@1304  #密码
+    generic-properties:
+      properties:
+        enforceHistoryTimeToLive: false
+        data-source-name: camundaDataSource
+  datasource:
+    url: jdbc:postgresql://100.100.100.22:33890/camunda?currentSchema=public
+    driver-class-name: org.postgresql.Driver
+    username: postgres
+    password: postgres
+    hikari:
+      pool-name: CamundaDataSource
+      maximum-pool-size: 1
+      leak-detection-threshold: 60000

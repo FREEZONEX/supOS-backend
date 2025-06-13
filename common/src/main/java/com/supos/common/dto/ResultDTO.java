@@ -31,6 +31,10 @@ public class ResultDTO<T> implements Serializable {
         return ResultDTO.builder().code(200).msg(msg).build();
     }
 
+    public boolean isSuccess() {
+        return this.code == 200;
+    }
+
     public static <T> ResultDTO fail(String msg) {
         return ResultDTO.builder().code(500).msg(msg).build();
     }

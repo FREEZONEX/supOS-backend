@@ -10,5 +10,5 @@ import java.util.List;
 public class BatchQueryRequest {
 
     @NotNull
-    private List<String> topics;
+    private List<String> aliases;
 }

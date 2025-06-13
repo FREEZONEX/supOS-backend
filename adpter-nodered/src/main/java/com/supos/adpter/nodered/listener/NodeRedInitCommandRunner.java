@@ -4,24 +4,17 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowMapper;
 import com.supos.adpter.nodered.dao.po.NodeFlowPO;
-import com.supos.adpter.nodered.service.ImportNodeRedFlowService;
 import com.supos.adpter.nodered.service.NodeRedAdapterService;
-import com.supos.common.exception.NodeRedException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-
 /**
  * init default flow
  * 移动到node-red服务，通过挂载的方式实现流程初始化
  */
-@Component
+//@Component
 @Slf4j
 public class NodeRedInitCommandRunner implements CommandLineRunner {
 
@@ -60,7 +53,7 @@ public class NodeRedInitCommandRunner implements CommandLineRunner {
     }
 
     private String readDefaultFlowJson(String filepath) {
-        try (InputStream inputStream = ImportNodeRedFlowService.class.getResourceAsStream(filepath);
+        /*try (InputStream inputStream = ImportNodeRedFlowService.class.getResourceAsStream(filepath);
              BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
 
             StringBuilder builder = new StringBuilder();
@@ -72,6 +65,7 @@ public class NodeRedInitCommandRunner implements CommandLineRunner {
         } catch (IOException e) {
             log.error("读取模版文件({})异常", filepath, e);
             throw new NodeRedException(400, "nodered.template.read.error");
-        }
+        }*/
+        return "";
     }
 }

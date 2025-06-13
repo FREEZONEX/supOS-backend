@@ -3,13 +3,14 @@ package com.supos.uns.service.exportimport.core.parser;
 import cn.hutool.core.bean.BeanUtil;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.excel.ExcelFolderDto;
+import com.supos.common.dto.excel.ExcelUnsWrapDto;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import com.supos.uns.service.exportimport.core.data.ExportImportData;
-import com.supos.uns.service.exportimport.core.dto.ExcelFolderDto;
-import com.supos.uns.service.exportimport.core.dto.ExcelUnsWrapDto;
+import com.supos.uns.service.exportimport.core.parser.AbstractParser;
 import jakarta.validation.ConstraintViolation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -37,7 +38,6 @@ public class FolderParser extends AbstractParser {
         ExcelFolderDto excelFolderDto = BeanUtil.copyProperties(dataMap, ExcelFolderDto.class);
         excelFolderDto.setBatch(batch);
         excelFolderDto.setIndex(index);
-        excelFolderDto.setAlias(StringUtils.isNotBlank(excelFolderDto.getAlias()) ? excelFolderDto.getAlias() : PathUtil.generateAlias(excelFolderDto.getPath(),0));
         excelFolderDto.trim();
         String batchIndex = excelFolderDto.gainBatchIndex();
 
@@ -55,8 +55,12 @@ public class FolderParser extends AbstractParser {
                 return;
             }
         }
-
+        excelFolderDto.setAlias(StringUtils.isNotBlank(excelFolderDto.getAlias()) ? excelFolderDto.getAlias() : PathUtil.generateAlias(excelFolderDto.getPath(),0));
         CreateTopicDto createTopicDto = excelFolderDto.createTopic();
+        if (StringUtils.length(createTopicDto.getName()) > 63) {
+            context.addError(batchIndex, I18nUtils.getMessage("uns.folder.length.limit.exceed", 63));
+            return;
+        }
         ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(batchIndex, createTopicDto);
 
         if (context.getPathInExcel().contains(excelFolderDto.getPath())) {
@@ -88,7 +92,7 @@ public class FolderParser extends AbstractParser {
         }
 
 
-        //createTopicDto.setPathType(0);
+        createTopicDto.setPathType(0);
         createTopicDto.setDataType(excelType.getDataType());
 
         context.getUnsList().add(wrapDto);
@@ -107,7 +111,6 @@ public class FolderParser extends AbstractParser {
         ExcelFolderDto excelFolderDto = BeanUtil.copyProperties(data, ExcelFolderDto.class);
         excelFolderDto.setBatch(batch);
         excelFolderDto.setIndex(index);
-        excelFolderDto.setAlias(StringUtils.isNotBlank(excelFolderDto.getAlias()) ? excelFolderDto.getAlias() : PathUtil.generateAlias(excelFolderDto.getPath(),0));
         excelFolderDto.trim();
         String batchIndex = excelFolderDto.gainBatchIndex();
 
@@ -125,7 +128,7 @@ public class FolderParser extends AbstractParser {
                 return;
             }
         }
-
+        excelFolderDto.setAlias(StringUtils.isNotBlank(excelFolderDto.getAlias()) ? excelFolderDto.getAlias() : PathUtil.generateAlias(excelFolderDto.getPath(),0));
         CreateTopicDto createTopicDto = excelFolderDto.createTopic();
         ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(batchIndex, createTopicDto);
 
@@ -158,7 +161,7 @@ public class FolderParser extends AbstractParser {
         }
 
 
-        //createTopicDto.setPathType(0);
+        createTopicDto.setPathType(0);
         createTopicDto.setDataType(excelType.getDataType());
 
         context.getUnsList().add(wrapDto);

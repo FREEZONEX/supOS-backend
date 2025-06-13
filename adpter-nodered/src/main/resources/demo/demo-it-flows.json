@@ -1,0 +1,453 @@
+[
+    {
+        "id": "d9a1b261853151c1",
+        "type": "inject",
+        "z": "22c04f3d8846bb9f",
+        "name": "timer",
+        "props": [],
+        "repeat": "10",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 200,
+        "y": 80,
+        "wires": [
+            [
+                "fdcc0c9cada324f2"
+            ]
+        ]
+    },
+    {
+        "id": "fdcc0c9cada324f2",
+        "type": "http request",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://nodered:1880/mock/order/statistics?type=1",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "valueValue": "",
+                "keyValue": "",
+                "valueType": "application/json",
+                "keyType": "Content-Type"
+            }
+        ],
+        "x": 430,
+        "y": 80,
+        "wires": [
+            [
+                "616db247403f105b"
+            ]
+        ]
+    },
+    {
+        "id": "616db247403f105b",
+        "type": "mqtt out",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "topic": "ElectricalFactory1/SalesDepartment/Orders/OrderStatistics/Statistics-SKU",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "85bb67b2dbefe3ba",
+        "x": 900,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "43a45f30ffeb931a",
+        "type": "inject",
+        "z": "22c04f3d8846bb9f",
+        "name": "timer",
+        "props": [],
+        "repeat": "10",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 200,
+        "y": 160,
+        "wires": [
+            [
+                "451c6b7ce2a7b535"
+            ]
+        ]
+    },
+    {
+        "id": "451c6b7ce2a7b535",
+        "type": "http request",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://nodered:1880/mock/order/statistics?type=2",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "valueValue": "",
+                "keyValue": "",
+                "valueType": "application/json",
+                "keyType": "Content-Type"
+            }
+        ],
+        "x": 430,
+        "y": 160,
+        "wires": [
+            [
+                "13818dc6a6cc88d0"
+            ]
+        ]
+    },
+    {
+        "id": "13818dc6a6cc88d0",
+        "type": "mqtt out",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "topic": "ElectricalFactory1/SalesDepartment/Orders/OrderStatistics/Statistics-CustomerAndSKU",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "85bb67b2dbefe3ba",
+        "x": 950,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "f910ec2b0fd8ec92",
+        "type": "inject",
+        "z": "22c04f3d8846bb9f",
+        "name": "timer",
+        "props": [],
+        "repeat": "10",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 200,
+        "y": 240,
+        "wires": [
+            [
+                "c137260ed00e5520"
+            ]
+        ]
+    },
+    {
+        "id": "c137260ed00e5520",
+        "type": "http request",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://nodered:1880/mock/order/statistics?type=4",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "valueValue": "",
+                "keyValue": "",
+                "valueType": "application/json",
+                "keyType": "Content-Type"
+            }
+        ],
+        "x": 430,
+        "y": 240,
+        "wires": [
+            [
+                "7b10b443927091c5"
+            ]
+        ]
+    },
+    {
+        "id": "7b10b443927091c5",
+        "type": "mqtt out",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "topic": "ElectricalFactory1/SalesDepartment/Orders/OrderStatistics/Statistics-TotalOrders",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "85bb67b2dbefe3ba",
+        "x": 920,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "70c626c26872e6e3",
+        "type": "inject",
+        "z": "22c04f3d8846bb9f",
+        "name": "timer",
+        "props": [],
+        "repeat": "10",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 200,
+        "y": 320,
+        "wires": [
+            [
+                "4fc9257c7f05eb21"
+            ]
+        ]
+    },
+    {
+        "id": "4fc9257c7f05eb21",
+        "type": "http request",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://nodered:1880/mock/order/statistics?type=5",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "valueValue": "",
+                "keyValue": "",
+                "valueType": "application/json",
+                "keyType": "Content-Type"
+            }
+        ],
+        "x": 430,
+        "y": 320,
+        "wires": [
+            [
+                "9c81862274b8fb09"
+            ]
+        ]
+    },
+    {
+        "id": "9c81862274b8fb09",
+        "type": "mqtt out",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "topic": "ElectricalFactory1/SalesDepartment/Orders/OrderStatistics/Statistics-OrderAmount",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "85bb67b2dbefe3ba",
+        "x": 930,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "d0276037ae378e6e",
+        "type": "inject",
+        "z": "22c04f3d8846bb9f",
+        "name": "timer",
+        "props": [],
+        "repeat": "10",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 200,
+        "y": 400,
+        "wires": [
+            [
+                "ec9997d9e280b5b8"
+            ]
+        ]
+    },
+    {
+        "id": "ec9997d9e280b5b8",
+        "type": "http request",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://nodered:1880/mock/order/statistics?type=3",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "valueValue": "",
+                "keyValue": "",
+                "valueType": "application/json",
+                "keyType": "Content-Type"
+            }
+        ],
+        "x": 430,
+        "y": 400,
+        "wires": [
+            [
+                "218f4ef5c78ff0d9"
+            ]
+        ]
+    },
+    {
+        "id": "218f4ef5c78ff0d9",
+        "type": "mqtt out",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "topic": "ElectricalFactory1/SalesDepartment/Orders/OrderStatistics/Statistics-UnclaimedMaterials",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "85bb67b2dbefe3ba",
+        "x": 950,
+        "y": 400,
+        "wires": []
+    },
+    {
+        "id": "a5a07403406a9a6f",
+        "type": "inject",
+        "z": "22c04f3d8846bb9f",
+        "name": "timer",
+        "props": [],
+        "repeat": "10",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 200,
+        "y": 480,
+        "wires": [
+            [
+                "5226b7f8f3a89a28"
+            ]
+        ]
+    },
+    {
+        "id": "5226b7f8f3a89a28",
+        "type": "http request",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://backend:8080/inter-api/supos/example/mock/restapi/order",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "valueValue": "",
+                "keyValue": "",
+                "valueType": "application/json",
+                "keyType": "Content-Type"
+            }
+        ],
+        "x": 430,
+        "y": 480,
+        "wires": [
+            [
+                "e993216edd138aec"
+            ]
+        ]
+    },
+    {
+        "id": "e993216edd138aec",
+        "type": "mqtt out",
+        "z": "22c04f3d8846bb9f",
+        "name": "",
+        "topic": "ElectricalFactory1/SalesDepartment/Orders/ProductionOrders",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "85bb67b2dbefe3ba",
+        "x": 870,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "85bb67b2dbefe3ba",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "emqx",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    }
+]

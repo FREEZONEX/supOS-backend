@@ -7,13 +7,14 @@ import java.util.Map;
 
 @Data
 public class TopicMessage {
-    String topic;
+    Long id;
     List<Map<String, Object>> msg;
 
-    public TopicMessage(){
+    public TopicMessage() {
     }
-    public TopicMessage(String topic, List<Map<String, Object>> msg) {
-        this.topic = topic;
+
+    public TopicMessage(Long id, List<Map<String, Object>> msg) {
+        this.id = id;
         this.msg = msg;
     }
 }
