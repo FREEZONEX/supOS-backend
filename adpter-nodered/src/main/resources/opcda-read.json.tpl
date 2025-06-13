@@ -46,9 +46,9 @@
         "id_server": "$id_opcda_server",
         "type": "supmodel",
         "z": "",
-        "selectedModel": "$select_model",
-        "modelSchema": "$schema_json_string",
-        "modelMapping": "$mapping_string",
+        "protocol": "opcda",
+        "models": [],
+        "mappings": "",
         "x": 710,
         "y": 260,
         "wires": [

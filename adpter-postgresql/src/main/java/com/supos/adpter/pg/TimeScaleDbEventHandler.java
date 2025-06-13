@@ -6,19 +6,17 @@ import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.adpater.StreamHandler;
 import com.supos.common.adpater.TimeSequenceDataStorageAdapter;
+import com.supos.common.adpater.historyquery.*;
 import com.supos.common.annotation.Description;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.SaveDataDto;
 import com.supos.common.dto.TopologyLog;
-import com.supos.common.enums.FieldType;
-import com.supos.common.event.BatchCreateTableEvent;
-import com.supos.common.event.RemoveTopicsEvent;
-import com.supos.common.event.SaveDataEvent;
+import com.supos.common.event.*;
+import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.DbTableNameUtils;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.JsonUtil;
-import com.supos.common.utils.PostgresqlTypeUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.context.event.EventListener;
@@ -27,18 +25,55 @@ import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.CollectionUtils;
 
-import java.sql.Types;
+import java.sql.Timestamp;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.supos.adpter.pg.PostgresqlEventHandler.getCreateTableSQL;
-import static com.supos.adpter.pg.PostgresqlEventHandler.getInsertSQL;
+import static com.supos.adpter.pg.PostgresqlEventHandler.*;
 
 @Slf4j
 public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSequenceDataStorageAdapter {
+    DefaultHistoryQueryService defaultHistoryQueryService;
 
-    public TimeScaleDbEventHandler(JdbcTemplate jdbcTemplate) {
+    public TimeScaleDbEventHandler(JdbcTemplate jdbcTemplate, IUnsDefinitionService unsDefinitionService) {
         super(jdbcTemplate);
+        defaultHistoryQueryService = new DefaultHistoryQueryService(jdbcTemplate, unsDefinitionService, name()) {
+            @Override
+            protected String escape(String name) {
+                return '"' + name + '"';
+            }
+
+            @Override
+            protected String buildHistoryQuerySQL(String ct, String qos, List<Select> selects, String whereSql, HistoryQueryParams params) {
+                return TimeScaleDbEventHandler.this.buildHistoryQuerySQL(unsDefinitionService, ct, qos, selects, whereSql, params);
+            }
+
+            @Override
+            protected String buildGetNearestSQL(String alias, String ctField, boolean lessThanDate, String date) {
+                CreateTopicDto def = unsDefinitionService.getDefinitionByAlias(alias);
+                String table = def.getTable();
+                String dbTable = currentSchema + "." + escape(table), CT = escape(ctField);
+                String select, op;
+                if (lessThanDate) {
+                    select = " = (SELECT MAX(";
+                    op = " < '";
+                } else {
+                    select = " = (SELECT MIN(";
+                    op = " > '";
+                }
+                StringBuilder s = new StringBuilder(256).append("select * from ").append(dbTable);
+                s.append(" where ");
+                String tbf = def.getTbFieldName();
+                String extFilter = "";
+                if (tbf != null) {
+                    extFilter = " \"" + tbf + "\" = '" + alias + "' and ";
+                    s.append(extFilter);
+                }
+                s.append(CT).append(select).append(CT).append(") FROM ").append(dbTable)
+                        .append(" WHERE ").append(extFilter).append(CT).append(op).append(date).append("')");
+                return s.toString();
+            }
+        };
     }
 
     @Override
@@ -57,6 +92,11 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
     }
 
     @Override
+    public JdbcTemplate getJdbcTemplate() {
+        return jdbcTemplate;
+    }
+
+    @Override
     public String execSQL(String sql) {
         if (sql.toLowerCase().startsWith("select")) {
             List<Map> rs = jdbcTemplate.query(sql, new BeanPropertyRowMapper<>(Map.class));
@@ -67,13 +107,93 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
         }
     }
 
+    /**
+     * SELECT
+     * time_bucket('5m', _ct, '10s') AS ts,
+     * first(t0,_ct) FILTER(WHERE t0 IS NOT NULL)  ,
+     * last(t0,_ct)  ,
+     * AVG(t0),sum(t0),min(t0),max(t0)
+     * FROM public.dddd_00906721e779632aa8f51f7e4e50f1f7
+     * group by ts order by ts;
+     *
+     * @param params 查询参数
+     * @return
+     */
+    @Override
+    public HistoryQueryResult queryHistory(HistoryQueryParams params) {
+        return defaultHistoryQueryService.queryHistory(params);
+    }
+
+    protected String buildHistoryQuerySQL(IUnsDefinitionService unsDefinitionService,
+                                          final String ct, final String qos, List<Select> selects, String whereSql, HistoryQueryParams params) {
+        StringBuilder sql = new StringBuilder(256);
+        sql.append("select ");
+        boolean aggregation = selects.get(0).getFunction() != null;
+        if (aggregation) {
+            //time_bucket('5m', _ct, '10s') AS "#ts"
+            IntervalWindow window = params.getIntervalWindow();
+            String interval = window.getInterval(), offset = window.getOffset();
+            sql.append(" time_bucket ('").append(interval).append("', \"").append(ct).append("\"");
+            if (org.apache.commons.lang3.StringUtils.isNotEmpty(offset)) {
+                sql.append(",'").append(offset).append('\'').append("::INTERVAL");
+            }
+            sql.append(") AS \"#ts\", ");
+        } else {
+            sql.append('"').append(ct).append("\",");
+        }
+        for (Select select : selects) {
+            SelectFunction function = select.getFunction();
+            if (function != null) {
+                sql.append(function.name()).append('(');
+            }
+            sql.append('"').append(select.getColumn()).append('"');
+            if (function != null) {
+                if (function == SelectFunction.First || function == SelectFunction.Last) {
+                    sql.append(',').append('"').append(ct).append('"');
+                }
+                sql.append(')');
+            }
+            sql.append(" AS \"").append(select.selectName()).append('"').append(',');
+        }
+        if (!aggregation && qos != null) {
+            sql.append('"').append(qos).append('"');
+        } else {
+            sql.setCharAt(sql.length() - 1, ' ');
+        }
+        String alias = selects.get(0).getTable();
+        CreateTopicDto def = unsDefinitionService.getDefinitionByAlias(alias);
+        String tbf = def.getTbFieldName();
+        String tableName = alias, extFilter = null;
+        if (tbf != null) {
+            extFilter = " \"" + tbf + "\" = '" + alias + "' ";
+            tableName = def.getTable();
+        }
+        sql.append(" FROM ").append('"').append(tableName).append('"').append(' ');
+        if (whereSql != null) {
+            sql.append(whereSql);
+            if (extFilter != null) {
+                sql.append(" AND ").append(extFilter);
+            }
+        } else if (extFilter != null) {
+            sql.append(" WHERE ").append(extFilter);
+        }
+        if (aggregation) {
+            sql.append(" GROUP BY \"#ts\" ");
+        }
+        sql.append(" order by ").append(aggregation ? "\"#ts\"" : '"' + ct + '"')
+                .append(params.isAscOrder() ? " ASC" : " DESC")
+                .append(" LIMIT ").append(params.getLimit()).append(" OFFSET ").append(params.getOffset());
+        return sql.toString();
+    }
+
     @EventListener(classes = BatchCreateTableEvent.class)
     @Order(9)
     @Description("uns.create.task.name.tmsc")
     public void onBatchCreateTableEvent(BatchCreateTableEvent event) {
         CreateTopicDto[] topics;
         if (event.getSource() != this && ArrayUtils.isNotEmpty(topics = event.topics.get(SrcJdbcType.TimeScaleDB))) {
-            super.doTx(() -> batchCreateTables(topics));
+            Map<String, TableInfo> tableInfoMap = listTableInfos(topics);
+            super.doTx(() -> batchCreateTables(topics, tableInfoMap));
         }
     }
 
@@ -103,12 +223,19 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
     void onSaveData(SaveDataEvent event) {
         if (SrcJdbcType.TimeScaleDB == event.jdbcType && ArrayUtils.isNotEmpty(event.topicData) && event.getSource() != this) {
             ArrayList<Pair<SaveDataDto, String>> SQLs = new ArrayList<>(2 * event.topicData.length);
-            for (SaveDataDto dto : event.topicData) {
-                String table = DbTableNameUtils.getFullTableName(dto.getTable());
-                for (List<Map<String, Object>> list : Lists.partition(dto.getList(), Constants.SQL_BATCH_SIZE)) {
-                    String insertSQL = getInsertSQL(list, table, dto.getFieldDefines());
-                    SQLs.add(Pair.of(dto, insertSQL));
+            try {
+                for (SaveDataDto dto : event.topicData) {
+                    String table = DbTableNameUtils.getFullTableName(dto.getTable());
+                    List<Map<String, Object>>[] listList = Lists.partition(dto.getList(), Constants.SQL_BATCH_SIZE).toArray(new List[0]);
+                    for (List<Map<String, Object>> list : listList) {
+                        List<String> saveOrUpdateSQLs = getSaveOrUpdateSQLs(list, table, dto);
+                        for (String saveOrUpdateSQL : saveOrUpdateSQLs) {
+                            SQLs.add(Pair.of(dto, saveOrUpdateSQL));
+                        }
+                    }
                 }
+            } catch (Throwable ex) {
+                log.error("tsdb onSaveData SQLErr", ex);
             }
             List<List<Pair<SaveDataDto, String>>> segments = Lists.partition(SQLs, Constants.SQL_BATCH_SIZE);
             for (List<Pair<SaveDataDto, String>> sqlPairList : segments) {
@@ -118,30 +245,93 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
                 try {
                     jdbcTemplate.batchUpdate(sqlArray);
                 } catch (Exception ex) {
-                    Set<String> topics = sqlPairList.stream().map(s -> s.getKey().getTopic()).collect(Collectors.toSet());
-                    TopologyLog.log(topics, TopologyLog.Node.DATA_PERSISTENCE, TopologyLog.EventCode.ERROR, I18nUtils.getMessage("uns.topology.db.pg"));
-                    CreateTopicDto[] dtos = sqlPairList.stream().map(s -> s.getKey().getCreateTopicDto())
-                            .toArray(CreateTopicDto[]::new);
-                    log.error("PgTimeScale 写入失败: {}, {}", ex.getMessage(), sqlList);
-                    try {
-                        batchCreateTables(dtos);
-                        jdbcTemplate.batchUpdate(sqlArray);
-                        log.debug("retry success!");
-                    } catch (Exception rex) {
-                        log.error("PgTimeScale 写入 re失败:" + topics, rex);
+                    Set<Long> unsIds = sqlPairList.stream().map(s -> s.getKey().getId()).collect(Collectors.toSet());
+                    TopologyLog.log(unsIds, TopologyLog.Node.DATA_PERSISTENCE, TopologyLog.EventCode.ERROR, I18nUtils.getMessage("uns.topology.db.pg"));
+                    log.error("PgTimeScale 写入失败", ex);
+                    Throwable cause = ex, tmp;
+                    while ((tmp = cause.getCause()) != null) {
+                        cause = tmp;
+                    }
+                    String msg = cause.getMessage();
+                    if (msg != null && msg.contains("does not exist")) {
+                        CreateTopicDto[] dtos = sqlPairList.stream().map(s -> s.getKey().getCreateTopicDto())
+                                .toArray(CreateTopicDto[]::new);
+                        try {
+                            Map<String, TableInfo> tableInfoMap = listTableInfos(dtos);
+                            batchCreateTables(dtos, tableInfoMap);
+                            jdbcTemplate.batchUpdate(sqlArray);
+                            log.debug("retry success!");
+                        } catch (Exception rex) {
+                            log.error("PgTimeScale 写入 re失败:" + unsIds, rex);
+                        }
                     }
                 }
             }
         }
     }
 
-    void batchCreateTables(CreateTopicDto[] topics) {
+    static List<String> getSaveOrUpdateSQLs(List<Map<String, Object>> list, String table, SaveDataDto saveDataDto) {
+
+        Set<String> pks = saveDataDto.getFieldDefines().getUniqueKeys();
+        if (pks == null || pks.isEmpty()) {
+            return List.of(getInsertSQL(list, table, saveDataDto, true));
+        }
+        final boolean FIRST_MSG = list.get(0).containsKey(Constants.FIRST_MSG_FLAG);
+        FieldDefine[] columns = saveDataDto.getCreateTopicDto().getFields();
+        ArrayList<String> sqls = new ArrayList<>(list.size());
+        Iterator<Map<String, Object>> itr = list.iterator();
+        while (itr.hasNext()) {
+            Map<String, Object> bean = itr.next();
+            if (!bean.containsKey(Constants.MERGE_FLAG)) {
+                continue;
+            }
+            StringBuilder whereExpression = new StringBuilder(255);
+            StringBuilder builder = new StringBuilder(255);
+            builder.append("UPDATE ").append(table).append(" SET ");
+            boolean hasField = false;
+            for (FieldDefine define : columns) {
+                String f = define.getName();
+                Object val = bean.get(f);
+                val = getFieldValue(define.getType(), val);
+                if (pks.contains(f)) {
+                    whereExpression.append('"').append(f).append("\"='").append(val).append("' AND ");
+                } else if (val != null) {
+                    hasField = true;
+                    builder.append('"').append(f).append('"').append('=').append('\'').append(val).append("',");
+                }
+            }
+            if (hasField) {
+                builder.setCharAt(builder.length() - 1, ' ');
+                builder.append("WHERE ").append(whereExpression, 0, whereExpression.length() - 5);
+
+                itr.remove();
+                sqls.add(builder.toString());
+            }
+        }
+        if (!list.isEmpty()) {
+            sqls.add(0, getInsertSQL(list, table, saveDataDto, !FIRST_MSG));
+        }
+        return sqls;
+    }
+
+    @EventListener(classes = UpdateInstanceEvent.class)
+    @Order(9)
+    void onUpdateInstanceEvent(UpdateInstanceEvent event) {
+        CreateTopicDto[] topics = event.topics.stream().filter(t -> Boolean.TRUE.equals(t.getFieldsChanged()) && t.getDataSrcId() == SrcJdbcType.TimeScaleDB).toArray(CreateTopicDto[]::new);
+        if (event.getSource() != this && ArrayUtils.isNotEmpty(topics)) {
+            Map<String, TableInfo> tableInfoMap = listTableInfos(topics);
+            super.doTx(() -> batchCreateTables(topics, tableInfoMap));
+        }
+    }
+
+    void batchCreateTables(CreateTopicDto[] topics, Map<String, TableInfo> tableInfoMap) {
         // 批量执行 TimeScaleDB 建表
-        List<String> createTableSQLs = new ArrayList<>(topics.length);
+        ArrayList<String> createTableSQLs = new ArrayList<>(topics.length);
+        HashSet<String> tables = new HashSet<>(tableInfoMap.size());
         for (CreateTopicDto dto : topics) {
             String tableName = dto.getTable();
             String quotationTableName = DbTableNameUtils.getFullTableName(tableName);
-            String createTableSQL = getCreateTableSQL(quotationTableName, dto.getFields());
+            String createTableSQL = getCreateTableSQL(dto, quotationTableName, dto.getFields());
 
             int dot = tableName.indexOf('.');
             String dbName = this.currentSchema;
@@ -149,45 +339,24 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
                 dbName = tableName.substring(0, dot);
                 tableName = tableName.substring(dot + 1);
             }
-            Map<String, String> oldFieldTypes = fieldTypes(dbName, tableName);
-            if (!oldFieldTypes.isEmpty()) {
-                Map<String, FieldDefine> curFieldTypes = Arrays.stream(dto.getFields()).collect(Collectors.toMap(FieldDefine::getName, d -> d));
-
-                boolean hasTypeChanged = false;
-                LinkedList<String> delFs = new LinkedList<>();
-                for (Map.Entry<String, String> entry : oldFieldTypes.entrySet()) {
-                    String field = entry.getKey(), oldType = entry.getValue();
-                    FieldDefine curType = curFieldTypes.remove(field);
-                    if (curType == null) {
-                        delFs.add(field);
-                    } else if (oldType != null && !curType.getType().name.equals(oldType)) {
-                        hasTypeChanged = true;
-                        break;
-                    }
-                }
-                if (hasTypeChanged) {// 修改字段类型的情况则删除表
-                    String dropSQL = "drop table IF EXISTS \"" + dbName + "\".\"" + tableName + '"';
-                    createTableSQLs.add(dropSQL);
-                } else if (!delFs.isEmpty() || !curFieldTypes.isEmpty()) {
-                    // pg 删除或新增字段
-                    final StringBuilder alterSQL = new StringBuilder(128)
-                            .append("ALTER TABLE \"")
-                            .append(dbName).append("\".\"").append(tableName).append('"');
-                    for (String delF : delFs) {
-                        alterSQL.append(" DROP IF EXISTS \"").append(delF).append("\",");
-                    }
-                    for (Map.Entry<String, FieldDefine> entry : curFieldTypes.entrySet()) {
-                        FieldDefine def = entry.getValue();
-                        String field = entry.getKey(), type = fieldType2DBTypeMap.get(def.getType().name);
-                        type = getStringType(def, type);
-                        alterSQL.append(" ADD IF NOT EXISTS \"").append(field).append("\" ").append(type).append(",");
-                    }
-                    createTableSQLs.add(alterSQL.substring(0, alterSQL.length() - 1));
-                }
+            if (!tables.add(tableName)) {//表名去重
+                log.debug("表名已处理：{}, uns={}", tableName, dto.getAlias());
+                continue;
             }
-            createTableSQLs.add(createTableSQL);
-            if (oldFieldTypes.isEmpty()) {
-                createTableSQLs.add("SELECT create_hypertable('" + dbName + ".\"" + tableName + "\"', '" + Constants.SYS_FIELD_CREATE_TIME + "',chunk_time_interval => INTERVAL '1 day')");
+            TableInfo tableInfo = tableInfoMap.get(tableName);
+            final int ch = checkTableModify(dto, dbName, tableName, createTableSQLs, tableInfo);
+
+            // CREATE INDEX idx_ct_BRIN_demoseq ON public.demoseq  USING BRIN ("_ct");
+//            if (ch == MDF_TYPE_CHANGED && dto.getTbFieldName() == null) {
+//                createTableSQLs.add("DROP INDEX if exists idx_ct_BRIN_" + tableName);
+//            }
+            if (ch == MDF_NEW_TABLE || ch == MDF_TYPE_CHANGED) {
+
+                createTableSQLs.add(createTableSQL);
+                String ct = dto.getTimestampField();
+                createTableSQLs.add("SELECT create_hypertable('" + dbName + ".\"" + tableName + "\"', '" + ct + "',chunk_time_interval => INTERVAL '7 day')");
+//                createTableSQLs.add("CREATE INDEX idx_ct_BRIN_" + tableName +
+//                        " ON " + dbName + "." + quotationTableName + " USING BRIN (\"" + ct + "\")");
             }
         }
         log.debug("PgTimeScale CreateTable: {} {}", createTableSQLs.size(), createTableSQLs);
@@ -202,52 +371,72 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
         }
     }
 
-    private static String getStringType(FieldDefine def, String type) {
-        Integer len = def.getMaxLen();
-        if (len != null && def.getType() == FieldType.STRING) {
-            type = "VARCHAR(" + len + ")";
-        }
-        return type;
-    }
 
-    Map<String, String> fieldTypes(String db, String tableName) {
-        String sql = "SELECT column_name, udt_name FROM information_schema.columns WHERE table_name = ? and table_schema = ?";
-        return jdbcTemplate.query(sql, new Object[]{tableName, db}, new int[]{Types.VARCHAR, Types.VARCHAR}, rs -> {
-            Map<String, String> fm = new LinkedHashMap<>();
-            while (rs.next()) {
-                String col = rs.getString(1), type = rs.getString(2);
-                String fieldType = PostgresqlTypeUtils.dbType2FieldTypeMap.get(type.toLowerCase());
-                fm.put(col, fieldType);
+    @EventListener(classes = QueryDataEvent.class)
+    @Order(9)
+    void onQueryData(QueryDataEvent event) {
+        CreateTopicDto topic = event.getTopicDto();
+        if (topic != null && SrcJdbcType.TimeScaleDB == topic.getDataSrcId() && event.getSource() != this) {
+            StringBuilder sts = new StringBuilder(256);
+
+            String tableName = topic.getTable();
+            String quotationTableName = DbTableNameUtils.getFullTableName(tableName);
+            sts.append("select *").append(" from ").append(quotationTableName);
+            if (!CollectionUtils.isEmpty(event.getEqConditions())) {
+                sts.append(" where ");
+                String tbValue = topic.getTbFieldName();
+                if (tbValue != null) {
+                    sts.append('"').append(tbValue).append("\" = '").append(topic.getAlias()).append("' AND ");
+                }
+                for (int i = 0; i < event.getEqConditions().size(); i++) {
+                    sts.append(event.getEqConditions().get(i).getFieldName()).append(" = ").append(event.getEqConditions().get(i).getValue()).append("");
+                    if (i < event.getEqConditions().size() - 1) {
+                        sts.append(" and ");
+                    }
+                }
+
             }
-            return fm;
-        });
+
+            List<Map<String, Object>> values = jdbcTemplate.queryForList(sts.toString());
+            event.setValues(values);
+        }
     }
 
-    private static final Map<Class, String> javaTypeToPgTypeMap = new HashMap<>(16);
-    private static final HashSet<String> pgTypeMap;
+    @EventListener(classes = QueryLastMsgEvent.class)
+    void onQueryLastMsgEvent(QueryLastMsgEvent event) {
+        CreateTopicDto topic = event.uns;
+        if (getJdbcType() == topic.getDataSrcId() && event.getSource() != this) {
+            StringBuilder sql = new StringBuilder(256);
 
-    static {
-        javaTypeToPgTypeMap.put(Integer.class, "integer");
-        javaTypeToPgTypeMap.put(Long.class, "bigint");
-        javaTypeToPgTypeMap.put(Double.class, "float");
-        javaTypeToPgTypeMap.put(Boolean.class, "boolean");
-        javaTypeToPgTypeMap.put(String.class, "text");
-        pgTypeMap = new HashSet<>(javaTypeToPgTypeMap.values());
-
+            String tableName = topic.getTable();
+            final String ct = topic.getTimestampField();
+            sql.append("select *").append(" from ").append(currentSchema).append(".\"").append(tableName).append("\"");
+            String tbValue = topic.getTbFieldName();
+            if (tbValue != null) {
+                sql.append(" where \"").append(tbValue).append("\" = '").append(topic.getAlias()).append("' ");
+            }
+            sql.append(" ORDER BY \"")
+                    .append(ct)
+                    .append("\" DESC LIMIT 1");
+            List<Map<String, Object>> values;
+            try {
+                values = jdbcTemplate.queryForList(sql.toString());
+            } catch (Exception ex) {
+                log.warn("查询最新数据失败,尝试建表: " + tableName, ex);
+                CreateTopicDto[] topics = new CreateTopicDto[]{topic};
+                Map<String, TableInfo> tableInfoMap = listTableInfos(topics);
+                batchCreateTables(topics, tableInfoMap);
+                return;
+            }
+            if (!values.isEmpty()) {
+                Map<String, Object> msg = values.get(0);
+                Object tm = msg.get(ct);
+                if (tm instanceof Timestamp timestamp) {
+                    event.setMsgCreateTime(timestamp.getTime());
+                    event.setLastMessage(msg);
+                }
+            }
+        }
     }
-
-    static final Map<String, String> fieldType2DBTypeMap = new HashMap<>(8);
-
-    static {
-        // {"int", "long", "float", "string", "boolean", "datetime"}
-        fieldType2DBTypeMap.put(FieldType.INT.name, "int4");
-        fieldType2DBTypeMap.put(FieldType.LONG.name, "int8");
-        fieldType2DBTypeMap.put(FieldType.FLOAT.name, "float4");
-        fieldType2DBTypeMap.put(FieldType.DOUBLE.name, "float8");
-        fieldType2DBTypeMap.put(FieldType.STRING.name, "text");
-        fieldType2DBTypeMap.put(FieldType.BOOLEAN.name, "boolean");
-        fieldType2DBTypeMap.put(FieldType.DATETIME.name, "timestamptz");
-    }
-
-
 }
+
