@@ -72,6 +72,8 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     UnsConverter unsConverter;
     @Autowired
     UnsTemplateService unsTemplateService;
+    @Resource
+    private UnsMapper unsMapper;
     /**
      * 创建目录或文件 -- 前端界面创建单个实例发起
      *
@@ -237,7 +239,10 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                     tmp = folders[ii] + "/" + tmp;
                 }
                 if (!aliasMap.containsKey(tmp)) {
-                    String falias = PathUtil.generateFileAlias(tmp);
+                    String falias = unsMapper.selectAliasByPath(tmp);
+                    if (!StringUtils.hasText(falias)) {
+                        falias = PathUtil.generateFileAlias(tmp);
+                    }
                     aliasMap.put(tmp, falias);
                 }
             }

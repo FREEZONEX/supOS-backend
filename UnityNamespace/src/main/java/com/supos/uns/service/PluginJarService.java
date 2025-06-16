@@ -39,6 +39,7 @@ import org.springframework.beans.SimpleTypeConverter;
 import org.springframework.beans.TypeConverter;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
@@ -54,6 +55,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.ResolvableType;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.convert.TypeDescriptor;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MutablePropertySources;
@@ -117,6 +119,20 @@ public class PluginJarService {
     private String CONFIGURATION_CLASS_ATTRIBUTE;
     private final ScheduledExecutorService plugOnStartExecutor = Executors.newSingleThreadScheduledExecutor();
 
+    @Autowired
+    MultipleOpenApiResource openApi;
+    @Autowired
+    SpringWebProvider springWebProvider;
+    @Autowired
+    SqlSessionTemplate sqlSessionTemplate;
+    @Autowired
+    RequestMappingHandlerMapping handlerMapping;
+    @Autowired
+    ApplicationEventMulticaster eventMulticaster;
+    @Autowired
+    MybatisPlusAutoConfiguration mybatisPlusAutoConfiguration;
+
+    @Order(1001)
     @EventListener(classes = ContextRefreshedEvent.class)
     void init(ContextRefreshedEvent event) throws Exception {
         contextRefreshedEvent = event;
@@ -361,7 +377,6 @@ public class PluginJarService {
         if (pkgBeanNames.length == 0) {
             return false;
         }
-        RequestMappingHandlerMapping handlerMapping = beanFactory.getBean(RequestMappingHandlerMapping.class);
         Method processCandidateBean = AbstractHandlerMethodMapping.class.getDeclaredMethod("processCandidateBean", String.class);
         processCandidateBean.setAccessible(true);
 
@@ -650,12 +665,6 @@ public class PluginJarService {
     }
 
     private @NotNull String[] scanPluginMappers(BeanDefinitionRegistry beanDefinitionRegistry, ResourceLoader resourceLoader, ClassLoader classLoader, String basePackage) {
-        SqlSessionTemplate sqlSessionTemplate = null;
-        try {
-            sqlSessionTemplate = beanFactory.getBean(SqlSessionTemplate.class);
-        } catch (BeansException ex) {
-            log.error("Map获取失败", ex);
-        }
         String[] mapperNames = new String[0];
         if (sqlSessionTemplate != null) {
             ClassPathMapperScanner mapperScanner = new ClassPathMapperScanner(beanDefinitionRegistry);
@@ -706,10 +715,9 @@ public class PluginJarService {
 
     private void tryMapperXml(ResourceLoader resourceLoader, SqlSessionTemplate sqlSessionTemplate) {
         try {
-            MybatisPlusAutoConfiguration cfg = beanFactory.getBean(MybatisPlusAutoConfiguration.class);
             Field fieldProperties = MybatisPlusAutoConfiguration.class.getDeclaredField("properties");
             fieldProperties.setAccessible(true);
-            MybatisPlusProperties properties = (MybatisPlusProperties) fieldProperties.get(cfg);
+            MybatisPlusProperties properties = (MybatisPlusProperties) fieldProperties.get(mybatisPlusAutoConfiguration);
 
             Field fieldMapperLocations = MybatisPlusProperties.class.getDeclaredField("mapperLocations");
             fieldMapperLocations.setAccessible(true);
@@ -768,7 +776,6 @@ public class PluginJarService {
             if (CollectionUtils.isEmpty(annotatedMethods)) {
                 log.trace("No @EventListener annotations found on bean class: {}", targetType.getName());
             } else {
-                ApplicationEventMulticaster eventMulticaster = beanFactory.getBean(ApplicationEventMulticaster.class);
                 for (Method method : annotatedMethods.keySet()) {
                     Method methodToUse = AopUtils.selectInvocableMethod(method, beanFactory.getType(beanName));
                     PluginApplicationListenerMethodAdapter applicationListener = new PluginApplicationListenerMethodAdapter(beanName, targetType, methodToUse, pluginId, bean);
@@ -825,7 +832,6 @@ public class PluginJarService {
         if (ArrayUtil.isNotEmpty(plugInfo.getControllerNames())) {
             Method getMappingForMethod = AbstractHandlerMethodMapping.class.getDeclaredMethod("getMappingForMethod", Method.class, Class.class);
             getMappingForMethod.setAccessible(true);
-            RequestMappingHandlerMapping handlerMapping = beanFactory.getBean(RequestMappingHandlerMapping.class);
 
             for (String beanName : plugInfo.getControllerNames()) {
                 AbstractBeanDefinition definition = (AbstractBeanDefinition) beanDefinitionRegistry.getBeanDefinition(beanName);
@@ -863,7 +869,6 @@ public class PluginJarService {
         // 删除 事件监听器
         if (plugInfo.getEventListener() > 0) {
             final int pluginId = plugInfo.getId();
-            ApplicationEventMulticaster eventMulticaster = beanFactory.getBean(ApplicationEventMulticaster.class);
             eventMulticaster.removeApplicationListeners(applicationListener -> (applicationListener instanceof PluginApplicationListenerMethodAdapter pl) && pluginId == pl.pluginId);
         }
 
@@ -924,7 +929,6 @@ public class PluginJarService {
         Consumer<Class> mapperClear = clazz -> {
         };
         try {
-            SqlSessionTemplate sqlSessionTemplate = beanFactory.getBean(SqlSessionTemplate.class);
             Configuration configuration = sqlSessionTemplate.getSqlSessionFactory().getConfiguration();
             if (configuration instanceof MybatisConfiguration mybatisConfiguration) {
                 mapperClear = mapperClass -> {
@@ -966,7 +970,6 @@ public class PluginJarService {
     }
 
     private void clearSwaggerApiCache(@Nullable String[] ctlNames) throws NoSuchFieldException, IllegalAccessException {
-        Object openApi = beanFactory.getBean(MultipleOpenApiResource.class);
         Field fieldGroupedOpenApiResources = MultipleOpenApiResource.class.getDeclaredField("groupedOpenApiResources");
         fieldGroupedOpenApiResources.setAccessible(true);
         Map<String, OpenApiResource> openApiResources = (Map<String, OpenApiResource>) fieldGroupedOpenApiResources.get(openApi);
@@ -988,7 +991,6 @@ public class PluginJarService {
                 }
             }
         }
-        Object springWebProvider = beanFactory.getBean(SpringWebProvider.class);
         Field handlerMethods = SpringWebProvider.class.getDeclaredField("handlerMethods");
         handlerMethods.setAccessible(true);
         handlerMethods.set(springWebProvider, null);

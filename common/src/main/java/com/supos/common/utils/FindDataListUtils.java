@@ -103,9 +103,9 @@ public class FindDataListUtils {
     private static BigDecimal maxLong = java.math.BigDecimal.valueOf(Long.MAX_VALUE);
     private static BigDecimal minLong = java.math.BigDecimal.valueOf(Long.MIN_VALUE);
     private static BigDecimal maxFloat = java.math.BigDecimal.valueOf(Float.MAX_VALUE);
-    private static BigDecimal minFloat = java.math.BigDecimal.valueOf(Float.MIN_VALUE);
+    private static BigDecimal minFloat = java.math.BigDecimal.valueOf(-Float.MAX_VALUE);
     private static BigDecimal maxDouble = java.math.BigDecimal.valueOf(Double.MAX_VALUE);
-    private static BigDecimal minDouble = java.math.BigDecimal.valueOf(Double.MIN_VALUE);
+    private static BigDecimal minDouble = java.math.BigDecimal.valueOf(-Double.MAX_VALUE);
 
     public static int typeMatchScore(AtomicReference<Object> vHolder, FieldType fieldType, int maxStrLen) {
         if (fieldType == null) {

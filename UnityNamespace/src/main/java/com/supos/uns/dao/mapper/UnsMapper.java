@@ -30,6 +30,10 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
     @ResultMap("unsResultMap")
     List<UnsPo> listByAlias(@Param("alias") Collection<String> alias);
 
+
+    @Select("select alias from " +  UnsPo.TABLE_NAME + " where path = #{path}")
+    String selectAliasByPath(@Param("path") String path);
+
     @Select("select * from " + UnsPo.TABLE_NAME + " where path_type=2 and data_type !=" + Constants.CALCULATION_HIST_TYPE +
             " and status=1")
     @ResultMap("unsResultMap")

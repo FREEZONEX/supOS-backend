@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.MutablePropertySources;
@@ -96,6 +97,7 @@ public class PluginManager implements EnvironmentAware {
     }
 
     @EventListener(classes = ContextRefreshedEvent.class)
+    @Order// 优先级排到最后
     void init(ContextRefreshedEvent event) {
         ThreadUtil.execute(() -> {
             try {
