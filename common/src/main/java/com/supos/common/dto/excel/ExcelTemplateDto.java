@@ -1,4 +1,4 @@
-package com.supos.uns.service.exportimport.core.dto;
+package com.supos.common.dto.excel;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.supos.common.dto.FieldDefine;

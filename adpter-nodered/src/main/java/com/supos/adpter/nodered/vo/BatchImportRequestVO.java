@@ -37,8 +37,6 @@ public class BatchImportRequestVO implements Serializable {
 
         private List<FieldDefine> fields;
 
-        private boolean mockData;
-
         /**
          * 模型实例化数据-json格式
          */

@@ -97,27 +97,6 @@ public class FieldDefineVo {
         return define;
     }
 
-    public static FieldDefineVo[] convert(FieldDefine[] fs) {
-        if (fs == null || fs.length == 0) {
-            return null;
-        }
-        FieldDefineVo[] vfs = new FieldDefineVo[fs.length];
-        for (int i = 0; i < vfs.length; i++) {
-            FieldDefine bo = fs[i];
-            FieldDefineVo define = bo2vo(bo);
-            vfs[i] = define;
-        }
-        return vfs;
-    }
-
-    private static final FieldDefineVo bo2vo(FieldDefine bo) {
-        FieldDefineVo define = new FieldDefineVo(bo.getName(), bo.getType().getName(), bo.getIndex());
-        define.setUnique(bo.getUnique());
-        define.setDisplayName(bo.getDisplayName());
-        define.setRemark(bo.getRemark());
-        return define;
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
