@@ -72,10 +72,10 @@ public class WebsocketServer implements WebSocketHandler {
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
         log.error("ws: websocket传输异常 sessionId={}", session.getId(), exception);
-        /*if (session.isOpen()) {
+        wssm.removeBySessionId(session.getId());
+        if (session.isOpen()) {
             session.close(CloseStatus.SERVER_ERROR);
         }
-        wssm.removeBySessionId(session.getId());*/
     }
 
     /**
@@ -88,6 +88,7 @@ public class WebsocketServer implements WebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
         log.warn("ws: session已关闭, 原因: {}", closeStatus.getReason());
         wssm.removeBySessionId(session.getId());
+        session.close();
     }
 
     @Override

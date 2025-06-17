@@ -43,6 +43,7 @@ public class PostgresqlConfig {
             @Value("${tsdb.username:postgres}") String user,
             @Value("${tsdb.password:postgres}") String password,
             @Value("${tsdb.schema:public}") String schema,
+
             @Autowired IUnsDefinitionService unsDefinitionService
     ) throws SQLException {
         JdbcTemplate template = jdbcTemplate(tsdbUrl, null, user, password, schema);
@@ -62,7 +63,7 @@ public class PostgresqlConfig {
     }
 
     private @Value("${PG_MIN_IDLE:5}") int minIdle;
-    private @Value("${PG_MAX_POOL_SIZE:20}") int maxPoolSize;
+    private @Value("${PG_MAX_POOL_SIZE:10}") int maxPoolSize;
     private @Value("${PG_CONNECTION_TIMEOUT:9000}") int connectionTimeout;
     private @Value("${PG_MAX_LITE_TIME:15000}") int maxLiteTime;
     private @Value("${PG_IDLE_TIMEOUT:10000}") int idleTimeout;

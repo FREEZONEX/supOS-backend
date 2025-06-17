@@ -47,7 +47,7 @@ public class ImportNodeFlowController {
      *
      * @param event
      */
-    @EventListener(classes = BatchCreateTableEvent.class)
+//    @EventListener(classes = BatchCreateTableEvent.class)
     @Order(1000)
     @Description("uns.create.task.name.flow")
     void onBatchCreateFlow(BatchCreateTableEvent event) {

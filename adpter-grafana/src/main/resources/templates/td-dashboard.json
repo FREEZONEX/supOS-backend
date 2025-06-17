@@ -109,7 +109,7 @@
             "formatType": "Time series",
             "queryType": "SQL",
             "refId": "A",
-            "sql": "SELECT {columns} FROM {schema}.`{tableName}` where `{sys_field_create_time}`>=$from and `{sys_field_create_time}`<=$to "
+            "sql": "SELECT {columns} FROM public.\"supos_tag_timeserial\" WHERE tag_name='{tableName}' and `{sys_field_create_time}`>=$from and `{sys_field_create_time}`<=$to "
           }
         ],
         "title": "{title}",

@@ -390,6 +390,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
             builder.append(',');
         }
         builder.setCharAt(builder.length() - 1, ' ');
+
         if (pks != null && pks.length > 0) {
             builder.append("ON CONFLICT(");
             for (String f : pks) {
@@ -425,6 +426,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
         }
         return val;
     }
+
 
     static String getCreateTableSQL(CreateTopicDto dto, String tableName, FieldDefine[] fields) {
         StringBuilder builder = new StringBuilder(128);

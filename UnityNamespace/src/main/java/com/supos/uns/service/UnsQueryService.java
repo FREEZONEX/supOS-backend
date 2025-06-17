@@ -1018,6 +1018,7 @@ public class UnsQueryService {
             Map<String, Object> lastMsg = data;
             String tbF;
             Map<String, Long> lastDt = event.lastDataTime;
+
             if (info != null && (tbF = info.getTbFieldName()) != null) {
                 FieldDefine tb = info.getFieldDefines().getFieldsMap().get(tbF);
                 FieldDefine vf = info.getFieldDefines().getFieldsMap().get(Constants.SYSTEM_SEQ_VALUE);

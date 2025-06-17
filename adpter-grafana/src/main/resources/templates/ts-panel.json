@@ -86,7 +86,7 @@
       "editorMode": "code",
       "format": "table",
       "rawQuery": true,
-      "rawSql": "SELECT {columns} FROM \"{schema}\".\"{tableName}\" ",
+      "rawSql": "SELECT {columns} FROM public.\"supos_tag_timeserial\" WHERE tag_name='{tableName}' ",
       "refId": "A",
       "sql": {
         "columns": [

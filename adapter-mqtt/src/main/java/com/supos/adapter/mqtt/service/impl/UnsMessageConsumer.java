@@ -1099,7 +1099,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                 }
             }
             reCalculateRefers();
-            log.info("初始订阅：{}", topLevels);
+            log.debug("初始订阅：{}", topLevels);
             if (!subscribeALL) {
                 mqttPublisher.subscribe(topLevels, false);
             }

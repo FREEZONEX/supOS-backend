@@ -12,9 +12,9 @@ public enum FieldType {
 
     LONG("LONG", true, 0),
 
-    FLOAT("FLOAT", true, 0),
+    FLOAT("FLOAT", true, 0.0f),
 
-    DOUBLE("DOUBLE", true, 0),
+    DOUBLE("DOUBLE", true, 0.0d),
 
     BOOLEAN("BOOLEAN", false, false),
 

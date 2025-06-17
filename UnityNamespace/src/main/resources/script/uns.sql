@@ -183,3 +183,10 @@ CREATE TABLE if not exists "supos"."supos_workflow_process" (
 "create_at" timestamptz(6) DEFAULT now());
 
 alter table uns_namespace add if not exists "display_name" varchar(512) NULL;
+
+CREATE TABLE if not exists "supos_app_key" (
+"id" BIGSERIAL PRIMARY KEY,
+"app_secret_key" varchar(200) NOT NULL,
+"app_secret_value" varchar(200) NOT NULL,
+"status" int2 default 1,
+"create_time" timestamptz(6) DEFAULT now());

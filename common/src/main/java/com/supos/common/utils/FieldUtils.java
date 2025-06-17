@@ -108,6 +108,7 @@ public class FieldUtils {
                     fNews.add(f);
                 }
             }
+
             if (jdbcType == SrcJdbcType.TimeScaleDB && countNormal == 1 && Constants.SYSTEM_SEQ_VALUE.equals(nf.getName())) {
                 FieldDefine tableValue = new FieldDefine(Constants.SYSTEM_SEQ_TAG, FieldType.STRING, true);
                 tableValue.setTbValueName(nf.getName());

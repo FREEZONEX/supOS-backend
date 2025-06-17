@@ -91,7 +91,24 @@ public class UnsWebsocketHandler implements WebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
+
         final String connectionId = session.getId();
+        synchronized (UnsWebsocketHandler.class) {
+            if (sessions.size() > Constants.WS_SESSION_LIMIT) {
+                try {
+                    session.sendMessage(new TextMessage("session reached its maximum capacity " + Constants.WS_SESSION_LIMIT));
+                    session.close();
+                } catch (IOException e) {
+                    //
+                }
+                log.error("ws会话超过系统限制（{}），当前会话关闭", Constants.WS_SESSION_LIMIT);
+                return;
+            }
+            sessions.put(connectionId, new WsSubscription(session));
+        }
+
+        log.info("===> ws sessionSize={}", sessions.size());
+
         UriComponents components = UriComponentsBuilder.fromUri(session.getUri()).build();
         List<String> idStrs = components.getQueryParams().get("id");
         List<String> topics = components.getQueryParams().get("topic");
@@ -314,7 +331,8 @@ public class UnsWebsocketHandler implements WebSocketHandler {
             Set<String> connectionIds = idToSessionsMap.get(unsId);
             connectionIds = tryGetCitingSubscribe(unsId, connectionIds);
             if (!CollectionUtils.isEmpty(connectionIds)) {
-                TextMessage message = new TextMessage(getTopicLastMessage(unsId));
+                String topicLastMessage = getTopicLastMessage(unsId);
+                TextMessage message = new TextMessage(topicLastMessage);
                 for (String connId : connectionIds) {
                     WsSubscription subscription = sessions.get(connId);
                     try {
@@ -349,7 +367,8 @@ public class UnsWebsocketHandler implements WebSocketHandler {
             final String topic = event.topic;
             Set<String> connectionIds = topicToSessionsMap.get(topic);
             if (!CollectionUtils.isEmpty(connectionIds)) {
-                TextMessage message = new TextMessage(getTopicLastMessage(topic));
+                String topicLastMessage = getTopicLastMessage(topic);
+                TextMessage message = new TextMessage(topicLastMessage);
                 for (String connId : connectionIds) {
                     WsSubscription subscription = sessions.get(connId);
                     try {
@@ -407,13 +426,23 @@ public class UnsWebsocketHandler implements WebSocketHandler {
         if (exception != null && exception.getClass() != java.io.EOFException.class) {
             log.error("WebSocket handleTransportError[{}]", session.getId(), exception);
         }
+        try {
+            session.close();
+        } catch (IOException e) {
+            //
+        }
     }
 
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        try {
+            session.close();
+        } catch (IOException e) {
+            //
+        }
         final String connectionId = session.getId();
-        log.debug("ws ConnectionClosed: {}", connectionId);
+        log.debug("ws ConnectionClosed: {}, status is {}", connectionId, status.getReason());
         WsSubscription subscription = sessions.remove(connectionId);
         if (subscription != null) {
 
@@ -582,6 +611,7 @@ public class UnsWebsocketHandler implements WebSocketHandler {
                     }
                     WsSubscription subscription = sessions.get(connId);
                     try {
+
                         subscription.conn.sendMessage(message);
                     } catch (IOException e) {
                         log.error("fail to sendMessage to[{}], topic={}", connId, alias);
