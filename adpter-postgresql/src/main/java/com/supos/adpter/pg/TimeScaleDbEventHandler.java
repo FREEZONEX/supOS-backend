@@ -8,10 +8,7 @@ import com.supos.common.adpater.StreamHandler;
 import com.supos.common.adpater.TimeSequenceDataStorageAdapter;
 import com.supos.common.adpater.historyquery.*;
 import com.supos.common.annotation.Description;
-import com.supos.common.dto.CreateTopicDto;
-import com.supos.common.dto.FieldDefine;
-import com.supos.common.dto.SaveDataDto;
-import com.supos.common.dto.TopologyLog;
+import com.supos.common.dto.*;
 import com.supos.common.event.*;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.DbTableNameUtils;
@@ -21,7 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
-import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.ColumnMapRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.CollectionUtils;
 
@@ -99,7 +96,7 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
     @Override
     public String execSQL(String sql) {
         if (sql.toLowerCase().startsWith("select")) {
-            List<Map> rs = jdbcTemplate.query(sql, new BeanPropertyRowMapper<>(Map.class));
+            List rs = jdbcTemplate.query(sql, new ColumnMapRowMapper());
             return JsonUtil.toJson(rs);
         } else {
             jdbcTemplate.execute(sql);
@@ -197,22 +194,25 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
         }
     }
 
-    @EventListener(classes = RemoveTopicsEvent.class)
+    @EventListener(classes = RemoveTimeScaleTopicsEvent.class)
     @Order(9)
-    void onRemoveTopicsEvent(RemoveTopicsEvent event) {
-        if (event.jdbcType != SrcJdbcType.TimeScaleDB) {
-            return;
-        }
-        List<String> sqls = Collections.EMPTY_LIST;
-        Collection<String> tables = event.topics.values().stream().filter(ins -> ins.isRemoveTableWhenDeleteInstance())
-                .map(in -> in.getTableName()).collect(Collectors.toSet());
-        if (!CollectionUtils.isEmpty(tables)) {
-            sqls = new ArrayList<>(tables.size());
-            for (String table : tables) {
-                sqls.add("drop table if exists " + DbTableNameUtils.getFullTableName(table));
+    void onRemoveTopicsEvent(RemoveTimeScaleTopicsEvent event) {
+        List<String> sqls = new ArrayList<>();
+        if (!CollectionUtils.isEmpty(event.getStandard())) {
+            for (SimpleUnsInstance simpleUns : event.getStandard()) {
+                StringBuilder sql = new StringBuilder("delete from ");
+                sql.append(simpleUns.getTableName()).append(" where tag_name='").append(simpleUns.getAlias()).append("'");
+                sqls.add(sql.toString());
             }
         }
-        if (sqls.size() > 0) {
+        if (!CollectionUtils.isEmpty(event.getNonStandard())) {
+            for (SimpleUnsInstance simpleUns : event.getNonStandard()) {
+//                String table = DbTableNameUtils.getFullTableName(simpleUns.getTableName());
+                String sql = String.format("drop table if exists %s.\"%s\"", currentSchema, simpleUns.getTableName());
+                sqls.add(sql);
+            }
+        }
+        if (!sqls.isEmpty()) {
             log.debug("TimeScaleDB 删除：{}", sqls);
             jdbcTemplate.batchUpdate(sqls.toArray(new String[0]));
         }
@@ -276,13 +276,27 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
         if (pks == null || pks.isEmpty()) {
             return List.of(getInsertSQL(list, table, saveDataDto, true));
         }
-        final boolean FIRST_MSG = list.get(0).containsKey(Constants.FIRST_MSG_FLAG);
+        Map<String, Object>[] array = list.toArray(new Map[0]);
+        final boolean onUpdate = array[0].containsKey(Constants.FIRST_MSG_FLAG);
         FieldDefine[] columns = saveDataDto.getCreateTopicDto().getFields();
-        ArrayList<String> sqls = new ArrayList<>(list.size());
-        Iterator<Map<String, Object>> itr = list.iterator();
-        while (itr.hasNext()) {
-            Map<String, Object> bean = itr.next();
-            if (!bean.containsKey(Constants.MERGE_FLAG)) {
+        ArrayList<String> sqls = new ArrayList<>(array.length);
+        list = new ArrayList<>(array.length);
+        ArrayList<Map<String, Object>> saveOrUpdates = null;
+        for (Map<String, Object> bean : array) {
+            Object mergeFlag = bean.get(Constants.MERGE_FLAG);
+            if (mergeFlag == null) {
+                list.add(bean);
+                continue;
+            }
+            if (mergeFlag instanceof Number number && number.intValue() != 1) {
+                if (!onUpdate) {
+                    if (saveOrUpdates == null) {
+                        saveOrUpdates = new ArrayList<>(128);
+                    }
+                    saveOrUpdates.add(bean);
+                } else {
+                    list.add(bean);
+                }
                 continue;
             }
             StringBuilder whereExpression = new StringBuilder(255);
@@ -304,12 +318,16 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
                 builder.setCharAt(builder.length() - 1, ' ');
                 builder.append("WHERE ").append(whereExpression, 0, whereExpression.length() - 5);
 
-                itr.remove();
                 sqls.add(builder.toString());
+            } else {
+                list.add(bean);
             }
         }
         if (!list.isEmpty()) {
-            sqls.add(0, getInsertSQL(list, table, saveDataDto, !FIRST_MSG));
+            sqls.add(0, getInsertSQL(list, table, saveDataDto, !onUpdate));
+        }
+        if (saveOrUpdates != null) {
+            sqls.add(0, getInsertSQL(saveOrUpdates, table, saveDataDto, false));
         }
         return sqls;
     }

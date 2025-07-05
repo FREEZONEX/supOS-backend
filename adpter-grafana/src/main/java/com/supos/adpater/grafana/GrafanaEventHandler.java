@@ -22,7 +22,9 @@ import com.supos.common.event.EventBus;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.utils.GrafanaUtils;
 import com.supos.common.utils.RuntimeUtil;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
@@ -36,11 +38,13 @@ import java.util.Map;
 @Component
 public class GrafanaEventHandler {
 
+    @Resource
+    private SystemConfig systemConfig;
+
     @Order(300)
     @EventListener(classes = BatchCreateTableEvent.class)
     @Description("uns.create.task.name.dashboard")
     public void onBatchCreateTableEvent(BatchCreateTableEvent event) {
-        SystemConfig systemConfig = SpringUtil.getBean(SystemConfig.class);
         if (null == systemConfig.getContainerMap().get("grafana")) {
             log.debug(">>>>>>>>>当前系统未启用grafana服务，不执行批量创建grafana dashboard");
             return;
@@ -60,7 +64,6 @@ public class GrafanaEventHandler {
 
     @EventListener(classes = RemoveTopicsEvent.class)
     public void onRemoveTopics(RemoveTopicsEvent event) {
-        SystemConfig systemConfig = SpringUtil.getBean(SystemConfig.class);
         if (null == systemConfig.getContainerMap().get("grafana")) {
             log.debug(">>>>>>>>>当前系统未启用grafana服务，不执行批量删除grafana dashboard");
             return;
@@ -104,13 +107,18 @@ public class GrafanaEventHandler {
                 String title = dto.getAlias();
                 String schema = ds.getSchema();
                 String table = dto.getTable();
-                log.debug(">>>>>> create grafana dashboard columns:{},title:{},schema:{},table:{}", columns, title, schema, table);
+                String tbValue = dto.getTbFieldName();
+                String tagNameCondition = "";
+                if (StringUtils.isNotBlank(tbValue)){
+                    tagNameCondition = " and tag_name='" + table + "' ";
+                }
+                log.debug(">>>>>> create grafana dashboard columns:{},title:{},schema:{},table:{},tagNameCondition:{}", columns, title, schema, table,tagNameCondition);
                 int dot = table.indexOf('.');
                 if (dot > 0) {
                     schema = table.substring(0, dot);
                     table = table.substring(dot + 1);
                 }
-                String uuid = GrafanaUtils.createDashboard(table, jdbcType, schema, title, columns, dto.getTimestampField());
+                String uuid = GrafanaUtils.createDashboard(table,tagNameCondition, jdbcType, schema, title, columns, dto.getTimestampField());
                 //当创建类型为 非导入（手动创建），发送事件，创建数据看板
                 if (!fromImport) {
                     EventBus.publishEvent(new CreateDashboardEvent(this, uuid, title, title));

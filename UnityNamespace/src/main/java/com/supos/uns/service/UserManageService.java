@@ -11,18 +11,10 @@ import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.supos.common.config.OAuthKeyCloakConfig;
+import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.PageResultDTO;
 import com.supos.common.dto.UserAttributeDto;
-import com.supos.common.dto.auth.AccessTokenDto;
-import com.supos.common.dto.auth.AddUserDto;
-import com.supos.common.dto.auth.KeycloakCreateUserDto;
-import com.supos.common.dto.auth.KeycloakRoleInfoDto;
-import com.supos.common.dto.auth.KeycloakUserInfoDto;
-import com.supos.common.dto.auth.ResetPasswordDto;
-import com.supos.common.dto.auth.RoleDto;
-import com.supos.common.dto.auth.UpdateRoleDto;
-import com.supos.common.dto.auth.UpdateUserDto;
-import com.supos.common.dto.auth.UserQueryDto;
+import com.supos.common.dto.auth.*;
 import com.supos.common.enums.ActionEnum;
 import com.supos.common.enums.EventMetaEnum;
 import com.supos.common.enums.RoleEnum;
@@ -37,14 +29,14 @@ import com.supos.common.utils.UserContext;
 import com.supos.common.vo.UserAttributeVo;
 import com.supos.common.vo.UserInfoVo;
 import com.supos.common.vo.UserManageVo;
-import com.supos.gateway.dao.mapper.AuthMapper;
 import com.supos.uns.dao.mapper.UserManageMapper;
 import jakarta.annotation.Resource;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.stereotype.Service;
 
 /**
  * @author xinwangji@supos.com
@@ -61,9 +53,11 @@ public class UserManageService {
     @Resource
     private OAuthKeyCloakConfig keyCloakConfig;
     @Resource
-    private AuthMapper authMapper;
+    private RoleService roleService;
     @Resource
     private TimedCache<String, UserInfoVo> userInfoCache;
+    @Resource
+    private SystemConfig systemConfig;
 
 
     public PageResultDTO<UserManageVo> userManageList(UserQueryDto params) {
@@ -77,7 +71,7 @@ public class UserManageService {
         IPage<UserManageVo> iPage = userMapper.userManageList(page, keyCloakConfig.getRealm(), params.getPreferredUsername(),
                 params.getFirstName(), params.getEmail(), params.getEnabled(), params.getRoleName());
         iPage.getRecords().forEach(user -> {
-            List<RoleDto> roleList = userMapper.roleListByUserId(keyCloakConfig.getRealm(), user.getId());
+            List<RoleDto> roleList = roleService.getRoleListByUserId(user.getId());
             List<UserAttributeDto> attrList = userMapper.getUserAttribute(user.getId());
             if (CollectionUtil.isNotEmpty(attrList)) {
                 Map<String, Object> attrMap = attrList.stream().collect(Collectors.toMap(UserAttributeDto::getName, UserAttributeDto::getValue));
@@ -209,6 +203,12 @@ public class UserManageService {
                 setRole(updateRole);
             }
 
+            //默认角色标记  for ldap
+            if (Boolean.TRUE.equals(systemConfig.getLdapEnable())){
+                RoleDto ldapInitialized = new RoleDto("c5921f89-9745-4c8a-9c69-b3015c94f2ea","ldap-initialized");
+                roleList.add(ldapInitialized);
+            }
+
             //设置新的角色
             UpdateRoleDto updateRole = new UpdateRoleDto();
             updateRole.setUserId(userId);
@@ -217,7 +217,7 @@ public class UserManageService {
             setRole(updateRole);
         } else {
             if (Boolean.TRUE.equals(updateUserDto.getOperateRole())) {
-                List<RoleDto> currentRoles = userMapper.roleListByUserId(keyCloakConfig.getRealm(), userId);
+                List<RoleDto> currentRoles = roleService.getRoleListByUserId(userId);
                 if (CollectionUtil.isNotEmpty(currentRoles)) {
                     UpdateRoleDto updateRole = new UpdateRoleDto();
                     updateRole.setUserId(userId);

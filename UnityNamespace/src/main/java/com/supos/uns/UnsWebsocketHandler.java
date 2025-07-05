@@ -19,6 +19,7 @@ import com.supos.common.event.UnsTopologyChangeEvent;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.DataUtils;
 import com.supos.common.utils.JsonUtil;
+import com.supos.uns.service.GlobalExportService;
 import com.supos.uns.service.UnsExcelService;
 import com.supos.uns.service.UnsQueryService;
 import com.supos.uns.service.UnsTopologyService;
@@ -66,16 +67,19 @@ public class UnsWebsocketHandler implements WebSocketHandler {
     final UnsExcelService unsExcelService;
     final UnsTopologyService unsTopologyService;
     final IUnsDefinitionService definitionService;
+    final GlobalExportService globalExportService;
     private final ExecutorService dataPublishExecutor = new ForkJoinPool(1);
 
     public UnsWebsocketHandler(@Autowired UnsQueryService unsQueryService, @Autowired UnsExcelService unsExcelService,
                                @Autowired UnsTopologyService unsTopologyService,
-                               @Autowired IUnsDefinitionService definitionService
+                               @Autowired IUnsDefinitionService definitionService,
+                               @Autowired GlobalExportService globalExportService
     ) {
         this.unsQueryService = unsQueryService;
         this.unsExcelService = unsExcelService;
         this.unsTopologyService = unsTopologyService;
         this.definitionService = definitionService;
+        this.globalExportService = globalExportService;
     }
 
     private static class WsSubscription {
@@ -116,17 +120,34 @@ public class UnsWebsocketHandler implements WebSocketHandler {
         if (CollectionUtils.isEmpty(idStrs) && CollectionUtils.isEmpty(topics)) {
             String file = components.getQueryParams().getFirst("file");
             if (file != null) {
-                String path = URLDecoder.decode(file, StandardCharsets.UTF_8);
-                File excelFile = new File(FileUtils.getFileRootPath(), path);
-                unsExcelService.asyncImport(excelFile, runningStatus -> dataPublishExecutor.submit(() -> {
-                    String json = null;
-                    try {
-                        json = JsonUtil.toJson(runningStatus);
-                        session.sendMessage(new TextMessage(json));
-                    } catch (IOException e) {
-                        log.error("fail to send uploadStatus: " + json, e);
-                    }
-                }), true);
+                String global = components.getQueryParams().getFirst("global");
+                if(StringUtils.hasText(global)){
+                    // 全局导入
+                    String path = URLDecoder.decode(file, StandardCharsets.UTF_8);
+                    File zipFile = new File(FileUtils.getFileRootPath(), path);
+                    globalExportService.asyncImport(session,zipFile, runningStatus -> dataPublishExecutor.submit(() -> {
+                        String json = null;
+                        try {
+                            json = JsonUtil.toJson(runningStatus);
+                            session.sendMessage(new TextMessage(json));
+                        } catch (IOException e) {
+                            log.error("global import process data fail to send uploadStatus: " + json, e);
+                        }
+                    }), true);
+                }else{
+                    // uns导入
+                    String path = URLDecoder.decode(file, StandardCharsets.UTF_8);
+                    File excelFile = new File(FileUtils.getFileRootPath(), path);
+                    unsExcelService.asyncImport(excelFile, runningStatus -> dataPublishExecutor.submit(() -> {
+                        String json = null;
+                        try {
+                            json = JsonUtil.toJson(runningStatus);
+                            session.sendMessage(new TextMessage(json));
+                        } catch (IOException e) {
+                            log.error("fail to send uploadStatus: " + json, e);
+                        }
+                    }), true);
+                }
             }
             String globalTopology = components.getQueryParams().getFirst("globalTopology");
             if (globalTopology != null) {
@@ -579,6 +600,7 @@ public class UnsWebsocketHandler implements WebSocketHandler {
                     Object partOrAll = subValue.get("all");//判断是全量订阅还是部分值订阅
                     if (Boolean.TRUE.equals(partOrAll)) {
                         JSONObject originalData = JSON.parseObject(lastMsg).getJSONObject("data");
+                        unsQueryService.standardizingData(alias, originalData);
                         //组装成cmd的格式
                         JSONObject data = new JSONObject();
                         data.put("alias", alias);
@@ -594,6 +616,7 @@ public class UnsWebsocketHandler implements WebSocketHandler {
                         Set<String> subscribeTags = new HashSet<>(partValues);
                         //原始数据
                         JSONObject originalData = JSON.parseObject(lastMsg).getJSONObject("data");
+                        unsQueryService.standardizingData(alias, originalData);
                         JSONObject partData = new JSONObject();
                         //匹配part_value
                         for (Map.Entry<String, Object> en : originalData.entrySet()) {

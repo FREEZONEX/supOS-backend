@@ -58,4 +58,19 @@
     <select id="userList" resultType="com.supos.common.vo.UserManageVo">
         select id, username AS preferredUsername from user_entity where realm_id = '8920b375-d705-4d30-8a71-52d9c14ec4ba' and username != 'service-account-supos'
     </select>
+
+
+    <select id="getNotInitializedLdapUsers" resultType="com.supos.common.vo.UserManageVo">
+        SELECT u.id , u.username as preferredUsername
+        FROM user_entity u
+                 JOIN realm r ON u.realm_id = r.id
+        WHERE u.federation_link IS NOT NULL
+          AND r.name = 'supos'
+          AND NOT EXISTS (
+            SELECT 1 FROM user_role_mapping urm
+                              JOIN keycloak_role ro ON ro.id = urm.role_id
+            WHERE urm.user_id = u.id
+              AND ro.name = 'ldap-initialized'
+        )
+    </select>
 </mapper>

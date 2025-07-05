@@ -1,7 +1,9 @@
 package com.supos.uns.service;
 
 import cn.hutool.core.thread.ThreadUtil;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.JSONPath;
 import com.supos.common.dto.auth.*;
 import com.supos.common.enums.ActionEnum;
 import com.supos.common.enums.EventMetaEnum;
@@ -11,6 +13,7 @@ import com.supos.common.event.EventBus;
 import com.supos.common.event.SysEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
+import com.supos.common.service.IRoleService;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.KeycloakUtil;
 import com.supos.gateway.dao.mapper.AuthMapper;
@@ -18,6 +21,7 @@ import com.supos.uns.vo.RoleVo;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -33,7 +37,7 @@ import java.util.stream.Stream;
  */
 @Slf4j
 @Service
-public class RoleService {
+public class RoleService implements IRoleService {
 
     @Resource
     private AuthMapper authMapper;
@@ -199,7 +203,7 @@ public class RoleService {
         }
         // 超级管理员角色不允许修改
         RoleEnum roleEnum = RoleEnum.parse(keycloakRole.getId());
-        if (RoleEnum.SUPER_ADMIN == roleEnum) {
+        if (RoleEnum.SUPER_ADMIN == roleEnum || RoleEnum.NORMAL_USER == roleEnum) {
             throw new BuzException("role.super.update");
         }
         String roleName = roleSaveDto.getName();
@@ -243,7 +247,7 @@ public class RoleService {
         if (role != null) {
             // 超级管理员角色不允许删除
             RoleEnum roleEnum = RoleEnum.parse(role.getId());
-            if (RoleEnum.SUPER_ADMIN == roleEnum) {
+            if (RoleEnum.SUPER_ADMIN == roleEnum || RoleEnum.NORMAL_USER == roleEnum) {
                 throw new BuzException("role.super.delete");
             }
             String roleName = role.getName();
@@ -286,5 +290,31 @@ public class RoleService {
                     new SysEvent(this, ServiceEnum.AUTH_SERVICE, EventMetaEnum.ROLE_CHANGE,
                             action, payload));
         });
+    }
+
+    public List<RoleDto> getRoleListByUserId(String userId) {
+        List<RoleDto> roleList = new ArrayList<>();
+        String response = keycloakUtil.getRoleListByUserId(userId);
+        if (StringUtils.isBlank(response)) {
+            return roleList;
+        }
+
+        JSONObject roleListObj = JSONObject.parseObject(response);
+        boolean hasMappings = JSONPath.contains(roleListObj, "$.clientMappings.supos.mappings");
+        if (!hasMappings) {
+            return roleList;
+        }
+
+        JSONArray mappings = roleListObj.getJSONObject("clientMappings").getJSONObject("supos").getJSONArray("mappings");
+        for (int i = 0; i < mappings.size(); i++) {
+            JSONObject roleObj = mappings.getJSONObject(i);
+            RoleDto role = new RoleDto();
+            role.setRoleId(roleObj.getString("id"));
+            role.setRoleName(roleObj.getString("name"));
+            role.setRoleDescription(roleObj.getString("description"));
+            role.setClientRole(roleObj.getBooleanValue("clientRole"));
+            roleList.add(role);
+        }
+        return roleList;
     }
 }

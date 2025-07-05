@@ -1,7 +1,6 @@
 package com.supos.uns;
 
 import com.alibaba.fastjson.JSONObject;
-import com.supos.common.dto.BaseResult;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.dto.PageResultDTO;
 import com.supos.common.dto.PaginationDTO;
@@ -9,16 +8,17 @@ import com.supos.common.dto.grafana.DashboardDto;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.uns.dao.po.DashboardPo;
 import com.supos.uns.service.DashboardService;
-import org.springframework.web.bind.annotation.*;
-
 import jakarta.annotation.Nullable;
-import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/inter-api/supos/uns/dashboard")
+@Slf4j
 public class DashboardController {
 
-    @Resource
+    @Autowired
     private DashboardService dashboardService;
 
     @GetMapping("/detail")
@@ -27,8 +27,8 @@ public class DashboardController {
     }
 
     @GetMapping
-    public PageResultDTO<DashboardDto> pageList(@Nullable @RequestParam("k") String keyword, PaginationDTO params){
-        return dashboardService.pageList(keyword, params);
+    public PageResultDTO<DashboardDto> pageList(@Nullable @RequestParam("k") String keyword,@RequestParam(value = "type",required = false) Integer type, PaginationDTO params){
+        return dashboardService.pageList(keyword,type, params);
     }
 
     @PostMapping
@@ -53,6 +53,12 @@ public class DashboardController {
     @GetMapping("/{uid}")
     public ResultVO<JSONObject> getByUuid(@PathVariable String uid){
         return dashboardService.getByUuid(uid);
+    }
+
+
+    @PostMapping("/createGrafanaByUns/{alias}")
+    public ResultVO createGrafanaByUns(@PathVariable String alias){
+        return dashboardService.createGrafanaByUns(alias);
     }
 
 

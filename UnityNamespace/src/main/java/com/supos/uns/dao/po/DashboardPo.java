@@ -1,6 +1,8 @@
 package com.supos.uns.dao.po;
 
+import com.alibaba.excel.annotation.ExcelIgnore;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
@@ -31,8 +33,12 @@ public class DashboardPo {
     private Integer type;
 
     private String description;
+    private String jsonContent;
 
     private Date updateTime;
 
     private Date createTime;
+    @ExcelIgnore
+    @TableField(exist = false)
+    private String error;
 }

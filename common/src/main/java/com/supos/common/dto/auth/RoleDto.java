@@ -6,11 +6,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * @author xinwangji@supos.com
- * @date 2024/11/26 10:17
- * @description
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -41,4 +36,9 @@ public class RoleDto{
      */
     @Schema(description = "是否为Client角色")
     private Boolean clientRole;
+
+    public RoleDto(String roleId, String roleName) {
+        this.roleId = roleId;
+        this.roleName = roleName;
+    }
 }

@@ -99,7 +99,7 @@ services:
         #- ${VOLUMES_PATH}/emqx/data:/opt/emqx/data
         #- ${VOLUMES_PATH}/emqx/log:/opt/emqx/log
         #- ${VOLUMES_PATH}/emqx/config/emqx.conf:/opt/emqx/etc/emqx.conf
-        #- ${VOLUMES_PATH}/emqx/config/default_api_key.conf:/opt/emqx/etc/default_api_key.conf
+      #- ${VOLUMES_PATH}/emqx/config/default_api_key.conf:/opt/emqx/etc/default_api_key.conf
       #- ${VOLUMES_PATH}/emqx/config/acl.conf:/opt/emqx/etc/acl.conf
     restart: always
     depends_on:
@@ -161,7 +161,44 @@ services:
         #      - SUPOS_API_KEY=${SUPOS_API_KEY}
         #      - SUPOS_API_URL=${SUPOS_API_URL}
         #    networks:
-        #      - default_network
+      #      - default_network
+  tsdb:
+    image: timescale/timescaledb:2.20.0-pg17
+    container_name: tsdb
+    profiles:
+      - tsdb
+    environment:
+      TZ: UTC  # 设置容器时区
+      service_logo: postgresql-original.svg
+      service_description: aboutus.postgresqlDescription
+      POSTGRES_PASSWORD: postgres
+    shm_size: '2g'
+    ports:
+      - "2345:5432"
+    volumes:
+      - ${VOLUMES_PATH}/tsdb/conf/postgresql.conf:/etc/postgresql/custom.conf
+      - ${VOLUMES_PATH}/tsdb/data:/var/lib/postgresql/data # 持久化数据
+      - ${VOLUMES_PATH}/tsdb/init-scripts:/docker-entrypoint-initdb.d  # 加载初始化脚本
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/custom.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+      start_interval: 60s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 3G
+    networks:
+      - default_network
   grafana:
     image: grafana/grafana:11.4.0
     profiles:
@@ -464,7 +501,7 @@ services:
       - MINIO_IDENTITY_OPENID_CLIENT_ID=${OAUTH_CLIENT_ID}
       - MINIO_IDENTITY_OPENID_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
       - MINIO_IDENTITY_OPENID_SCOPES=openid
-        #      - MINIO_IDENTITY_OPENID_ROLE_POLICY=public-delete-policy
+      #      - MINIO_IDENTITY_OPENID_ROLE_POLICY=public-delete-policy
       - MINIO_IDENTITY_OPENID_REDIRECT_URI=${ENTRANCE_PROTOCOL}://${ENTRANCE_DOMAIN}:${ENTRANCE_PORT}/minio/home/oauth_callback
     ports:
       - "9000:9000"  # Web UI 端口
@@ -488,9 +525,9 @@ services:
     restart: unless-stopped
     volumes:
       #- ${VOLUMES_PATH}/fuxa/appdata:/usr/src/app/FUXA/server/_appdata
-        # - ${VOLUMES_PATH}/fuxa/db:/usr/src/app/FUXA/server/_db
-        #- ${VOLUMES_PATH}/fuxa/logs:/usr/src/app/FUXA/server/_logs
-        #- ${VOLUMES_PATH}/fuxa/images:/usr/src/app/FUXA/server/_images
+      # - ${VOLUMES_PATH}/fuxa/db:/usr/src/app/FUXA/server/_db
+      #- ${VOLUMES_PATH}/fuxa/logs:/usr/src/app/FUXA/server/_logs
+      #- ${VOLUMES_PATH}/fuxa/images:/usr/src/app/FUXA/server/_images
       - ${VOLUMES_PATH}/fuxa/server:/usr/src/app/FUXA/server
       - ${VOLUMES_PATH}/fuxa/client:/usr/src/app/FUXA/client
     ports:

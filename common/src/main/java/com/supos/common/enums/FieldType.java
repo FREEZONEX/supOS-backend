@@ -8,7 +8,7 @@ import java.util.HashMap;
 @Getter
 public enum FieldType {
 
-    INT("INT", true, 0),
+    INTEGER("INTEGER", true, 0),
 
     LONG("LONG", true, 0),
 
@@ -44,7 +44,11 @@ public enum FieldType {
     }
 
     public static FieldType getByName(String name) {
-        return nameMap.get(name);
+        FieldType type = nameMap.get(name);
+        if (type == null && "int".equalsIgnoreCase(name)) {
+            type = FieldType.INTEGER;
+        }
+        return type;
     }
 
     @JsonCreator

@@ -1,13 +1,15 @@
 package com.supos.adpter.nodered.dao.mapper;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.supos.adpter.nodered.dao.po.NodeFlowPO;
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
 @Mapper
-public interface NodeFlowMapper {
-
+public interface NodeFlowMapper extends BaseMapper<NodeFlowPO> {
+    @Select("select * from supos_node_flows")
+    List<NodeFlowPO> selectAll();
     @Select("select * from supos_node_flows where id=#{id}")
     NodeFlowPO getById(@Param("id") long id);
 
@@ -18,7 +20,20 @@ public interface NodeFlowMapper {
             "</foreach>" +
             "</script>")
     List<NodeFlowPO> selectByIds(@Param("ids") List<Long> ids);
-
+    @Select("<script>" +
+            "select * from supos_node_flows where flow_id in " +
+            "<foreach collection=\"flowIds\" item=\"id\" open=\"(\" close=\")\" separator=\",\">" +
+            "        #{id} " +
+            "</foreach>" +
+            "</script>")
+    List<NodeFlowPO> selectByFlowIds(@Param("flowIds") List<String> flowIds);
+    @Select("<script>" +
+            "select * from supos_node_flows where flow_name in " +
+            "<foreach collection=\"flowNames\" item=\"flowName\" open=\"(\" close=\")\" separator=\",\">" +
+            "        #{flowName} " +
+            "</foreach>" +
+            "</script>")
+    List<NodeFlowPO> selectByFlowNames(@Param("flowNames") List<String> flowNames);
     @Select("select id, flow_id, flow_name from supos_node_flows where flow_name=#{flowName}")
     NodeFlowPO getByName(@Param("flowName") String flowName);
 

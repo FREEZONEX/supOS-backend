@@ -46,7 +46,11 @@ public class UserContextFilter implements Filter {
                     UserInfoVo userInfoVo = userInfoCache.get(sub);
                     UserContext.set(userInfoVo);
                     log.debug("set user content success!");
-                }
+                }/*else{
+                    UserInfoVo userInfoVo = new UserInfoVo();
+                    userInfoVo.setSub("66b5114b-0083-48aa-860a-06f1c06ce4c4");
+                    UserContext.set(userInfoVo);
+                }*/
             }
             filterChain.doFilter(servletRequest, servletResponse);
         } catch (ClientAbortException ignore) {

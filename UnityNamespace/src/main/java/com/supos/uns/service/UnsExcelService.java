@@ -195,9 +195,9 @@ public class UnsExcelService {
         DataImporter dataImporter = null;
         try {
             if ("xlsx".equals(extName)) {
-                dataImporter = new ExcelDataImporter(context);
+                dataImporter = new ExcelDataImporter(context, unsManagerService, unsLabelService, unsTemplateService, unsAddService);
             } else if ("json".equals(extName)) {
-                dataImporter = new JsonDataImporter(context);
+                dataImporter = new JsonDataImporter(context, unsManagerService, unsLabelService, unsTemplateService, unsAddService);
             }
             dataImporter.importData(file);
         } catch (Throwable ex) {
@@ -242,17 +242,25 @@ public class UnsExcelService {
 
                 if (context.getExcelCheckErrorMap().isEmpty()) {
                     String message = I18nUtils.getMessage("uns.import.rs.ok");
-                    consumer.accept(new RunningStatus(200, message)
+                    RunningStatus runningStatus = new RunningStatus(200, message)
                             .setTask(finalTask)
-                            .setProgress(100.0));
+                            .setProgress(100.0);
+                    runningStatus.setTotalCount(context.getTotalCount());
+                    runningStatus.setSuccessCount(context.getTotalCount());
+                    runningStatus.setErrorCount(0);
+                    consumer.accept(runningStatus);
                     return;
                 }
 
                 Map<Integer, Map<Integer, String>> error = new HashMap<>();
                 for (Map.Entry<String, String> entry : context.getExcelCheckErrorMap().entrySet()) {
                     String[] keyArr = entry.getKey().split("-");
-                    Map<Integer, String> subError = error.computeIfAbsent(Integer.valueOf(keyArr[0]), k -> new HashMap<>());
+                    Integer sheetNo = Integer.valueOf(keyArr[0]);
+                    Map<Integer, String> subError = error.computeIfAbsent(sheetNo, k -> new HashMap<>());
                     subError.put(Integer.valueOf(keyArr[1]), entry.getValue());
+                    if (4 <= sheetNo && sheetNo <= 8) {
+                        context.setErrorCount(context.getErrorCount()+1);
+                    }
                 }
                 context.getExcelCheckErrorMap().clear();
                 context.getError().putAll(error);
@@ -262,9 +270,16 @@ public class UnsExcelService {
                 dataImporter.writeError(file, outFile);
 
                 String message = I18nUtils.getMessage("uns.import.rs.hasErr");
-                consumer.accept(new RunningStatus(206, message, FileUtils.getRelativePath(outFile.getAbsolutePath()))
+                RunningStatus runningStatus = new RunningStatus(206, message, FileUtils.getRelativePath(outFile.getAbsolutePath()))
                         .setTask(finalTask)
-                        .setProgress(100.0));
+                        .setProgress(100.0);
+                runningStatus.setTotalCount(context.getTotalCount());
+                runningStatus.setErrorCount(context.getErrorCount());
+                runningStatus.setSuccessCount(runningStatus.getTotalCount()-runningStatus.getErrorCount());
+                if(Objects.equals(runningStatus.getSuccessCount(),0)){
+                    runningStatus.setMsg(I18nUtils.getMessage("global.import.rs.allErr"));
+                }
+                consumer.accept(runningStatus);
             }
         } catch (Throwable e) {
             log.error("导入失败", e);
@@ -360,9 +375,9 @@ public class UnsExcelService {
             stopWatch.start("write data");
             String path = null;
             if (StringUtils.equals(exportParam.getFileType(), "excel")) {
-                path = new ExcelDataExporter().exportData(context);
+                path = new ExcelDataExporter(unsManagerService, this).exportData(context);
             } else if (StringUtils.equals(exportParam.getFileType(), "json")) {
-                path = new JsonDataExporter().exportData(context);
+                path = new JsonDataExporter(unsManagerService).exportData(context);
             }
             stopWatch.stop();
 

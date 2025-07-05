@@ -19,11 +19,12 @@ import java.util.stream.Collectors;
 
 @RestController
 public class MQTTMetricsController {
-    @Autowired
+    @Autowired(required = false)
     MQTTConsumerAdapter mqttAdapter;
     @Autowired
     MessageConsumer messageConsumer;
     String startTime = DateUtil.dateStr(System.currentTimeMillis());
+
 
     @GetMapping(value = "/inter-api/supos/mqtt/metrics", produces = "application/json")
     public String metrics(@RequestParam(name = "f", required = false) Integer fetchSize,
@@ -32,20 +33,26 @@ public class MQTTMetricsController {
                           @RequestParam(name = "sys", required = false) Boolean showSys
     ) {
         JSONObject json = new JSONObject();
-        json.put("clientId", mqttAdapter.getClientId());
+        if (mqttAdapter != null) {
+            json.put("clientId", mqttAdapter.getClientId());
+        }
         json.put("throughput", messageConsumer.statisticsThroughput());
         json.put("queueHead", messageConsumer.getQueueHead());
         json.put("queueHeadIndex", messageConsumer.getQueueFrontIndex());
         json.put("queueTailIndex", messageConsumer.getQueueTailIndex());
         json.put("queueSize", messageConsumer.getQueueSize());
-        json.put("arrivedSize", mqttAdapter.getArrivedSize());
+        if (mqttAdapter != null) {
+            json.put("arrivedSize", mqttAdapter.getArrivedSize());
+        }
         json.put("queue.inp", messageConsumer.getEnqueuedSize());
         json.put("queue.out", messageConsumer.getDequeuedSize());
         json.put("calc.published", messageConsumer.getPublishedCalcSize());
         json.put("calc.arrived", messageConsumer.getArrivedCalcSize());
         json.put("merged.published", messageConsumer.getPublishedMergedSize());
         json.put("lastMsg", messageConsumer.getLastMessage());
-        json.put("connectLoss", mqttAdapter.getConnectionLossRecord());
+        if (mqttAdapter != null) {
+            json.put("connectLoss", mqttAdapter.getConnectionLossRecord());
+        }
         json.put("startTime", startTime);
         json.put("fetchSize", UnsMessageConsumer.FETCH_SIZE);
         json.put("maxWaitMills", UnsMessageConsumer.MAX_WAIT_MILLS);
@@ -81,10 +88,12 @@ public class MQTTMetricsController {
                         .map(t -> t.getTopic() + " : " + t.getTable()).collect(Collectors.toList());
                 json.put("topicTables", topicTableMap);
             }
-            Collection<String> subscribeTopics = mqttAdapter.getSubscribeTopics();
-            json.put("subscribes", subscribeTopics);
-            if (subscribeTopics.size() < 2) {
-                json.put("topics", new TreeSet<>(map.keySet()));
+            if (mqttAdapter != null) {
+                Collection<String> subscribeTopics = mqttAdapter.getSubscribeTopics();
+                json.put("subscribes", subscribeTopics);
+                if (subscribeTopics.size() < 2) {
+                    json.put("topics", new TreeSet<>(map.keySet()));
+                }
             }
         }
         return JsonUtil.toJsonUseFields(json);

@@ -151,7 +151,6 @@ public class ExampleService extends ServiceImpl<ExampleMapper, ExamplePo> {
             String flowName = String.format("demo-%s-flows", FileUtil.getPrefix(demoName));
             EventBus.publishEvent(new FlowInstallEvent(this, flowName, FlowInstallEvent.INSTALL));
 
-            SystemConfig systemConfig = SpringUtil.getBean(SystemConfig.class);
             if (null != systemConfig.getContainerMap().get("fuxa")){
                 Arrays.stream(packageFiles).filter(file -> file.getName().startsWith(Constants.EXAMPLE_FUXA_FILE)).findFirst().ifPresent(file ->{
                     String json = FileUtil.readString(file,StandardCharsets.UTF_8);

@@ -6,6 +6,10 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.exception.BuzException;
+import com.supos.uns.service.UnsAddService;
+import com.supos.uns.service.UnsLabelService;
+import com.supos.uns.service.UnsManagerService;
+import com.supos.uns.service.UnsTemplateService;
 import com.supos.uns.service.exportimport.core.DataImporter;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import com.supos.uns.service.exportimport.core.data.*;
@@ -30,8 +34,9 @@ public class JsonDataImporter extends DataImporter {
     private long batch = 2000;
     private JsonWraper jsonWraper;
 
-    public JsonDataImporter(ExcelImportContext context) {
-        super(context);
+    public JsonDataImporter(ExcelImportContext context, UnsManagerService unsManagerService, UnsLabelService unsLabelService,
+                            UnsTemplateService unsTemplateService, UnsAddService unsAddService) {
+        super(context, unsManagerService, unsLabelService, unsTemplateService, unsAddService);
     }
 
     @Override

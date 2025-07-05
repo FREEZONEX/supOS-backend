@@ -16,9 +16,12 @@ import com.supos.adpter.nodered.enums.FlowStatus;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.NodeFlowVO;
 import com.supos.adpter.nodered.vo.UpdateFlowRequestVO;
+import com.supos.common.dto.NodeRedTagsDTO;
 import com.supos.common.dto.PageResultDTO;
 import com.supos.common.dto.ResultDTO;
 import com.supos.common.exception.NodeRedException;
+import com.supos.common.utils.RuntimeUtil;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,7 +40,20 @@ public class NodeRedAdapterService {
     private String nodeRedHost;
     @Value("${node-red.port:1880}")
     private String nodeRedPort;
-
+    public String getNodeRedHost(){
+        if (RuntimeUtil.isLocalProfile()) {
+            return "http://100.100.100.22:33893/nodered/home";
+        } else {
+            return nodeRedHost;
+        }
+    }
+    public String getNodeRedPort(){
+        if (RuntimeUtil.isLocalProfile()) {
+            return "";
+        } else {
+            return nodeRedPort;
+        }
+    }
     @Autowired
     private NodeFlowMapper nodeFlowMapper;
     @Autowired
@@ -76,17 +92,19 @@ public class NodeRedAdapterService {
 
     /**
      * 根据topic获取对应流程
-     * @param alias
+     * @param alias uns别名
      * @return
      */
-    public List<NodeFlowVO> getByAlias(String alias) {
-        List<Long> flowIds = nodeFlowModelMapper.queryByAlias(alias);
-        if (flowIds != null && !flowIds.isEmpty()) {
-            List<NodeFlowPO> nodeFlows = nodeFlowMapper.selectByIds(flowIds);
-            return buildNodeFlowVOs(nodeFlows);
+    public NodeFlowVO getByAlias(String alias) {
+        NodeFlowModelPO flow = nodeFlowModelMapper.queryLatestByAlias(alias);
+        if (flow != null) {
+            NodeFlowPO nodeFlow = nodeFlowMapper.getById(flow.getParentId());
+            return buildNodeFlowVO(nodeFlow);
         }
-        return new ArrayList<>(1);
+        return null;
     }
+
+
 
     /**
      * 直接走node-red服务
@@ -189,13 +207,19 @@ public class NodeRedAdapterService {
             String nodeType = nodes.getJSONObject(i).getString("type");
             // 统计关联了哪些模型topic
             if ("supmodel".equals(nodeType)) {
-                JSONArray models = nodes.getJSONObject(i).getJSONArray("models");
-                if (models != null) {
-                    for (int ii = 0; ii < models.size(); ii++) {
-                        log.info(models.getJSONArray(ii).toString());
-                        String alias = models.getJSONArray(ii).getString(1);
+                String nodeId = nodes.getJSONObject(i).getString("id");
+                String url = String.format("http://%s:%s/nodered-api/load/tags?nodeId=%s", nodeRedHost, nodeRedPort, nodeId);
+                String result = HttpUtil.get(url);
+                NodeRedTagsDTO tagsResponse = JSON.parseObject(result, NodeRedTagsDTO.class);
+                if (tagsResponse.getData() != null) {
+                    for (String[] tagArray : tagsResponse.getData()) {
+                        String alias = tagArray[1];
                         flowModels.add(new NodeFlowModelPO(id, "", alias));
                     }
+                }
+                String alias = nodes.getJSONObject(i).getString("selectedModelAlias");
+                if (StringUtils.hasText(alias)) {
+                    flowModels.add(new NodeFlowModelPO(id, "", alias));
                 }
             }
         }
@@ -354,19 +378,50 @@ public class NodeRedAdapterService {
             return;
         }
         if (StringUtils.hasText(nodeFlow.getFlowId())) {
-            deleteFromNodeRed(nodeFlow.getFlowId());
+            deleteFromNodeRed(nodeFlow.getFlowId(), nodeFlow.getFlowData());
         }
         nodeFlowMapper.deleteById(id);
         nodeFlowModelMapper.deleteById(id);
     }
 
-    private void deleteFromNodeRed(String flowId) {
+    private void deleteFromNodeRed(String flowId, String flowData) {
         String url = String.format("http://%s:%s/flow/%s", nodeRedHost, nodeRedPort, flowId);
         HttpRequest request = HttpUtil.createRequest(Method.DELETE, url);
         HttpResponse response = request.execute();
         if (!isSuccess(response.getStatus()) && response.getStatus() != 404) {
             throw new NodeRedException(response.body());
         }
+        if (StringUtils.hasText(flowData)) {
+            JSONArray nodes = JSON.parseArray(flowData);
+            for (int i = 0; i < nodes.size(); i++) {
+                String nodeType = nodes.getJSONObject(i).getString("type");
+                // 统计关联了哪些模型topic
+                if ("supmodel".equals(nodeType)) {
+                    log.info("删除流程关联位号： flowId={}", flowId);
+                    try {
+                        String nodeId = nodes.getJSONObject(i).getString("id");
+                        // delete tags
+                        String deleteTagUrl = String.format("http://%s:%s/nodered-api/save/tags", nodeRedHost, nodeRedPort);
+                        HttpRequest  httpClient = HttpUtil.createRequest(Method.POST, deleteTagUrl);
+                        JSONObject requestBody = new JSONObject();
+                        requestBody.put("nodeId", nodeId);
+                        requestBody.put("tags", new ArrayList<>(1));
+                        Map<String, String> headers = new HashMap<>();
+                        headers.put("content-type", "application/json; charset=UTF-8");
+                        httpClient.addHeaders(headers);
+                        httpClient.body(requestBody.toJSONString());
+                        // 连接超时和读取响应超时 10分钟
+                        httpClient.timeout(10 * 60 * 1000);
+                        httpClient.execute();
+                    } catch (Exception e) {
+                        // ignore
+                    }
+                }
+            }
+
+        }
+
+
     }
 
     private boolean isSuccess(int code) {

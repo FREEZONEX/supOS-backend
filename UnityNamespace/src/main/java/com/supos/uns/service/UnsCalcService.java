@@ -257,7 +257,7 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
                         FieldDefine rff = fMap.get(stateWindow.getField());
                         if (rff != null) {
                             FieldType fieldType = rff.getType();
-                            if (fieldType != FieldType.INT && fieldType != FieldType.LONG && fieldType != FieldType.BOOLEAN && fieldType != FieldType.STRING) {
+                            if (fieldType != FieldType.INTEGER && fieldType != FieldType.LONG && fieldType != FieldType.BOOLEAN && fieldType != FieldType.STRING) {
                                 errTipMap.put(batchIndex, I18nUtils.getMessage("uns.invalid.stream.state.colType", stateWindow.getField(), fieldType.name));
                                 paramInstances.remove(bo.getAlias());
                                 continue;

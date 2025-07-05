@@ -7,7 +7,7 @@
 
     <select id="pageList" resultType="com.supos.uns.vo.AlarmVo" parameterType="com.supos.uns.vo.AlarmQueryVo">
         SELECT
-            a._id, a.uns, a.current_value, a.limit_value, a.is_alarm, a.read_status, a._ct as createAt,
+            a._id, a.uns, a.uns_path, a.current_value, a.limit_value, a.is_alarm, a.read_status, a._ct as createAt,
             b.data_path AS rule_name,b.expression,b.refers
         FROM
         uns_alarms_data a LEFT JOIN uns_namespace b ON a.uns = b.id

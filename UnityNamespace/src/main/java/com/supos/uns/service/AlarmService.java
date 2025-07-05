@@ -9,8 +9,6 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.supos.camunda.service.ProcessService;
-import com.supos.camunda.service.ProcessTaskService;
 import com.supos.common.Constants;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.*;
@@ -58,10 +56,10 @@ public class AlarmService extends ServiceImpl<AlarmMapper, AlarmPo> {
     private AlarmHandlerMapper alarmHandlerMapper;
     @Resource
     private UnsMapper unsMapper;
-    @Resource
-    private ProcessTaskService processTaskService;
-    @Resource
-    private ProcessService processService;
+//    @Resource
+//    private ProcessTaskService processTaskService;
+//    @Resource
+//    private ProcessService processService;
     @Autowired
     IUnsDefinitionService unsDefinitionService;
 
@@ -104,11 +102,6 @@ public class AlarmService extends ServiceImpl<AlarmMapper, AlarmPo> {
             CreateTopicDto unsPo = unsDefinitionService.getDefinitionById(instanceField.getId());
             if (unsPo != null){
                 InstanceFieldVo ifv = BeanUtil.copyProperties(instanceField,InstanceFieldVo.class);
-                if (StringUtils.isNotBlank(alarmVo.getUnsPath())){
-                    ifv.setPath(alarmVo.getUnsPath());
-                } else {
-                    ifv.setPath(unsPo.getPath());
-                }
                 alarmVo.setRefers(JsonUtil.toJson(new InstanceFieldVo[]{ifv}));
             }
             AlarmRuleDefine define = new AlarmRuleDefine();

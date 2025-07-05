@@ -2,9 +2,12 @@ package com.supos.uns.service;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.thread.ThreadUtil;
+import cn.hutool.crypto.digest.MD5;
 import com.alibaba.fastjson2.util.DynamicClassLoader;
 import com.supos.adpter.kong.dto.MenuDto;
+import com.supos.adpter.kong.service.KongAdapterService;
 import com.supos.adpter.kong.service.MenuService;
+import com.supos.adpter.kong.vo.RoutResponseVO;
 import com.supos.common.Constants;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.dto.PlugInfoYml;
@@ -13,6 +16,7 @@ import com.supos.common.event.PluginPreUnInstallEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PlugUtils;
+import com.supos.common.utils.RuntimeUtil;
 import com.supos.common.utils.SqlScriptExecutor;
 import com.supos.uns.bo.PlugInfo;
 import lombok.extern.slf4j.Slf4j;
@@ -30,14 +34,17 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertiesPropertySource;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Nullable;
 import javax.sql.DataSource;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,6 +64,10 @@ public class PluginManager implements EnvironmentAware {
 
     @Autowired
     private MenuService menuService;
+
+    @Autowired
+    private KongAdapterService kongAdapterService;
+
     @Autowired
     PluginJarService pluginJarService;
 
@@ -99,8 +110,27 @@ public class PluginManager implements EnvironmentAware {
     @EventListener(classes = ContextRefreshedEvent.class)
     @Order// 优先级排到最后
     void init(ContextRefreshedEvent event) {
+        if (RuntimeUtil.isLocalProfile()) {
+            return;
+        }
         ThreadUtil.execute(() -> {
             try {
+                int retry = 0;
+                while ( true) {
+                    try {
+                        RoutResponseVO routResponseVO = kongAdapterService.fetchRoute("backend");
+                        if (routResponseVO != null || retry > 60) {
+                            break;
+                        }
+
+                    } catch (Exception e) {
+                        log.error("kong adapter init error", e);
+                    }
+                    retry++;
+                    Thread.sleep(2000);
+                }
+
+
                 init();
             } catch (Exception e) {
                 log.error("scanPlugins error", e);
@@ -163,10 +193,27 @@ public class PluginManager implements EnvironmentAware {
             pluginInstalledPath.mkdirs();
         }
 
+        File pluginUpgradePath = new File(Constants.PLUGIN_UPGRADE_PATH);
+        if (!pluginUpgradePath.exists()) {
+            pluginUpgradePath.mkdirs();
+        } else {
+            FileUtil.clean(pluginUpgradePath);
+        }
+
+        File pluginUpgradeTempPath = new File(Constants.PLUGIN_UPGRADE_TEMP_PATH);
+        if (!pluginUpgradeTempPath.exists()) {
+            pluginUpgradeTempPath.mkdirs();
+        } else {
+            FileUtil.clean(pluginUpgradeTempPath);
+        }
+
         if (pluginScanPath.exists() && pluginScanPath.isDirectory()) {
             File[] pluginPackageFiles = pluginScanPath.listFiles(File::isFile);
             if (pluginPackageFiles != null && pluginPackageFiles.length > 0) {
-                Map<String, String> pluginDirs = scanPluginDirs(pluginTempPath, pluginInstalledPath);
+                Map<String, PlugInfo> existPlugins = new HashMap<>();
+                existPlugins.putAll(scanPluginTempDir());
+                existPlugins.putAll(scanPluginInstalledDir());
+
                 for (File pluginPackageFile : pluginPackageFiles) {
                     String pluginPackageName = pluginPackageFile.getName();
                     log.info("Scanning plugin file:{}", pluginPackageName);
@@ -174,36 +221,49 @@ public class PluginManager implements EnvironmentAware {
                         log.warn("Unrecognizable file:{}", pluginPackageName);
                         continue;
                     }
-                    String pluginDirName = StringUtils.replaceIgnoreCase(pluginPackageName, PLUGIN_EXT_NAME, "");
-                    String pluginPath = pluginDirs.get(pluginDirName);
-                    if (pluginPath == null) {
+                    // 将插件包解压到升级临时目录
+                    String newTempDirName = String.format("%s-%d", StringUtils.replaceIgnoreCase(pluginPackageName, PLUGIN_EXT_NAME, ""), System.currentTimeMillis());
+                    String newTempPath = String.format("%s/%s", pluginUpgradeTempPath.getAbsolutePath(), newTempDirName);
+                    unzipAndCheckPlugin(pluginPackageFile, newTempPath);
+                    PlugInfoYml plugInfoYml = parsePlugInfoYml(newTempPath);
+
+                    PlugInfo existPluginInfo = existPlugins.get(plugInfoYml.getName());
+                    File newUninstallPath = new File(pluginTempPath, newTempDirName);
+                    if (existPluginInfo == null) {
                         isChanged = true;
-                        String unzipTargetPath = String.format("%s/%s", pluginTempPath.getAbsolutePath(), pluginDirName);
-                        unzipAndCheckPlugin(pluginPackageFile, unzipTargetPath);
+                        FileUtil.move(new File(newTempPath), newUninstallPath, true);
+                        log.info("plugin {} not exist, move from {} to {}", plugInfoYml.getName(), newTempPath, newUninstallPath.getAbsolutePath());
                     } else {
                         // 尝试覆盖
-                        log.warn("Plugin Dir already exists:{}", pluginDirName);
                         if (initScan) {
                             isChanged = true;
-                            String unzipTargetPath = pluginPath;
-                            unzipAndCheckPlugin(pluginPackageFile, unzipTargetPath);
+                            FileUtil.del(existPluginInfo.getPlugPath());
+                            FileUtil.move(new File(newTempPath), new File(pluginTempPath, newTempDirName), true);
+                            log.info("init scan, plugin {} , move from {} to {}", plugInfoYml.getName(), newTempPath, newUninstallPath.getAbsolutePath());
                         } else {
-                            PlugInfo existPlugInfo = getByPlugDir(pluginDirName);
-                            if (existPlugInfo != null) {
-                                if (existPlugInfo.getInstallStatus().equals(PlugInfo.STATUS_NOT_INSTALL) || existPlugInfo.getInstallStatus().equals(PlugInfo.STATUS_INSTALL_FAIL)) {
-                                    isChanged = true;
-                                    String unzipTargetPath = existPlugInfo.getPlugPath();
-                                    unzipAndCheckPlugin(pluginPackageFile, unzipTargetPath);
-                                } else {
-                                    log.warn("Plugin already exists:{}", existPlugInfo.getName());
-                                }
+                            if (existPluginInfo.getInstallStatus().equals(PlugInfo.STATUS_NOT_INSTALL) || existPluginInfo.getInstallStatus().equals(PlugInfo.STATUS_INSTALL_FAIL)) {
+                                isChanged = true;
+                                FileUtil.del(existPluginInfo.getPlugPath());
+                                FileUtil.move(new File(newTempPath), new File(pluginTempPath, newTempDirName), true);
+                                log.info("plugin {} not installed, move from {} to {}", plugInfoYml.getName(), newTempPath, newUninstallPath.getAbsolutePath());
+                            } else {
+                                log.warn("Plugin already installed:{}", plugInfoYml.getName());
                             }
                         }
                     }
+                    FileUtil.del(newTempPath);
                 }
             }
         }
         return isChanged;
+    }
+
+    private PlugInfoYml parsePlugInfoYml(String plugPath) {
+        PlugInfoYml plugInfoYml = PlugUtils.getPlugInfoYml(plugPath);
+        plugInfoYml.setShowName(plugInfoYml.getShowName() != null ? I18nUtils.getMessage(plugInfoYml.getShowName()) : plugInfoYml.getShowName());
+        plugInfoYml.setDescription(plugInfoYml.getDescription() != null ? I18nUtils.getMessage(plugInfoYml.getDescription()) : plugInfoYml.getDescription());
+
+        return plugInfoYml;
     }
 
     private Map<String, PlugInfo> scanPluginTempDir() {
@@ -213,10 +273,7 @@ public class PluginManager implements EnvironmentAware {
         File pluginTempPath = new File(Constants.PLUGIN_TEMP_PATH);
         File[] pluginTempDirs = pluginTempPath.listFiles();
         for (File pluginTempDir : pluginTempDirs) {
-            PlugInfoYml plugInfoYml = PlugUtils.getPlugInfoYml(pluginTempDir.getAbsolutePath());
-            plugInfoYml.setShowName(plugInfoYml.getShowName() != null ? I18nUtils.getMessage(plugInfoYml.getShowName()) : plugInfoYml.getShowName());
-            plugInfoYml.setDescription(plugInfoYml.getDescription() != null ? I18nUtils.getMessage(plugInfoYml.getDescription()) : plugInfoYml.getDescription());
-
+            PlugInfoYml plugInfoYml = parsePlugInfoYml(pluginTempDir.getAbsolutePath());
             PlugInfo plugInfo = new PlugInfo();
             plugInfo.setPlugInfoYml(plugInfoYml);
             plugInfo.setInstallStatus(PlugInfo.STATUS_NOT_INSTALL);
@@ -233,10 +290,7 @@ public class PluginManager implements EnvironmentAware {
         File pluginInstalledPath = new File(Constants.PLUGIN_INSTALLED_PATH);
         File[] pluginInstalledDirs = pluginInstalledPath.listFiles();
         for (File pluginInstalledDir : pluginInstalledDirs) {
-            PlugInfoYml plugInfoYml = PlugUtils.getPlugInfoYml(pluginInstalledDir.getAbsolutePath());
-            plugInfoYml.setShowName(plugInfoYml.getShowName() != null ? I18nUtils.getMessage(plugInfoYml.getShowName()) : plugInfoYml.getShowName());
-            plugInfoYml.setDescription(plugInfoYml.getDescription() != null ? I18nUtils.getMessage(plugInfoYml.getDescription()) : plugInfoYml.getDescription());
-
+            PlugInfoYml plugInfoYml = parsePlugInfoYml(pluginInstalledDir.getAbsolutePath());
             PlugInfo plugInfo = new PlugInfo();
             plugInfo.setPlugInfoYml(plugInfoYml);
             plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALLED);
@@ -342,8 +396,42 @@ public class PluginManager implements EnvironmentAware {
         }
     }
 
+    /**
+     * 插件升级中，移动临时目录到升级临时目录
+     *
+     * @param plugInfo
+     */
+    private void moveTempToUpgradeTemp(PlugInfo plugInfo) {
+        if (plugInfo.getPlugPath() == null) {
+            return;
+        }
+        String plugPath = new File(plugInfo.getPlugPath()).getAbsolutePath();
+        String tempPath = new File(Constants.PLUGIN_TEMP_PATH).getAbsolutePath();
+        if (StringUtils.contains(plugPath, tempPath)) {
+            String targetPath = plugPath.replace(tempPath, new File(Constants.PLUGIN_UPGRADE_TEMP_PATH).getAbsolutePath());
+            FileUtil.move(new File(plugInfo.getPlugPath()), new File(targetPath), true);
+        }
+    }
+
+    /**
+     * 插件升级回滚中，移动升级临时目录到临时目录
+     *
+     * @param plugInfo
+     */
+    private void moveUpgradeTempToTemp(PlugInfo plugInfo) {
+        if (plugInfo.getPlugPath() == null) {
+            return;
+        }
+        String plugPath = new File(plugInfo.getPlugPath()).getAbsolutePath();
+        String tempPath = new File(Constants.PLUGIN_TEMP_PATH).getAbsolutePath();
+        if (StringUtils.contains(plugPath, tempPath)) {
+            String targetPath = plugPath.replace(tempPath, new File(Constants.PLUGIN_UPGRADE_TEMP_PATH).getAbsolutePath());
+            FileUtil.move(new File(plugInfo.getPlugPath()), new File(targetPath), true);
+        }
+    }
+
     public JsonResult<Collection<PlugInfo>> listPlugins() {
-        if (scanPluginPackage(false)) {
+/*        if (scanPluginPackage(false)) {
             Map<String, PlugInfo> scanPlugins = scanPluginDirs(Constants.PLUGIN_TEMP_PATH);
             for (Map.Entry<String, PlugInfo> e : scanPlugins.entrySet()) {
                 PlugInfo plugInfo = plugins.get(e.getKey());
@@ -353,7 +441,7 @@ public class PluginManager implements EnvironmentAware {
                     plugInfo.setPlugInfoYml(e.getValue().getPlugInfoYml());
                 }
             }
-        }
+        }*/
 
         return new JsonResult<>(0, "ok", plugins.values());
     }
@@ -386,23 +474,21 @@ public class PluginManager implements EnvironmentAware {
             return;
         }
 
-        // 校验依赖插件是否已安装
-        Set<String> unInstallDependencies = checkNotInstallDependency(plugInfo);
-        if (CollectionUtils.isNotEmpty(unInstallDependencies)) {
-            for (String dependency : unInstallDependencies) {
-                PlugInfo dependencyPlugInfo = plugins.get(dependency);
-                if (dependencyPlugInfo == null) {
-                    throw new BuzException("plugin.manager.null");
-                }
-                try {
-                    doInstallPlugin(dependencyPlugInfo);
-                } catch (Exception e) {
-                    log.error("install dependency plugin {} error", dependency, e);
-                    throw e;
-                }
+        // 获取依赖插件，并首先安装依赖插件
+        List<String> dependencies = listDependenciesDown(plugInfo);
+        if (CollectionUtils.isNotEmpty(dependencies)) {
+            for (String dependency : dependencies) {
+                doInstallPluginWithDependency( dependency);
             }
         }
-        doInstallPlugin(plugInfo);
+        try {
+            doInstallPlugin(plugInfo);
+        } catch (BuzException e) {
+            throw e;
+        }catch (Exception e) {
+            log.error("install plugin error", e);
+            throw new RuntimeException("install plugin error", e);
+        }
     }
 
     private void doInstallPlugin(PlugInfo plugInfo) {
@@ -429,6 +515,7 @@ public class PluginManager implements EnvironmentAware {
                 for (String fileName : fileNames) {
                     if (fileName.endsWith(".jar")) {
                         File jarFile = new File(plugInfo.getPlugPath() + "/" + fileName);
+                        log.info("install jar:{}, md5:{}", jarFile.getAbsolutePath(), MD5.create().digestHex16(jarFile));
                         JsonResult<String> result = installPlugin(jarFile, plugInfo, true);
                         if (result.getCode() != 0) {
                             throw new BuzException("plugin.manager.install.error");
@@ -444,11 +531,13 @@ public class PluginManager implements EnvironmentAware {
             saveRoute(plugInfo);
 
             plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALLED);
+            plugInfo.setInstallTime(System.currentTimeMillis());
         } catch (Exception e) {
             log.error("installPlugin error", e);
             plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALL_FAIL);
-            log.info("start rollback plugin");
-            doUninstallPlugin(plugInfo);
+            log.info("start rollback plugin {}", plugInfo.getName());
+            doUninstallPlugin(plugInfo, false);
+            log.info("rollback plugin {} finished", plugInfo.getName());
             throw new BuzException("plugin.manager.install.error");
         }
     }
@@ -471,9 +560,15 @@ public class PluginManager implements EnvironmentAware {
             }
 
             // 校验依赖插件是否已安装
-            Set<String> unInstallDependencies = checkNotInstallDependency(plugInfo);
-            if (CollectionUtils.isNotEmpty(unInstallDependencies)) {
-                throw new BuzException("plugin.manager.install.dependency", StringUtils.join(unInstallDependencies, ","));
+            List<String> dependencies = listDependenciesDown(plugInfo);
+            if (CollectionUtils.isNotEmpty(dependencies)) {
+                Set<String> unInstallDependencies = dependencies.stream().filter(dependency -> {
+                    PlugInfo dependencyPlugInfo = plugins.get(dependency);
+                    return dependencyPlugInfo == null || !StringUtils.equals(dependencyPlugInfo.getInstallStatus(), PlugInfo.STATUS_INSTALLED);
+                }).collect(Collectors.toSet());
+                if (CollectionUtils.isNotEmpty(unInstallDependencies)) {
+                    throw new BuzException("plugin.manager.install.dependency", StringUtils.join(unInstallDependencies, ","));
+                }
             }
             doInstallPlugin(plugInfo);
 
@@ -777,46 +872,35 @@ public class PluginManager implements EnvironmentAware {
     }
 
     /**
-     * 获取出未安装的依赖插件
-     *
-     * @param plugInfo
-     * @return
-     */
-    private Set<String> checkNotInstallDependency(PlugInfo plugInfo) {
-        PlugInfoYml plugInfoYml = plugInfo.getPlugInfoYml();
-        Set<String> dependencyPkgNames = new HashSet<>();
-        if (plugInfoYml != null && CollectionUtils.isNotEmpty(plugInfoYml.getDependencies())) {
-
-
-            for (PlugInfoYml.PlugDependency plugDependency : plugInfoYml.getDependencies()) {
-                PlugInfo plugDependencyInfo = plugins.get(plugDependency.getName());
-                if (plugDependencyInfo == null || !StringUtils.equals(PlugInfo.STATUS_INSTALLED, plugDependencyInfo.getInstallStatus())) {
-                    dependencyPkgNames.add(plugDependency.getName());
-                }
-            }
-
-        }
-        return dependencyPkgNames;
-    }
-
-    /**
-     * 检查依赖该插件的插件
-     *
+     * 列出插件所依赖的插件名
      * @param currentPlugInfo
      * @return
      */
-    private Set<String> checkInstalledPluginDependOn(PlugInfo currentPlugInfo) {
+    private List<String> listDependenciesDown(PlugInfo currentPlugInfo) {
+        PlugInfoYml plugInfoYml = currentPlugInfo.getPlugInfoYml();
+        if (plugInfoYml != null && CollectionUtils.isNotEmpty(plugInfoYml.getDependencies())) {
+            return plugInfoYml.getDependencies().stream().map(plugDependency -> plugDependency.getName()).collect(Collectors.toList());
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * 列出依赖该插件的插件名
+     * @param currentPlugInfo
+     * @return
+     */
+    private List<String> listDependenciesUp(PlugInfo currentPlugInfo, boolean deep) {
         String plugName = currentPlugInfo.getName();
 
-        Set<String> dependOnNames = new HashSet<>();
+        List<String> dependOnNames = new ArrayList<>();
         for (PlugInfo plugInfo : plugins.values()) {
-            if (!StringUtils.equals(PlugInfo.STATUS_INSTALLED, plugInfo.getInstallStatus())) {
-                continue;
-            }
             PlugInfoYml plugInfoYml = plugInfo.getPlugInfoYml();
             if (plugInfoYml != null && CollectionUtils.isNotEmpty(plugInfoYml.getDependencies())) {
                 for (PlugInfoYml.PlugDependency plugDependency : plugInfoYml.getDependencies()) {
                     if (StringUtils.equals(plugName, plugDependency.getName())) {
+                        if (deep) {
+                            dependOnNames.addAll(listDependenciesUp(plugInfo, true));
+                        }
                         dependOnNames.add(plugInfo.getName());
                     }
                 }
@@ -827,21 +911,26 @@ public class PluginManager implements EnvironmentAware {
     }
 
 
-    private Pair<Boolean, String> doUninstallPlugin(PlugInfo plugInfo) {
+    private Pair<Boolean, String> doUninstallPlugin(PlugInfo plugInfo, Boolean deleteSqlData) {
+        log.info("uninstall plugin:{}, deleteSqlData:{}", plugInfo, deleteSqlData);
         AtomicBoolean uninstallSuccess = new AtomicBoolean(true);
+        AtomicReference<String> checkMsg = new AtomicReference<>();
         String msg = null;
         if (!StringUtils.equals(PlugInfo.STATUS_INSTALLED, plugInfo.getInstallStatus())
                 && !StringUtils.equals(PlugInfo.STATUS_INSTALL_FAIL, plugInfo.getInstallStatus())) {
             return Pair.of(uninstallSuccess.get(), msg);
         }
         try {
-            AtomicReference<String> checkMsg = new AtomicReference<>();
-            EventBus.publishEvent(new PluginPreUnInstallEvent(this, plugInfo.getName(), (canUnInstallMsg) -> {
-                if (canUnInstallMsg != null) {
-                    uninstallSuccess.set(false);
-                    checkMsg.set(canUnInstallMsg);
-                }
-            }));
+            if (deleteSqlData) {
+
+                EventBus.publishEvent(new PluginPreUnInstallEvent(this, plugInfo.getName(), (canUnInstallMsg) -> {
+                    if (canUnInstallMsg != null) {
+                        uninstallSuccess.set(false);
+                        checkMsg.set(canUnInstallMsg);
+                    }
+                }));
+            }
+
             if (Boolean.TRUE.equals(uninstallSuccess.get())) {
                 if (isInstallStepFlag(plugInfo, "route")) {
                     deleteRoute(plugInfo);
@@ -864,7 +953,9 @@ public class PluginManager implements EnvironmentAware {
                 }
 
                 if (isInstallStepFlag(plugInfo, "sql")) {
-                    runUnstallSql(plugInfo);
+                    if (deleteSqlData) {
+                        runUnstallSql(plugInfo);
+                    }
                 }
 
                 plugInfo.setInstallStatus(PlugInfo.STATUS_NOT_INSTALL);
@@ -884,7 +975,6 @@ public class PluginManager implements EnvironmentAware {
     }
 
     public JsonResult<String> uninstallPlugin(String pluginName) {
-        log.info("uninstall plugin:{}", pluginName);
         PlugInfo plugInfo = plugins.get(pluginName);
         if (plugInfo == null) {
             throw new BuzException("plugin.manager.null");
@@ -894,12 +984,18 @@ public class PluginManager implements EnvironmentAware {
         }
 
         // 校验是否有其它已安装的插件依赖当前插件
-        Set<String> dependOnNames = checkInstalledPluginDependOn(plugInfo);
+        List<String> dependOnNames = listDependenciesUp(plugInfo, false);
         if (CollectionUtils.isNotEmpty(dependOnNames)) {
-            throw new BuzException("plugin.manager.uninstall.dependency", StringUtils.join(dependOnNames, ","));
+            Set<String> installedPluginsDependOn = dependOnNames.stream().filter(dependency -> {
+                PlugInfo dependencyPlugInfo = plugins.get(dependency);
+                return dependencyPlugInfo != null && StringUtils.equals(dependencyPlugInfo.getInstallStatus(), PlugInfo.STATUS_INSTALLED);
+            }).collect(Collectors.toSet());
+            if (CollectionUtils.isNotEmpty(installedPluginsDependOn)) {
+                throw new BuzException("plugin.manager.uninstall.dependency", StringUtils.join(installedPluginsDependOn, ","));
+            }
         }
 
-        Pair<Boolean, String> result = doUninstallPlugin(plugInfo);
+        Pair<Boolean, String> result = doUninstallPlugin(plugInfo, true);
         if (!result.getLeft()) {
             return new JsonResult<>(500, result.getRight());
         }
@@ -919,5 +1015,205 @@ public class PluginManager implements EnvironmentAware {
 
     private boolean isInstallStepFlag(PlugInfo plugInfo, String flag) {
         return plugInfo.getInstallStepFlags().contains(flag);
+    }
+
+    public JsonResult<String> upgradePlugin(String pluginName, MultipartFile file) {
+        log.info("upgrade plugin:{}", pluginName);
+        PlugInfo plugInfo = plugins.get(pluginName);
+        if (plugInfo == null) {
+            throw new BuzException("plugin.manager.null");
+        }
+        if (!StringUtils.endsWithIgnoreCase(file.getOriginalFilename(), PLUGIN_EXT_NAME)) {
+            throw new BuzException("plugin.manager.package.invalid");
+        }
+
+        Upgrader upgrader = new Upgrader(plugInfo);
+        try {
+            upgrader.savePackage( file);
+            upgrader.unzipAndCheckPluginUpgradePackage();
+            upgrader.stopPlugin();
+            upgrader.upgrade();
+            return new JsonResult<>(0, pluginName);
+        } catch (BuzException e) {
+            upgrader.rollback();
+            throw e;
+        } catch (Exception e) {
+            log.error("upgrade plugin error", e);
+            upgrader.rollback();
+            return new JsonResult<>(500, I18nUtils.getMessage("plugin.manager.upgrade.error"));
+        } finally {
+            upgrader.clean();
+        }
+    }
+
+    class Upgrader {
+        /**待升级的插件*/
+        private PlugInfo plugInfo;
+
+        private PlugInfoYml oldPlugInfoYml;
+        private String oldPlugDirName;
+
+        /**记录停止的插件，升级成功或回滚需要重新安装*/
+        private List<String> installedPlugins = new ArrayList<>();
+
+        /**升级包文件*/
+        private File pluginUpgradePackageFile;
+        /**升级包解压目录*/
+        private File pluginUpgradeUnzipPath;
+        /**升级包Yaml信息*/
+        private PlugInfoYml newPlugInfoYml;
+        private String newPlugDirName;
+
+        private String flag = "";
+
+        public Upgrader(PlugInfo plugInfo) {
+            this.plugInfo = plugInfo;
+            this.oldPlugInfoYml = plugInfo.getPlugInfoYml();
+        }
+
+        /**
+         * 保存插件包到upgrade-temp目录
+         * @param file
+         */
+        public File savePackage(MultipartFile file) {
+            flag = "savePackage-start";
+            String pluginUpgradePackageName = file.getOriginalFilename();
+            pluginUpgradePackageFile = new File(Constants.PLUGIN_UPGRADE_TEMP_PATH, pluginUpgradePackageName);
+            try {
+                FileUtil.copyFile(file.getInputStream(), pluginUpgradePackageFile, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                log.error("transferTo error", e);
+                throw new BuzException("plugin.manager.transfer.error");
+            }
+            flag = "savePackage-end";
+            return pluginUpgradePackageFile;
+        }
+
+        /**
+         * 将插件升级包解压到upgrade-temp目录，并校验plugin.yaml文件
+         */
+        public void unzipAndCheckPluginUpgradePackage () {
+            flag = "unzipAndCheckPluginUpgradePackage-start";
+            String pluginUpgradePackageName = pluginUpgradePackageFile.getName();
+            String pluginUpgradeDirName = String.format("%s-%d", StringUtils.replaceIgnoreCase(pluginUpgradePackageName, PLUGIN_EXT_NAME, ""), System.currentTimeMillis());
+            pluginUpgradeUnzipPath = new File(Constants.PLUGIN_UPGRADE_TEMP_PATH, pluginUpgradeDirName);
+
+            // 解压插件包
+            unzipAndCheckPlugin(pluginUpgradePackageFile, pluginUpgradeUnzipPath.getAbsolutePath());
+
+            newPlugInfoYml = parsePlugInfoYml(pluginUpgradeUnzipPath.getAbsolutePath());
+
+            if (newPlugInfoYml == null) {
+                throw new BuzException("plugin.manager.package.yml.empty");
+            }
+            if (!StringUtils.equals(newPlugInfoYml.getName(), plugInfo.getName())) {
+                throw new BuzException("plugin.manager.package.name.invalid", plugInfo.getName());
+            }
+            flag = "unzipAndCheckPluginUpgradePackage-end";
+        }
+
+        /**
+         * 停止插件和依赖它的插件
+         */
+        public void stopPlugin() {
+            flag = "stopPlugin-start";
+            // 如果插件是安装状态，需要将插件以及所有依赖它的插件进行不删数据的卸载
+            if (StringUtils.equals(PlugInfo.STATUS_INSTALLED, plugInfo.getInstallStatus())) {
+                // 列出所有依赖它的插件
+                List<String> dependOnNames =listDependenciesUp(plugInfo, true);
+                if (CollectionUtils.isNotEmpty(dependOnNames)) {
+                    for (String dependOnName : dependOnNames) {
+                        PlugInfo dependOnPlugInfo = plugins.get(dependOnName);
+                        // 卸载依赖它的插件
+                        if (dependOnPlugInfo != null && StringUtils.equals(PlugInfo.STATUS_INSTALLED, dependOnPlugInfo.getInstallStatus())) {
+                            doUninstallPlugin(dependOnPlugInfo, false);
+                            installedPlugins.add(dependOnName);
+                        }
+                    }
+                }
+
+                // 卸载当前插件
+                doUninstallPlugin(plugInfo, false);
+            }
+            flag = "stopPlugin-end";
+        }
+
+
+        /**
+         * 升级插件
+         */
+        public void upgrade() {
+            flag = "upgrade-start";
+            // 1.将插件目录从temp移到upgrade目录
+            oldPlugDirName = new File(plugInfo.getPlugPath()).getName();
+            FileUtil.move(new File(plugInfo.getPlugPath()), new File(Constants.PLUGIN_UPGRADE_PATH, oldPlugDirName), true);
+            log.info("move old plugin from {} to {}", plugInfo.getPlugPath(), new File(Constants.PLUGIN_UPGRADE_PATH, oldPlugDirName).getAbsolutePath());
+
+            // 2.将升级包目录从upgrade-temp移到temp目录
+            File newPlugDir = new File(Constants.PLUGIN_TEMP_PATH, pluginUpgradeUnzipPath.getName());
+            FileUtil.move(pluginUpgradeUnzipPath, newPlugDir, true);
+            log.info("move new plugin from {} to {}", pluginUpgradeUnzipPath.getAbsolutePath(), newPlugDir.getAbsolutePath());
+            newPlugDirName = newPlugDir.getName();
+
+            plugInfo.setPlugInfoYml(newPlugInfoYml);
+            plugInfo.setPlugPath(newPlugDir.getAbsolutePath());
+
+            if (Boolean.TRUE.equals(newPlugInfoYml.getAutoInstall())) {
+                installedPlugins.add(plugInfo.getName());
+            }
+
+            log.info("start stoped plugin");
+            for (String installedPlugin : installedPlugins) {
+
+                doInstallPluginWithDependency(installedPlugin);
+
+            }
+            FileUtil.del(new File(Constants.PLUGIN_UPGRADE_PATH, oldPlugDirName));
+            flag = "upgrade-end";
+        }
+
+        public void rollback() {
+            log.info("upgrade rollback");
+            if (StringUtils.equals("upgrade-end", flag)) {
+                return;
+            } else if (StringUtils.equals("upgrade-start", flag) || StringUtils.equals("stopPlugin-end", flag)) {
+                // 插件包替换回老插件包
+                if (newPlugDirName != null) {
+                    FileUtil.del(new File(Constants.PLUGIN_TEMP_PATH, newPlugDirName));
+                    log.info("del new plugin {}", new File(Constants.PLUGIN_TEMP_PATH, newPlugDirName).getAbsolutePath());
+                }
+
+                FileUtil.move(new File(Constants.PLUGIN_UPGRADE_PATH, oldPlugDirName), new File(Constants.PLUGIN_TEMP_PATH, oldPlugDirName), true);
+                log.info("move old plugin from {} to {}", new File(Constants.PLUGIN_UPGRADE_PATH, oldPlugDirName).getAbsolutePath(), new File(Constants.PLUGIN_TEMP_PATH, oldPlugDirName).getAbsolutePath());
+
+                plugInfo.setPlugInfoYml(oldPlugInfoYml);
+                plugInfo.setPlugPath(new File(Constants.PLUGIN_TEMP_PATH, oldPlugDirName).getAbsolutePath());
+                log.info("start stoped plugin");
+                for (String installedPlugin : installedPlugins) {
+
+                    doInstallPluginWithDependency(installedPlugin);
+
+                }
+
+                if (Boolean.TRUE.equals(oldPlugInfoYml.getAutoInstall())) {
+                    doInstallPluginWithDependency(plugInfo.getName());
+                }
+            } else if (StringUtils.equals("stopPlugin-start", flag) || StringUtils.equals("unzipAndCheckPluginUpgradePackage-end", flag)) {
+                for (String installedPlugin : installedPlugins) {
+
+                    doInstallPluginWithDependency(installedPlugin);
+
+                }
+
+                if (Boolean.TRUE.equals(oldPlugInfoYml.getAutoInstall())) {
+                    doInstallPluginWithDependency(plugInfo.getName());
+                }
+            }
+        }
+
+        public void clean() {
+            FileUtil.del(pluginUpgradeUnzipPath);
+            FileUtil.del(pluginUpgradePackageFile);
+        }
     }
 }

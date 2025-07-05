@@ -1,7 +1,10 @@
 package com.supos.uns.service;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.ObjectUtil;
@@ -11,33 +14,48 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
+import com.supos.common.SrcJdbcType;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.*;
 import com.supos.common.dto.grafana.DashboardDto;
 import com.supos.common.dto.grafana.PgDashboardParam;
+import com.supos.common.enums.GlobalExportModuleEnum;
 import com.supos.common.event.CreateDashboardEvent;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
+import com.supos.common.service.IUnsDefinitionService;
+import com.supos.common.utils.FuxaUtils;
 import com.supos.common.utils.GrafanaUtils;
 import com.supos.common.utils.I18nUtils;
+import com.supos.uns.bo.RunningStatus;
 import com.supos.uns.dao.mapper.DashboardMapper;
+import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.DashboardPo;
-import jakarta.annotation.Resource;
+import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.service.exportimport.core.DashboardExportContext;
+import com.supos.uns.service.exportimport.core.DashboardImportContext;
+import com.supos.uns.service.exportimport.json.DashboardDataExporter;
+import com.supos.uns.service.exportimport.json.DashboardDataImporter;
+import com.supos.uns.util.FileUtils;
+import com.supos.uns.util.UnsFlags;
+import com.supos.uns.vo.DashboardExportParam;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StopWatch;
 
-import java.util.Collection;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import java.io.File;
+import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -51,14 +69,21 @@ import java.util.stream.Collectors;
 @Slf4j
 public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> {
 
-    @Resource
+    @Autowired
     private DashboardMapper dashboardMapper;
-    @Resource
+    @Autowired
     private SystemConfig systemConfig;
+    @Autowired
+    private IUnsDefinitionService unsDefinitionService;
+    @Autowired
+    UnsMapper unsMapper;
 
-    public PageResultDTO<DashboardDto> pageList(String keyword, PaginationDTO params) {
+    public PageResultDTO<DashboardDto> pageList(String keyword, Integer type, PaginationDTO params) {
         Page<DashboardPo> page = new Page<>(params.getPageNo(), params.getPageSize());
         LambdaQueryWrapper<DashboardPo> qw = new LambdaQueryWrapper<>();
+        if (type != null) {
+            qw.eq(DashboardPo::getType, type);
+        }
         if (StringUtils.isNotBlank(keyword)) {
             qw.and(w -> w.like(DashboardPo::getName, keyword).or().like(DashboardPo::getDescription, keyword));
         }
@@ -141,21 +166,22 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
 
     @EventListener(classes = RemoveTopicsEvent.class)
     public void onRemoveTopics(RemoveTopicsEvent event) {
-        if (CollectionUtil.isEmpty(event.topics)) {
+        if (CollectionUtil.isEmpty(event.topics) || !event.withDashboard) {
             return;
         }
-        Collection<String> tables = event.topics.values().stream()
+        Collection<String> aliasList = event.topics.values().stream()
                 .filter(even -> ObjectUtil.isNotNull(event.jdbcType))
-                .map(SimpleUnsInstance::getTableName).collect(Collectors.toSet());
-        List<String> ids = tables.stream().map(tableName -> {
+                .map(SimpleUnsInstance::getAlias).collect(Collectors.toSet());
+        List<String> ids = aliasList.stream().map(alias -> {
             //tableName = alias
-            return GrafanaUtils.getDashboardUuidByAlias(tableName);
+            return GrafanaUtils.getDashboardUuidByAlias(alias);
         }).collect(Collectors.toList());
 
         for (List<String> idList : Lists.partition(ids, Constants.SQL_BATCH_SIZE)) {
             dashboardMapper.deleteBatchIds(idList);
         }
     }
+
 
     /**
      * 获取grafana详情
@@ -181,4 +207,186 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
         log.info("结束创建数据看板 name：{}，创建状态：{}", event.name, flag);
     }
 
+    public void asyncImport(File file, Consumer<RunningStatus> consumer) {
+        if (!file.exists()) {
+            String message = I18nUtils.getMessage("global.import.file.not.exist");
+            consumer.accept(new RunningStatus(400, message));
+            return;
+        }
+        DashboardImportContext context = new DashboardImportContext(file.toString());
+        DashboardDataImporter dataImporter = new DashboardDataImporter(context, dashboardMapper);
+        try {
+            dataImporter.importData(file);
+        } catch (Throwable ex) {
+            log.error("UnsImportErr:{}", file.getPath(), ex);
+            importFinish(dataImporter, consumer, file, context, ex);
+            return;
+        }
+        importFinish(dataImporter, consumer, file, context, null);
+    }
+
+    private void importFinish(DashboardDataImporter dataImporter, Consumer<RunningStatus> consumer, File file, DashboardImportContext context, Throwable ex) {
+        try {
+            if (context.dataEmpty()) {
+                // todo wsz
+                String message = I18nUtils.getMessage("dashboard.import.excel.empty");
+                consumer.accept(new RunningStatus(400, message));
+            } else {
+                String finalTask = I18nUtils.getMessage("dashboard.create.task.name.final");
+
+                if (ex != null) {
+                    Throwable cause = ex.getCause();
+                    String errMsg;
+                    if (cause != null) {
+                        errMsg = cause.getMessage();
+                    } else {
+                        errMsg = ex.getMessage();
+                    }
+                    if (errMsg == null) {
+                        errMsg = I18nUtils.getMessage("dashboard.create.status.error");
+                    }
+                    consumer.accept(new RunningStatus(500, errMsg)
+                            .setTask(finalTask)
+                            .setProgress(0.0)
+                    );
+                    return;
+                }
+
+                if (context.getCheckErrorMap().isEmpty()) {
+                    String message = I18nUtils.getMessage("dashboard.import.rs.ok");
+                    RunningStatus runningStatus = new RunningStatus(200, message)
+                            .setTask(finalTask)
+                            .setProgress(100.0);
+                    runningStatus.setTotalCount(context.getTotal());
+                    runningStatus.setSuccessCount(context.getTotal());
+                    runningStatus.setErrorCount(0);
+                    consumer.accept(runningStatus);
+                    return;
+                }
+                String fileName = "err_" + file.getName().replace(' ', '-');
+                String targetPath = String.format("%s%s%s/%s/%s", FileUtils.getFileRootPath(), Constants.GLOBAL_IMPORT_ERROR, GlobalExportModuleEnum.DASHBOARD.getCode(), DateUtil.format(new Date(), "yyyyMMddHHmmss"), fileName);
+                File outFile = FileUtil.touch(targetPath);
+                log.info("dashboard create error file:{}", outFile.toString());
+                dataImporter.writeError(outFile);
+
+                String message = I18nUtils.getMessage("dashboard.import.rs.hasErr");
+                RunningStatus runningStatus = new RunningStatus(206, message, FileUtils.getRelativePath(targetPath))
+                        .setTask(finalTask)
+                        .setProgress(100.0);
+                runningStatus.setTotalCount(context.getTotal());
+                runningStatus.setErrorCount(context.getCheckErrorMap().keySet().size());
+                runningStatus.setSuccessCount(runningStatus.getTotalCount()-runningStatus.getErrorCount());
+                if(Objects.equals(runningStatus.getSuccessCount(),0)){
+                    runningStatus.setMsg(I18nUtils.getMessage("global.import.rs.allErr"));
+                }
+                consumer.accept(runningStatus);
+            }
+        } catch (Throwable e) {
+            log.error("Dashboard导入失败", e);
+            throw new BuzException(e.getMessage());
+        }
+    }
+
+    private void fetchData(DashboardExportContext context, DashboardExportParam exportParam, StopWatch stopWatch) {
+        List<DashboardPo> dashboardPos = null;
+        if (CollUtil.isNotEmpty(exportParam.getIds())) {
+            dashboardPos = dashboardMapper.selectByIds(exportParam.getIds());
+        } else if ("ALL".equals(exportParam.getExportType())) {
+            dashboardPos = dashboardMapper.selectList(new LambdaQueryWrapper<>());
+        }
+        if (CollUtil.isNotEmpty(dashboardPos)) {
+            stopWatch.start("global dashboard export get jsonContent");
+            for (DashboardPo dashboardPo : dashboardPos) {
+                if (Objects.equals(dashboardPo.getType(), 1)) {
+                    dashboardPo.setJsonContent(GrafanaUtils.get(dashboardPo.getId()));
+                } else if (Objects.equals(dashboardPo.getType(), 2)) {
+                    dashboardPo.setJsonContent(FuxaUtils.get(dashboardPo.getId()));
+                }
+                dashboardPo.setCreateTime(null);
+                dashboardPo.setUpdateTime(null);
+            }
+            stopWatch.stop();
+            context.setDashboardPos(dashboardPos);
+        }
+    }
+
+    public JsonResult<String> dataExport(DashboardExportParam exportParam) {
+        StopWatch stopWatch = new StopWatch();
+        try {
+            DashboardExportContext context = new DashboardExportContext();
+            // 1.获取数据
+            fetchData(context, exportParam, stopWatch);
+            // 2.开始将数据写入json文件
+            stopWatch.start("global dashboard export write data");
+            String path = new DashboardDataExporter().exportData(context);
+            stopWatch.stop();
+            return new JsonResult<String>().setData(FileUtils.getRelativePath(path));
+        } catch (Exception e) {
+            log.error("global dashboard export error", e);
+            String msg = I18nUtils.getMessage("global.dashboard.export.error");
+            return new JsonResult<>(500, msg);
+        } finally {
+            log.info("global dashboard export time:{}", stopWatch.prettyPrint());
+        }
+    }
+
+
+    public ResultVO createGrafanaByUns(String alias) {
+        CreateTopicDto uns = unsDefinitionService.getDefinitionByAlias(alias);
+        if (uns == null) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.file.not.exist"));
+        }
+
+        if (uns.getAddDashBoard()) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.dashboard.already.created"));
+        }
+
+        int dataType = uns.getDataType();
+        if (dataType != Constants.TIME_SEQUENCE_TYPE && dataType != Constants.RELATION_TYPE) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.file.dataType.invalid", dataType));
+        }
+
+        SrcJdbcType jdbcType = null;
+        if (dataType == Constants.RELATION_TYPE) {
+            jdbcType = SrcJdbcType.Postgresql;
+        } else {
+            jdbcType = systemConfig.getContainerMap().containsKey("tdengine") ? SrcJdbcType.TdEngine : SrcJdbcType.TimeScaleDB;
+        }
+        FieldDefine[] fields = uns.getFields();
+
+        String columns = GrafanaUtils.fields2Columns(jdbcType, fields);
+        String title = alias;
+        String schema = "public";
+        String table = alias;
+        String tagNameCondition = "";
+        if (StringUtils.isNotBlank(uns.getTbFieldName())) {
+            table = uns.getTableName();
+            tagNameCondition = " and tag_name='" + alias + "' ";
+        }
+        log.debug(">>>>>> create grafana dashboard columns:{},title:{},schema:{},table:{},tagNameCondition:{}", columns, title, schema, table, tagNameCondition);
+        int dot = table.indexOf('.');
+        if (dot > 0) {
+            schema = table.substring(0, dot);
+            table = table.substring(dot + 1);
+        }
+        String uuid = GrafanaUtils.createDashboard(table, tagNameCondition, jdbcType, schema, title, columns, Constants.SYS_SAVE_TIME);
+
+        DashboardPo dashboardPo = getById(uuid);
+        if (dashboardPo == null) {
+            Date now = new Date();
+            DashboardPo po = new DashboardPo();
+            po.setId(uuid);
+            po.setName(alias);
+            po.setCreateTime(now);
+            po.setUpdateTime(now);
+            dashboardMapper.insert(po);
+        }
+
+        int flag = UnsFlags.generateFlag(uns.getAddFlow(), uns.getSave2db(), true, uns.getRetainTableWhenDeleteInstance(), uns.getAccessLevel());
+        LambdaUpdateWrapper<UnsPo> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(UnsPo::getId, uns.getId());
+        updateWrapper.set(UnsPo::getWithFlags, flag);
+        unsMapper.update(updateWrapper);
+        return ResultVO.success("ok");
+    }
 }

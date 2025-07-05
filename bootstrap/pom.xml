@@ -22,6 +22,12 @@
       <groupId>com.supos</groupId>
       <artifactId>UnityNamespace</artifactId>
       <version>${project.version}</version>
+      <exclusions>
+        <exclusion>
+          <artifactId>adpter-camunda</artifactId>
+          <groupId>com.supos</groupId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>com.supos</groupId>
@@ -63,11 +69,6 @@
     <dependency>
       <groupId>com.supos</groupId>
       <artifactId>adpter-hasura</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.supos</groupId>
-      <artifactId>adpter-camunda</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>

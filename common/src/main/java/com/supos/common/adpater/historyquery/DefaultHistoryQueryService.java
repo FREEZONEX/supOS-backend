@@ -101,9 +101,9 @@ public abstract class DefaultHistoryQueryService {
             if (hasOr) {
                 addToSql(uns, s, where.or, "OR");
             }
-            return s.toString();
+            return s.isEmpty() ? null : s.toString();
         }
-        return "";
+        return null;
     }
 
     private void addToSql(CreateTopicDto uns, StringBuilder s, List<WhereCondition> list, String op) {
@@ -222,14 +222,12 @@ public abstract class DefaultHistoryQueryService {
             fields.add(Constants.QOS_FIELD);
             FillStrategy fillStrategy = params.fillStrategy;
             List<Object[]> datas = Collections.emptyList();
-            if (!CollectionUtils.isEmpty(values)) {
-                final boolean sample = select.function != null && params.intervalWindow != null
-                        && fillStrategy != null && fillStrategy != FillStrategy.None;// 参考 supos oodm
-                if (sample) {
-                    datas = getInsertDatas(params, select, ct, qos, values, LIMIT, new AtomicReference<>());
-                } else {
-                    datas = getNormalDatas(select.selectName(), qos, values, LIMIT);
-                }
+            final boolean sample = select.function != null && params.intervalWindow != null
+                    && fillStrategy != null && fillStrategy != FillStrategy.None;// 参考 supos oodm
+            if (sample) {
+                datas = getInsertDatas(params, select, ct, qos, values, LIMIT, new AtomicReference<>());
+            } else if (!CollectionUtils.isEmpty(values)) {
+                datas = getNormalDatas(select.selectName(), qos, values, LIMIT);
             }
             FieldsAndData data = new FieldsAndData();
             data.setTable(select.getTable());
@@ -276,7 +274,7 @@ public abstract class DefaultHistoryQueryService {
         final long WINDOW = params.intervalWindow != null ? params.intervalWindow.intervalMills : 0;
         FillStrategy fillStrategy = params.fillStrategy;
         final boolean prevInsert = fillStrategy == FillStrategy.Previous || fillStrategy == FillStrategy.Linear;
-        List<Object[]> datas = new ArrayList<>(LIMIT);
+        ArrayList<Object[]> datas = new ArrayList<>(LIMIT);
         int prevIndex = -1;
         Object prevData = null;
         final double B = asc ? 1.0 : -1.0;
@@ -302,33 +300,12 @@ public abstract class DefaultHistoryQueryService {
             Object insertQos = q;
             if (prevIndex == -1 && index > 0) {
                 // 说明起始时间所在窗口内 没有数据，如果是前向插值，则需要往前查找最近的一条数据
-                String table = params.select[0].table;
-                if (prevInsert) {
-                    if (asc) {
-                        Map<String, Object> insertRow = queryInsertRow(insertData,
-                                () -> buildGetNearestSQL(table, ctField, true, ts));
-                        if (insertRow == null) {
-                            insertQos = QOS_NO_DATA;//找不到时用 Bad 质量码
-                        } else {
-                            prevData = insertRow.get(select.column);
-                            insertQos = insertRow.get(qosField);
-                        }
-                    } else {
-                        prevData = v;
-                    }
-                } else {
-                    if (!asc) {
-                        Map<String, Object> insertRow = queryInsertRow(insertData,
-                                () -> buildGetNearestSQL(table, ctField, false, ts));
-                        if (insertRow == null) {
-                            insertQos = QOS_NO_DATA;
-                        } else {
-                            prevData = insertRow.get(select.column);
-                            insertQos = insertRow.get(qosField);
-                        }
-                    } else {
-                        prevData = v;
-                    }
+                Object[] dqs = prevDataAndQos(select, ctField, qosField, prevInsert, asc, ts, v, insertData);
+                if (dqs[0] != null) {
+                    prevData = dqs[0];
+                }
+                if (dqs[1] != null) {
+                    insertQos = dqs[1];
                 }
             }
             final int insertSize = Math.min((prevIndex >= 0 ? index - prevIndex - 1 : index), LIMIT - datas.size());
@@ -352,6 +329,25 @@ public abstract class DefaultHistoryQueryService {
                 break;
             }
         }
+        if (values.isEmpty()) {
+            String ts = DateTimeUtils.dateTimeUTC(START_TIME);
+            Object[] dqs = prevDataAndQos(select, ctField, qosField, prevInsert, asc, ts, null, insertData);
+            if (dqs[0] != null) {
+                prevData = dqs[0];
+                Object insertQos = null;
+                if (dqs[1] != null) {
+                    insertQos = dqs[1];
+                }
+                for (int i = 0; i < LIMIT; i++) {
+                    long time = START_TIME + BL * (prevIndex + i + 1) * WINDOW;
+                    if ((asc && time > END_TIME) || (!asc && time < END_TIME)) {
+                        break;
+                    }
+                    String dataStr = DateTimeUtils.dateTimeUTC(time);
+                    datas.add(new Object[]{dataStr, prevData, insertQos});
+                }
+            }
+        }
         for (int i = 0, LEFT = LIMIT - datas.size(); i < LEFT; i++) {
             long time = START_TIME + BL * (prevIndex + i + 1) * WINDOW;
             if ((asc && time > END_TIME) || (!asc && time < END_TIME)) {
@@ -362,6 +358,48 @@ public abstract class DefaultHistoryQueryService {
         }
         return datas;
     }
+
+    private Object[] prevDataAndQos(final Select select,
+                                    final String ctField,
+                                    final String qosField,
+                                    final boolean prevInsert,
+                                    boolean asc,
+                                    final String ts,
+                                    final Object v,
+                                    final AtomicReference<Map<String, Object>> insertData) {
+        String table = select.table;
+        Object prevData = null;
+        Object insertQos = null;
+        if (prevInsert) {
+            if (asc) {
+                Map<String, Object> insertRow = queryInsertRow(insertData,
+                        () -> buildGetNearestSQL(table, ctField, true, ts));
+                if (insertRow == null) {
+                    insertQos = QOS_NO_DATA;//找不到时用 Bad 质量码
+                } else {
+                    prevData = insertRow.get(select.column);
+                    insertQos = insertRow.get(qosField);
+                }
+            } else {
+                prevData = v;
+            }
+        } else {
+            if (!asc) {
+                Map<String, Object> insertRow = queryInsertRow(insertData,
+                        () -> buildGetNearestSQL(table, ctField, false, ts));
+                if (insertRow == null) {
+                    insertQos = QOS_NO_DATA;
+                } else {
+                    prevData = insertRow.get(select.column);
+                    insertQos = insertRow.get(qosField);
+                }
+            } else {
+                prevData = v;
+            }
+        }
+        return new Object[]{prevData, insertQos};
+    }
+
 
     private Map<String, Object> queryInsertRow(AtomicReference<Map<String, Object>> insertData, Supplier<String> sqlSupplier) {
         Map<String, Object> insertRow = insertData.get();

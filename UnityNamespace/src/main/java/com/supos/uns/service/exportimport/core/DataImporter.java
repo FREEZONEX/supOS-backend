@@ -6,7 +6,6 @@ import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.InstanceField;
 import com.supos.common.dto.excel.ExcelUnsWrapDto;
 import com.supos.common.enums.ExcelTypeEnum;
-import com.supos.common.utils.ApplicationContextUtils;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.JsonUtil;
 import com.supos.common.utils.PathUtil;
@@ -53,12 +52,13 @@ public abstract class DataImporter {
 
     private Map<ExcelTypeEnum, ParserAble> parserMap = new HashMap<>();
 
-    public DataImporter(ExcelImportContext context) {
+    public DataImporter(ExcelImportContext context, UnsManagerService unsManagerService, UnsLabelService unsLabelService,
+                        UnsTemplateService unsTemplateService, UnsAddService unsAddService) {
         this.context = context;
-        this.unsManagerService = ApplicationContextUtils.getBean(UnsManagerService.class);
-        this.unsLabelService = ApplicationContextUtils.getBean(UnsLabelService.class);
-        this.unsTemplateService = ApplicationContextUtils.getBean(UnsTemplateService.class);
-        this.unsAddService = ApplicationContextUtils.getBean(UnsAddService.class);
+        this.unsManagerService = unsManagerService;
+        this.unsLabelService = unsLabelService;
+        this.unsTemplateService = unsTemplateService;
+        this.unsAddService = unsAddService;
 
         {
             parserMap.put(ExcelTypeEnum.Template, new TemplateParser());
@@ -107,7 +107,8 @@ public abstract class DataImporter {
                 log.info("*** Excel[{}] 发起导入模板请求 createTemplate：{}", context.getFile(), JsonUtil.toJsonUseFields(templateVoList));
             }
             stopWatch.start(String.format("import template,size:%d", templateVoList.size()));
-            context.addAllError(unsTemplateService.createTemplates(templateVoList));
+            Map<String, String> errorMap = unsTemplateService.createTemplates(templateVoList);
+            context.addAllError(errorMap);
             stopWatch.stop();
         }
         context.clear();
@@ -171,6 +172,7 @@ public abstract class DataImporter {
         // 导入文件
         List<ExcelUnsWrapDto> fileList = context.getUnsList();
         if (CollectionUtils.isNotEmpty(fileList)) {
+            context.setTotalCount(context.getTotalCount()+fileList.size());
             stopWatch.start(String.format("import file check,size:%d", fileList.size()));
             // 校验模板是否存在
             checkTemplateExist(context);

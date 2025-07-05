@@ -9,13 +9,13 @@ public class PostgresqlTypeUtils {
     public static final Map<String, String> dbType2FieldTypeMap = new HashMap<>(16);
 
     static {
-        dbType2FieldTypeMap.put("integer", FieldType.INT.name);
-        dbType2FieldTypeMap.put("serial", FieldType.INT.name);
-        dbType2FieldTypeMap.put("serial2", FieldType.INT.name);
-        dbType2FieldTypeMap.put("serial4", FieldType.INT.name);
-        dbType2FieldTypeMap.put("intserial", FieldType.INT.name);
-        dbType2FieldTypeMap.put("int2", FieldType.INT.name);
-        dbType2FieldTypeMap.put("int4", FieldType.INT.name);
+        dbType2FieldTypeMap.put("integer", FieldType.INTEGER.name);
+        dbType2FieldTypeMap.put("serial", FieldType.INTEGER.name);
+        dbType2FieldTypeMap.put("serial2", FieldType.INTEGER.name);
+        dbType2FieldTypeMap.put("serial4", FieldType.INTEGER.name);
+        dbType2FieldTypeMap.put("intserial", FieldType.INTEGER.name);
+        dbType2FieldTypeMap.put("int2", FieldType.INTEGER.name);
+        dbType2FieldTypeMap.put("int4", FieldType.INTEGER.name);
         dbType2FieldTypeMap.put("bigint", FieldType.LONG.name);
         dbType2FieldTypeMap.put("bigserial", FieldType.LONG.name);
         dbType2FieldTypeMap.put("serial8", FieldType.LONG.name);

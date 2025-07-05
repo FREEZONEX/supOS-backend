@@ -20,6 +20,7 @@ public class GrafanaDashboardParam {
     private String dataSourceUid;
     private String schema;
     private String tableName;
+    private String tagNameCondition;//vqt模式  位号名称sql条件tag_name='{tbValue}'
     private String columns;
     private long version;
 }

@@ -139,7 +139,7 @@ public class TdQueryTest {
             System.out.println("Maps are equal: " + Maps.difference(map1, map3).areEqual());
         }
         FieldDefine[] fields = new FieldDefine[]{
-                new FieldDefine("A", FieldType.INT), new FieldDefine("B", FieldType.DOUBLE),
+                new FieldDefine("A", FieldType.INTEGER), new FieldDefine("B", FieldType.DOUBLE),
         };
         Map<String, String> fmap = new LinkedHashMap<>();
         for (FieldDefine define : fields) {

@@ -127,7 +127,7 @@ public class CreateTopicDto {
     String alias;
 
     @Schema(description = "模板ID")
-    Long modelId;//模板ID
+    Long modelId;//模板IDa
 
     @AliasValidator
     @Schema(description = "模板别名")

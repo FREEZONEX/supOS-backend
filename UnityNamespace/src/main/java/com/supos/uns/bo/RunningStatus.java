@@ -8,6 +8,8 @@ import lombok.Data;
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class RunningStatus {
+    @Schema(description = "模块 uns sourceFlow eventFlow dashboard")
+    String module;
     @Schema(description = "状态码 200表示成功")
     int code;
     String msg;
@@ -24,6 +26,9 @@ public class RunningStatus {
 
     private Long startTime;
     private Long endTime;
+    private int totalCount;
+    private int errorCount;
+    private int successCount;
 
     public RunningStatus(int code, String msg) {
         this.code = code;

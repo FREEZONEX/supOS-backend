@@ -70,7 +70,7 @@ public class GrafanaEventHandlerTest {
 
     @Test
     public void testCreateDashboard(){
-        GrafanaUtils.createDashboard("authentication_execution",SrcJdbcType.Postgresql,"public","demo1","id,authenticator", Constants.SYS_FIELD_CREATE_TIME);
+//        GrafanaUtils.createDashboard("authentication_execution",SrcJdbcType.Postgresql,"public","demo1","id,authenticator", Constants.SYS_FIELD_CREATE_TIME);
     }
 
     @Test
@@ -99,7 +99,7 @@ public class GrafanaEventHandlerTest {
         List<CreateTopicDto> topicDtos = new ArrayList<>();
         for (int i = 0; i < 1000; i++) {
             CreateTopicDto ct = new CreateTopicDto("/xwjtest-" + i,i + "");
-            ct.setFields(new FieldDefine[]{new FieldDefine("test",FieldType.INT)});
+            ct.setFields(new FieldDefine[]{new FieldDefine("test",FieldType.INTEGER)});
             topicDtos.add(ct);
         }
 

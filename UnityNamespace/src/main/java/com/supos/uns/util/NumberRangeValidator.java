@@ -23,7 +23,7 @@ public class NumberRangeValidator {
 
         try {
             switch (targetType) {
-                case INT:
+                case INTEGER:
                     long longValue = Long.parseLong(strValue);
                     return longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE;
 

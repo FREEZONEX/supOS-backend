@@ -37,7 +37,7 @@ public enum DataType {
      */
     public static String transfer(FieldType ft) {
         switch (ft) {
-            case INT: return INT32.name;
+            case INTEGER: return INT32.name;
             case LONG: return INT64.name;
             case FLOAT: return FLOAT.name;
             case DOUBLE: return DOUBLE.name;

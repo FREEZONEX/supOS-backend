@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
 import com.supos.common.Constants;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 /**
@@ -18,6 +19,9 @@ public class RelationalParser extends ParserApi {
 
     @Override
     public String readTplFromCache(BatchImportRequestVO.UnsVO uns) {
+        if (StringUtils.isNotEmpty(uns.getTplFile())) {
+            return readFromTpl(uns.getTplFile());
+        }
         if ("gmqtt".equals(Constants.MQTT_PLUGIN)) {
             return readFromTpl(tplGmqttFile);
         }
@@ -39,7 +43,8 @@ public class RelationalParser extends ParserApi {
                 .replaceAll("\\$id_func", funcNodeId)
                 .replaceAll("\\$id_mqtt", mqttNodeId);
         // 替换模型topic
-        jsonFlowStr = jsonFlowStr.replace("$model_alias", uns.getAlias());
+        jsonFlowStr = jsonFlowStr.replace("$uns_path", uns.getUnsTopic());
+        jsonFlowStr = jsonFlowStr.replaceAll("\\$model_alias", uns.getAlias());
         // 替换mock数据
         if (Constants.useAliasAsTopic) {
             jsonFlowStr = jsonFlowStr.replace("$alias_path_topic", uns.getAlias());

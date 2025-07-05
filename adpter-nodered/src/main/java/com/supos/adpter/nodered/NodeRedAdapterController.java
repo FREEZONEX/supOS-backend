@@ -1,5 +1,6 @@
 package com.supos.adpter.nodered;
 
+import com.supos.adpter.nodered.service.ImportNodeRedFlowService;
 import com.supos.common.dto.PageResultDTO;
 import com.supos.common.dto.ResultDTO;
 import com.supos.adpter.nodered.service.NodeRedAdapterService;
@@ -18,7 +19,8 @@ public class NodeRedAdapterController {
 
     @Autowired
     private NodeRedAdapterService nodeRedAdapterService;
-
+    @Autowired
+    private ImportNodeRedFlowService importNodeRedFlowService;
 
     /**
      * 创建新流程
@@ -58,11 +60,15 @@ public class NodeRedAdapterController {
 
     @GetMapping({"/inter-api/supos/flow/uns/alias"})
     public ResultDTO<NodeFlowVO> getByAlias(@RequestParam("alias") String alias) {
-        List<NodeFlowVO> result = nodeRedAdapterService.getByAlias(alias);
+        NodeFlowVO result = nodeRedAdapterService.getByAlias(alias);
         return ResultDTO.successWithData(result);
     }
 
-
+    @PostMapping("/inter-api/supos/flow/create")
+    public ResultDTO<NodeFlowVO> createMockFlow(@Valid @RequestBody CreateMockFlowRequestVO requestBody) {
+        NodeFlowVO mockFlow = importNodeRedFlowService.createMockFlow(requestBody.getPath(), requestBody.getUnsAlias());
+        return ResultDTO.successWithData(mockFlow);
+    }
 
     /**
      * 部署单个流程, 流程ID从当前cookie中获取

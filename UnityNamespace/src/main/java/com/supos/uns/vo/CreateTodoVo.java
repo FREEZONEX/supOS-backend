@@ -2,11 +2,12 @@ package com.supos.uns.vo;
 
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.validator.constraints.Length;
 
 @Data
 @NoArgsConstructor
@@ -22,12 +23,12 @@ public class CreateTodoVo {
      */
     @Schema(description = "模块编码")
     @NotBlank(message = "模块编码不可为空")
-    @Length(max = 32 , message = "模块编码长度不能超过32")
+    @Size(max = 32 , message = "模块编码长度不能超过32")
     private String moduleCode;
 
     @Schema(description = "模块名称")
     @NotBlank(message = "模块名称不可为空")
-    @Length(max = 32 , message = "模块名称长度不能超过32")
+    @Size(max = 32 , message = "模块名称长度不能超过32")
     private String moduleName;
 
     /**

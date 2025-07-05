@@ -21,7 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
-import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.ColumnMapRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -96,7 +96,7 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
     @Override
     public String execSQL(String sql) {
         if (sql.toLowerCase().startsWith("select")) {
-            List<Map> rs = jdbcTemplate.query(sql, new BeanPropertyRowMapper<>(Map.class));
+            List rs = jdbcTemplate.query(sql, new ColumnMapRowMapper());
             return JsonUtil.toJson(rs);
         } else {
             jdbcTemplate.execute(sql);
@@ -185,9 +185,9 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
         }
     }
 
-    @EventListener(classes = RemoveTopicsEvent.class)
+    @EventListener(classes = RemoveTDengineEvent.class)
     @Order(5)
-    void onRemoveTopicsEvent(RemoveTopicsEvent event) {
+    void onRemoveTopicsEvent(RemoveTDengineEvent event) {
         if (SrcJdbcType.TdEngine == event.jdbcType && event.getSource() != this) {
             Map<String, SimpleUnsInstance> tableInstances = new LinkedHashMap<>(event.topics.size());
             for (SimpleUnsInstance ins : event.topics.values()) {
@@ -548,7 +548,7 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
     static {
         Map<String, String> _fieldType2DBTypeMap = new HashMap<>(16);
         // {"int", "long", "float", "string", "boolean", "datetime"}
-        _fieldType2DBTypeMap.put(FieldType.INT.name, "INT");
+        _fieldType2DBTypeMap.put(FieldType.INTEGER.name, "INT");
         _fieldType2DBTypeMap.put(FieldType.LONG.name, "BIGINT");
         _fieldType2DBTypeMap.put(FieldType.FLOAT.name, "FLOAT");
         _fieldType2DBTypeMap.put(FieldType.DOUBLE.name, "DOUBLE");

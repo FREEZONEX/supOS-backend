@@ -1,7 +1,6 @@
 package com.supos.uns.service;
 
 
-import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.ObjectUtil;
@@ -12,9 +11,7 @@ import com.google.common.collect.Maps;
 import com.supos.common.Constants;
 import com.supos.common.config.ContainerInfo;
 import com.supos.common.config.SystemConfig;
-import com.supos.common.dto.SysModuleDto;
 import com.supos.common.enums.ContainerEnvEnum;
-import com.supos.common.enums.SysModuleEnum;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.JsonUtil;
@@ -32,13 +29,10 @@ import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.core.io.ClassPathResource;
 import org.yaml.snakeyaml.Yaml;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +59,11 @@ public class SystemConfigService {
     public SystemConfig buildSystemConfig() {
         SystemConfig systemConfig = new SystemConfig();
         log.info(">>>>>>>>>>>>>>系统配置  - 容器配置 - 开始");
-        systemConfig.setContainerMap(SystemConfigService.getSystemContainerMap());
+        try {
+            systemConfig.setContainerMap(SystemConfigService.getSystemContainerMap());
+        } catch (IOException ignored) {
+
+        }
         log.info(">>>>>>>>>>>>>>系统配置  - 容器配置 - 结束，配置信息：{}", JsonUtil.toJson(systemConfig));
         this.systemConfig = systemConfig;
         return systemConfig;
@@ -79,53 +77,13 @@ public class SystemConfigService {
         return ResultVO.successWithData(systemConfig);
     }
 
-    private static Map<String, ContainerInfo> getSystemContainerMap() {
+    private static Map<String, ContainerInfo> getSystemContainerMap() throws IOException {
         Map<String, ContainerInfo> containerMap = Maps.newHashMapWithExpectedSize(10);
-        File fileDir = null;
-        if (RuntimeUtil.isLocalProfile()){
-            ClassPathResource resource = new ClassPathResource("templates");
-            try {
-                fileDir = resource.getFile();
-            } catch (IOException e) {
-            }
-        } else {
-            String dir = String.format("%s%s", FileUtils.getFileRootPath(), Constants.SYSTEM_ROOT);
-            fileDir = new File(dir);
-        }
 
-        if (ObjectUtil.isNull(fileDir.listFiles())) {
-            log.warn("docker-compose文件未找到，获取容器信息失败");
-            return containerMap;
-        }
-
-        File activeServicesFile = new File(fileDir, ACTIVE_SERVICES_FILE);
-        if (!activeServicesFile.exists()) {
-            log.warn("active-services.txt文件未找到，获取容器信息失败");
-            return containerMap;
-        }
-
-        List<String> lines = FileUtil.readUtf8Lines(activeServicesFile);
-        if (CollectionUtils.isEmpty(lines)) {
-            log.warn("active-services.txt文件数据为空，获取容器信息失败");
-            return containerMap;
-        }
-
-        String activeServices = lines.get(0);
-
-        File composeFile = Arrays.stream(fileDir.listFiles()).filter(file -> file.getName().startsWith("docker-compose-")).findFirst().orElse(null);
-        if (null == composeFile || !composeFile.exists()) {
-            log.warn("docker-compose文件未找到，获取容器信息失败");
-            return containerMap;
-        }
-        FileInputStream fs = null;
-        try {
-            fs = new FileInputStream(composeFile);
-        } catch (FileNotFoundException e) {
-            log.warn("docker-compose文件未找到，获取容器信息失败");
-            return containerMap;
-        }
+        String activeServices = getActiveServices();
+        String composeFile = getComposeFile();
         Yaml yaml = new Yaml();
-        JSONObject map = yaml.loadAs(fs, JSONObject.class);
+        JSONObject map = yaml.loadAs(composeFile, JSONObject.class);
         JSONObject services = map.getJSONObject("services");
         for (String serviceName : services.keySet()) {
             JSONObject service = services.getJSONObject(serviceName);
@@ -174,9 +132,56 @@ public class SystemConfigService {
         return containerMap;
     }
 
+
+    private static String getActiveServices() throws IOException {
+        if (RuntimeUtil.isLocalProfile()) {
+            try (InputStream in = SystemConfigService.class.getClassLoader().getResourceAsStream("templates/" + ACTIVE_SERVICES_FILE)) {
+                if (in == null) {
+                    throw new FileNotFoundException("未在 classpath 中找到文件: " + ACTIVE_SERVICES_FILE);
+                }
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        return line;
+                    }
+                }
+            }
+        } else {
+            String dir = String.format("%s%s", FileUtils.getFileRootPath(), Constants.SYSTEM_ROOT);
+            List<String> content = FileUtil.readLines(new File(dir, ACTIVE_SERVICES_FILE), StandardCharsets.UTF_8);
+            if (CollectionUtils.isNotEmpty(content)) {
+                return content.get(0);
+            }
+        }
+        return null;
+    }
+
+    private static String getComposeFile() throws IOException {
+        if (RuntimeUtil.isLocalProfile()) {
+            try (InputStream in = SystemConfigService.class.getClassLoader().getResourceAsStream("templates/" + "docker-compose-8c16g.yml")) {
+                if (in == null) {
+                    throw new FileNotFoundException("未在 classpath 中找到文件: docker-compose-8c16g.yml");
+                }
+                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            } catch (IOException ignored) {
+            }
+        } else {
+            File fileDir = new File(FileUtils.getFileRootPath(), Constants.SYSTEM_ROOT);
+            File composeFile = Arrays.stream(fileDir.listFiles()).filter(file -> file.getName().startsWith("docker-compose-")).findFirst().orElse(null);
+
+            if (!composeFile.exists()) {
+                throw new FileNotFoundException("未在文件系统找到文件: docker-compose文件");
+            }
+            try (InputStream in = new FileInputStream(composeFile)) {
+                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        }
+        return null;
+    }
+
     @EventListener(classes = ContextRefreshedEvent.class)
     void onStartup(ContextRefreshedEvent event) {
-        if (!RuntimeUtil.isLocalProfile()){
+        if (!RuntimeUtil.isLocalProfile()) {
             ThreadUtil.execAsync(() -> {
                 ThreadUtil.sleep(15000);
                 keycloakUtil.setLocale(systemConfig.getLang());

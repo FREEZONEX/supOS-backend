@@ -15,6 +15,7 @@ import com.supos.common.event.EventBus;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.event.SysEvent;
 import com.supos.common.utils.I18nUtils;
+import com.supos.common.utils.JsonUtil;
 import com.supos.uns.dao.mapper.AlarmMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.AlarmPo;
@@ -237,7 +238,16 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
     private void addPo4Remove(HashMap<SrcJdbcType, TopicBaseInfoList> typeListMap, UnsPo po) {
         SrcJdbcType jdbcType = SrcJdbcType.getById(po.getDataSrcId());
         TopicBaseInfoList list = typeListMap.computeIfAbsent(jdbcType, k -> new TopicBaseInfoList());
-        SimpleUnsInstance instance = new SimpleUnsInstance(po.getId(), po.getPath(), po.getAlias(), po.getTableName(), po.getDataType(), po.getParentId(), po.getTableName() == null && !Constants.withRetainTableWhenDeleteInstance(po.getWithFlags()));
+        SimpleUnsInstance instance = new SimpleUnsInstance(
+                po.getId(),
+                po.getPath(),
+                po.getAlias(),
+                po.getTableName(),
+                po.getDataType(),
+                po.getParentId(),
+                po.getTableName() == null && !Constants.withRetainTableWhenDeleteInstance(po.getWithFlags()),
+                po.getFields(),
+                po.getName());
         list.topics.put(instance.getId(), instance);
     }
 

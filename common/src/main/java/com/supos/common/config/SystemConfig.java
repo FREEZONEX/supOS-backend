@@ -97,4 +97,9 @@ public class SystemConfig {
      * 是否启用UNS树懒加载模式
      */
     private Boolean lazyTree = false;
+
+    /**
+     * 是否启用LDAP用户体系
+     */
+    private Boolean ldapEnable = false;
 }

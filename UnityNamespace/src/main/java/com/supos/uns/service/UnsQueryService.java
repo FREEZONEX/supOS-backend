@@ -19,8 +19,6 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.collect.Lists;
-import com.supos.adapter.mqtt.service.MQTTPublisher;
-import com.supos.camunda.service.ProcessService;
 import com.supos.common.Constants;
 import com.supos.common.NodeType;
 import com.supos.common.SrcJdbcType;
@@ -43,6 +41,7 @@ import com.supos.uns.dao.mapper.UnsLabelMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.AlarmPo;
 import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.dto.ExternalTopicCacheDto;
 import com.supos.uns.util.PageUtil;
 import com.supos.uns.util.ParserUtil;
 import com.supos.uns.util.UnsConverter;
@@ -75,30 +74,25 @@ public class UnsQueryService {
     private final AlarmMapper alarmMapper;
     private final UnsLabelMapper unsLabelMapper;
     private final AlarmHandlerMapper alarmHandlerMapper;
-    private final ProcessService processService;
     @Autowired
     IUnsDefinitionService unsDefinitionService;
 
     @Autowired
     UnsCountCache unsCountCache;
 
-    private MQTTPublisher mqttPublisher;
-
-    // 缓存外部topic
-    public static Map<String, Date> EXTERNAL_TOPIC_CACHE = new ConcurrentHashMap<>();
+    // 缓存外部topic  <topic,payload>
+    public static Map<String, ExternalTopicCacheDto> EXTERNAL_TOPIC_CACHE = new ConcurrentHashMap<>();
 
     private static final List<String> fieldTypes =
             Collections.unmodifiableList(Arrays.stream(FieldType.values()).map(FieldType::getName).collect(Collectors.toList()));
 
     public UnsQueryService(@Autowired UnsMapper unsMapper, @Autowired AlarmMapper alarmMapper,
-                           @Autowired UnsLabelMapper unsLabelMapper, @Autowired MQTTPublisher mqttPublisher,
-                           @Autowired AlarmHandlerMapper alarmHandlerMapper, @Autowired ProcessService processService) {
+                           @Autowired UnsLabelMapper unsLabelMapper,
+                           @Autowired AlarmHandlerMapper alarmHandlerMapper) {
         this.unsMapper = unsMapper;
         this.alarmMapper = alarmMapper;
         this.unsLabelMapper = unsLabelMapper;
-        this.mqttPublisher = mqttPublisher;
         this.alarmHandlerMapper = alarmHandlerMapper;
-        this.processService = processService;
     }
 
     public JsonResult<Collection<String>> listTypes() {
@@ -181,7 +175,7 @@ public class UnsQueryService {
         if (o != null) {
             Class clazz = o.getClass();
             if (clazz == Integer.class) {
-                return FieldType.INT;
+                return FieldType.INTEGER;
             } else if (clazz == Long.class) {
                 return FieldType.LONG;
             } else if (clazz == Double.class || clazz == BigDecimal.class) {
@@ -440,12 +434,13 @@ public class UnsQueryService {
         return new JsonResult<>(0, "ok", treeResults);
     }
 
-    public JsonResult<List<TopicTreeResult>> searchTree(String keyword, Long parentId, boolean showRec) {
+    public JsonResult<List<TopicTreeResult>> searchTree(String keyword, Long parentId, boolean showRec,Integer pathType) {
         UnsSearchCondition condition = new UnsSearchCondition();
         condition.setKeyword(keyword);
         condition.setParentId(parentId);
         condition.setShowRec(showRec);
         condition.setPageSize(Long.MAX_VALUE);
+        condition.setPathType(pathType);
         List<TopicTreeResult> topicTreeResults = searchTreeByCondition(condition).getData();
         return new JsonResult<>(0, "ok", topicTreeResults);
     }
@@ -984,12 +979,12 @@ public class UnsQueryService {
     @EventListener(classes = TopicMessageEvent.class)
     @Order(9)
     void onTopicMessageEvent(TopicMessageEvent event) {
-
         TopicMessageInfo msgInfo;
         if (event.fieldsMap == null) {
             // 非 UNS topic
             // cache external topics
-            EXTERNAL_TOPIC_CACHE.put(event.topic, new Date());
+            ExternalTopicCacheDto cacheDto = new ExternalTopicCacheDto(event.payload,new Date());
+            EXTERNAL_TOPIC_CACHE.put(event.topic, cacheDto);
             msgInfo = externTopicLastMessages.computeIfAbsent(event.topic, k -> new TopicMessageInfo());
             msgInfo.update(event.nowInMills, event.payload, null, event.lastDataTime, event.err);
             return;
@@ -1213,9 +1208,9 @@ public class UnsQueryService {
             if (addRoot) {
                 Set<String> childMap = childrenMap.computeIfAbsent(parentPath, k -> new HashSet<>());
                 if (childMap.add(tempParentNode.getPath())) {
-                    if (StringUtils.hasText(tempParentNode.getId())) {
+//                    if (StringUtils.hasText(tempParentNode.getId())) {
                         rootNodes.put(tempParentNode.getPath(), tempParentNode);
-                    }
+//                    }
                 }
             }
 
@@ -1480,13 +1475,16 @@ public class UnsQueryService {
     public void standardizingData(String alias, Map<String, Object> data) {
         CreateTopicDto def = unsDefinitionService.getDefinitionByAlias(alias);
         if (def != null) {
+            if (def.getDataType() == Constants.CITING_TYPE){
+                def = unsDefinitionService.getDefinitionById(def.getRefers()[0].getId());
+            }
             Map<String, FieldDefine> fieldsMap = def.getFieldDefines().getFieldsMap();
             for (Map.Entry<String, Object> entry : data.entrySet()) {
                 FieldDefine fd = fieldsMap.get(entry.getKey());
                 if (fd != null && fd.getType().isNumber && entry.getValue() instanceof String str) {
                     BigDecimal vNum = new BigDecimal(str);
                     Object val = switch (fd.getType()) {
-                        case INT, LONG -> vNum.longValue();
+                        case INTEGER, LONG -> vNum.longValue();
                         case FLOAT, DOUBLE -> vNum.doubleValue();
                         default -> str;
                     };

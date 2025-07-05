@@ -9,6 +9,9 @@
         <include resource="logback-33893.xml"/>
     </springProfile>
 
+    <springProfile name="33997">
+        <include resource="logback-33997.xml"/>
+    </springProfile>
 
     <springProfile name="pride110">
         <include resource="logback-pride100.xml"/>

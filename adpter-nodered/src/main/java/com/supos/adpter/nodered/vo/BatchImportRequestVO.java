@@ -35,6 +35,8 @@ public class BatchImportRequestVO implements Serializable {
 
         private String alias;
 
+        private String tplFile;
+
         private List<FieldDefine> fields;
 
         /**

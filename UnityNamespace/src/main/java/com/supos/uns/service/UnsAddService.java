@@ -74,6 +74,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     UnsTemplateService unsTemplateService;
     @Resource
     private UnsMapper unsMapper;
+
     /**
      * 创建目录或文件 -- 前端界面创建单个实例发起
      *
@@ -93,12 +94,12 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         }
 
         //是文件夹 并且 需要创建模板
-        if (Constants.PATH_TYPE_DIR == dto.getPathType() && Boolean.TRUE.equals(dto.getCreateTemplate())){
+        if (Constants.PATH_TYPE_DIR == dto.getPathType() && Boolean.TRUE.equals(dto.getCreateTemplate())) {
             CreateTemplateVo templateVo = new CreateTemplateVo();
             templateVo.setName(dto.getName());
             templateVo.setFields(dto.getFields());
             ResultVO<String> templateResult = unsTemplateService.createTemplate(templateVo);
-            if (templateResult.getCode() != 200){
+            if (templateResult.getCode() != 200) {
                 result.setCode(400);
                 result.setMsg(templateResult.getMsg());
                 return result;
@@ -214,20 +215,25 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         Map<String, List<FieldDefine>> fileMap = new HashMap<>();
         // 根据路径，对文件属性进行归类
         for (CreateUnsNodeRedDto requestDto : requestDtoList) {
-            String fullpath = requestDto.getPath().concat("/").concat(requestDto.getName());
-            if (!StringUtils.hasText(requestDto.getPath()) || requestDto.getPath().endsWith("/")) {
-                fullpath = requestDto.getPath().concat(requestDto.getName());
+            if (StringUtils.hasText(requestDto.getFieldName())) {
+                String fullpath = requestDto.getPath();
+                if (requestDto.getPath().endsWith("/")) {
+                    fullpath = requestDto.getPath().substring(0, requestDto.getPath().length() - 1);
+                }
+                FieldDefine fd = new FieldDefine();
+                fd.setType(FieldType.getByNameIgnoreCase(requestDto.getFieldType()));
+                fd.setName(requestDto.getFieldName());
+                List<FieldDefine> fieldDefines = fileMap.getOrDefault(fullpath, new ArrayList<>());
+                // 如果传了alias，那么就以参数为准
+                if (StringUtils.hasText(requestDto.getAlias())) {
+                    aliasMap.put(fullpath, requestDto.getAlias());
+                }
+                fieldDefines.add(fd);
+                fileMap.put(fullpath, fieldDefines);
             }
-            FieldDefine fd = new FieldDefine();
-            fd.setType(FieldType.getByNameIgnoreCase(requestDto.getFieldType()));
-            fd.setName(requestDto.getFieldName());
-            List<FieldDefine> fieldDefines = fileMap.getOrDefault(fullpath, new ArrayList<>());
-            // 如果传了alias，那么就以参数为准
-            if (StringUtils.hasText(requestDto.getAlias())) {
-                aliasMap.put(fullpath, requestDto.getAlias());
-            }
-            fieldDefines.add(fd);
-            fileMap.put(fullpath, fieldDefines);
+        }
+        if (fileMap.isEmpty()) {
+            return dtos;
         }
         // 构建path和alias的关系
         for (String path : fileMap.keySet()) {
@@ -284,23 +290,22 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     @Transactional(rollbackFor = Throwable.class, timeout = 300)
     public List<String[]> createModelsForNodeRed(List<CreateUnsNodeRedDto> requestDto) {
         List<CreateTopicDto> createTopicDtos = modelTransfer(requestDto);
-        Map<String, String> errorMap = createModelAndInstance(createTopicDtos,false);
+        if (!createTopicDtos.isEmpty()) {
+            createModelAndInstance(createTopicDtos,false);
+        }
         List<String[]> results = new ArrayList<>();
-        // TODO 按需返回
-//        if (!errorMap.isEmpty()) {
-//            return results;
-//        }
+        // 填充别名返回
         for (CreateUnsNodeRedDto dto : requestDto) {
-            String fullpath = dto.getPath().concat("/").concat(dto.getName());
-            if (!StringUtils.hasText(dto.getPath()) || dto.getPath().endsWith("/")) {
-                fullpath = dto.getPath().concat(dto.getName());
+            String fullpath = dto.getPath();
+            if (dto.getPath().endsWith("/")) {
+                fullpath = dto.getPath().substring(0, dto.getPath().length() - 1);
             }
             String alias = dto.getAlias();
-            if (!StringUtils.hasText(alias)) {
+            if (!StringUtils.hasText(alias) && StringUtils.hasText(dto.getFieldName())) {
                 alias = PathUtil.generateFileAlias(fullpath);
             }
-            // topic, name, alias, fname, ftype, tag
-            String[] row = {dto.getPath(), dto.getName(), alias, dto.getFieldName(), dto.getFieldType(), dto.getTag()};
+            // path, alias, fname, ftype, tag
+            String[] row = {dto.getPath(), alias, dto.getFieldName(), dto.getFieldType(), dto.getTag()};
             results.add(row);
         }
         return results;
@@ -577,6 +582,14 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                         UnsPo refPo = existsUns.get(refAlias);
                         if (refPo != null) {
                             field.setId(refPo.getId());
+                        } else {
+                            itr.remove();
+                            errTipMap.put(bo.gainBatchIndex(), I18nUtils.getMessage("uns.topic.calc.expression.topic.ref.notFound", bo.getAlias()));
+                        }
+                    } else if (refId != null && refAlias == null) {
+                        UnsPo refPo = dbFiles.get(refId);
+                        if (refPo != null) {
+                            field.setAlias(refPo.getAlias());
                         } else {
                             itr.remove();
                             errTipMap.put(bo.gainBatchIndex(), I18nUtils.getMessage("uns.topic.calc.expression.topic.ref.notFound", bo.getAlias()));

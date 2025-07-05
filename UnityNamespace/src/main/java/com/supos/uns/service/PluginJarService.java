@@ -93,8 +93,6 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -117,7 +115,6 @@ public class PluginJarService {
     private BeanDefinition springBootStartBean;
     //    private String bootBeanName;
     private String CONFIGURATION_CLASS_ATTRIBUTE;
-    private final ScheduledExecutorService plugOnStartExecutor = Executors.newSingleThreadScheduledExecutor();
 
     @Autowired
     MultipleOpenApiResource openApi;
@@ -463,59 +460,40 @@ public class PluginJarService {
         }
         // 安装后，清理 swagger 接口缓存
 
-        plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALLED);
         if (installError != null) {
             uninstallPlugin(plugInfo);
             plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALL_FAIL);
             throw installError;
         }
         clearSwaggerApiCache(null);
+
+        plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALLED);
         if (!onStarts.isEmpty()) {
             Collections.sort(onStarts, PluginJarService::compareBean);
-            plugOnStartExecutor.schedule(() -> {
-                if (isStopped(plugInfo)) {
-                    return;
+            for (ApplicationListener listener : onStarts) {
+                log.info("插件 {} 启动回调: {}", plugInfo.getName(), listener);
+                try {
+                    listener.onApplicationEvent(contextRefreshedEvent);
+                } catch (Throwable ex) {
+                    log.error(plugInfo.getName() + " 插件启动回调失败:" + listener, ex);
                 }
-                for (ApplicationListener listener : onStarts) {
-                    if (isStopped(plugInfo)) {
-                        return;
-                    }
-                    log.info("插件 {} 启动回调: {}", plugInfo.getName(), listener);
-                    try {
-                        listener.onApplicationEvent(contextRefreshedEvent);
-                    } catch (Throwable ex) {
-                        log.error(plugInfo.getName() + " 插件启动回调失败:" + listener, ex);
-                    }
-                }
-            }, 100, TimeUnit.MILLISECONDS);
+            }
         } else {
             log.info("插件 {} 没有启动回调", plugInfo.getName());
         }
         if (!lifecycles.isEmpty()) {
-            plugOnStartExecutor.schedule(() -> {
-                if (isStopped(plugInfo)) {
-                    return;
-                }
-                for (Lifecycle lifecycle : lifecycles) {
-                    if (isStopped(plugInfo)) {
-                        return;
+            for (Lifecycle lifecycle : lifecycles) {
+                log.info("{} 插件启动生命周期: {}", plugInfo.getName(), lifecycle);
+                try {
+                    if (!lifecycle.isRunning()) {
+                        lifecycle.start();
                     }
-                    log.info("{} 插件启动生命周期: {}", plugInfo.getName(), lifecycle);
-                    try {
-                        if (!lifecycle.isRunning()) {
-                            lifecycle.start();
-                        }
-                    } catch (Throwable ex) {
-                        log.error(plugInfo.getName() + " 插件启动回调Lifecycle失败:" + lifecycle, ex);
-                    }
+                } catch (Throwable ex) {
+                    log.error(plugInfo.getName() + " 插件启动回调Lifecycle失败:" + lifecycle, ex);
                 }
-            }, 200, TimeUnit.MILLISECONDS);
+            }
         }
         return true;
-    }
-
-    private static boolean isStopped(PlugInfo plugInfo) {
-        return !PlugInfo.STATUS_INSTALLED.equals(plugInfo.getInstallStatus());
     }
 
     private static int compareBean(Object a, Object b) {

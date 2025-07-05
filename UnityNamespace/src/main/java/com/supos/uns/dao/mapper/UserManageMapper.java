@@ -43,7 +43,7 @@ public interface UserManageMapper extends BaseMapper {
     @Select("select ue.*,ue.username AS preferredUsername from user_entity ue where ue.id =#{userId}")
     UserManageVo getById(@Param("userId") String userId);
 
-    @Select("select ue.id,ue.username AS preferredUsername from user_entity ue where ue.username =#{username}")
+    @Select("select ue.id,ue.username AS preferredUsername from user_entity ue where ue.username =#{username} and ue.realm_id = '8920b375-d705-4d30-8a71-52d9c14ec4ba'")
     UserManageVo getByUsername(@Param("username") String username);
 
 
@@ -78,5 +78,9 @@ public interface UserManageMapper extends BaseMapper {
             "  </foreach> " +
             "</script>")
     List<String> getUsersPhoneByUsernames(@Param("usernameList") List<String> usernameList);
+
+
+    List<UserManageVo> getNotInitializedLdapUsers();
+
 }
 

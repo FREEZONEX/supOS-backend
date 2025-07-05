@@ -1,18 +1,27 @@
 package com.supos.gateway.service;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
+import cn.hutool.http.HttpUtil;
+import cn.hutool.http.Method;
 import cn.hutool.json.JSONUtil;
 import cn.hutool.jwt.JWT;
+import com.alibaba.fastjson.JSON;
 import com.supos.common.vo.UserInfoVo;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author xinwangji@supos.com
  * @date 2024/11/20 9:09
  * @description
  */
+@Slf4j
 public class AuthServiceTest {
 
 
@@ -45,5 +54,48 @@ public class AuthServiceTest {
 
         List<String> methods = AuthService.transMethodList(s);
         System.out.println();
+    }
+
+
+    public void testTokenExchange() {
+        String url = "http://100.100.100.22:33997/keycloak/home/realms/supos/protocol/openid-connect/token";
+        Map<String,Object> params = new HashMap<>();
+        params.put("client_secret","VaOS2makbDhJJsLlYPt4Wl87bo9VzXiO");
+        params.put("grant_type","client_credentials");
+        params.put("client_id","supos");
+        log.info(">>>>>>>>>>>>Keycloak getAdminToken URL：{},params:{}",url, JSON.toJSON(params));
+        HttpResponse response = HttpRequest.post(url)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .form(params)
+                .timeout(5000)
+                .execute();
+        log.info(">>>>>>>>>>>>Keycloak getAdminToken response code：{},body:{}",response.getStatus(),response.body());
+        if(200 != response.getStatus()){
+            throw new RuntimeException("Keycloak getAdminToken 失败");
+        }
+        String token = JSON.parseObject(response.body()).getString("access_token");
+
+        String u  = "http://100.100.100.22:33997/keycloak/home/realms/supos/protocol/openid-connect/token";
+        Map<String,Object> p2 = new HashMap<>();
+        p2.put("grant_type","urn:ietf:params:oauth:grant-type:token-exchange");
+        p2.put("client_id","supos");
+        p2.put("client_secret","VaOS2makbDhJJsLlYPt4Wl87bo9VzXiO");
+        p2.put("subject_token",token);
+        p2.put("requested_subject","5435b2e9-5a35-4d17-943c-71328bef74ae");
+        p2.put("scope","openid profile");
+//        p2.put("audience","supos");
+//        p2.put("requested_issuer","realms/supos");
+
+        HttpResponse response1 = HttpRequest.post(u).form(p2).execute();
+
+        String t2 = JSON.parseObject(response1.body()).getString("access_token");
+        JWT jwt = JWT.of(t2);
+
+        System.out.println(response1.body());
+
+        //获取用户信息
+        String url2 = "http://100.100.100.22:33997/keycloak/home/realms/supos/protocol/openid-connect/userinfo";
+        HttpResponse response2 = HttpUtil.createRequest(Method.GET,url2).bearerAuth(t2).execute();
+        System.out.println(response2.body());
     }
 }

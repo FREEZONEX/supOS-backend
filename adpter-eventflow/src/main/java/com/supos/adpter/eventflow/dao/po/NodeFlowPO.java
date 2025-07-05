@@ -1,5 +1,7 @@
 package com.supos.adpter.eventflow.dao.po;
 
+import com.alibaba.excel.annotation.ExcelIgnore;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Data;
 
 import java.util.Date;
@@ -35,4 +37,7 @@ public class NodeFlowPO {
     private Date createTime;
 
     private Date updateTime;
+    @ExcelIgnore
+    @TableField(exist = false)
+    private String error;
 }

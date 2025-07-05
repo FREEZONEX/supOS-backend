@@ -1,7 +1,6 @@
 package com.supos.adapter.mqtt.adapter;
 
 import cn.hutool.core.collection.CollectionUtil;
-import com.supos.adapter.mqtt.config.MQTTConfig;
 import com.supos.adapter.mqtt.dto.ConnectionLossRecord;
 import com.supos.adapter.mqtt.service.MQTTPublisher;
 import com.supos.adapter.mqtt.service.MessageConsumer;
@@ -10,27 +9,22 @@ import com.supos.common.utils.I18nUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
-@Component
 public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
 
     private final MessageConsumer messageConsumer;
 
     private final String clientId;
-    private MqttClient mqttClient;
-    public final MemoryPersistence memoryPersistence = new MemoryPersistence();
+    private final MqttClient mqttClient;
 
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
         AtomicInteger threadNum = new AtomicInteger(0);
@@ -48,13 +42,10 @@ public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
         return subscribeTopics;
     }
 
-    public MQTTConsumerAdapter(@Autowired MQTTConfig config, @Autowired MessageConsumer consumer) {
-        this.messageConsumer = consumer;
-        clientId = config.getClientIdPrefix() + ":" + UUID.randomUUID();
-        MqttClient client;
+    public static MqttClient client(String clientId, String broker) {
         try {
             // 创建 MQTT 客户端
-            client = new MqttClient(config.getBroker(), clientId, memoryPersistence);
+            MqttClient client = new MqttClient(broker, clientId, new MemoryPersistence());
             // 设置连接选项
             MqttConnectOptions options = new MqttConnectOptions();
             options.setCleanSession(true);
@@ -63,15 +54,21 @@ public class MQTTConsumerAdapter implements MqttCallback, MQTTPublisher {
             options.setAutomaticReconnect(true);
             // 连接到 EMQX 服务器
             client.connect(options);
+            return client;
             // 设置消息回调
-            client.setCallback(this);
         } catch (Exception ex) {
             TopologyLog.log(TopologyLog.Node.PULL_MQTT, TopologyLog.EventCode.ERROR, I18nUtils.getMessage("uns.topology.mqtt.init"));
-            log.error("Fail to init MqttClient:" + config.getBroker(), ex);
-            System.exit(1);// 初始化失败就退出进程，让容器去自动重启
-            throw new RuntimeException(ex);
+            log.error("Fail to init MqttClient:" + broker, ex);
+            return null;
         }
-        mqttClient = client;
+    }
+
+    public MQTTConsumerAdapter(String clientId, MqttClient client, MessageConsumer consumer) {
+        this.messageConsumer = consumer;
+        this.clientId = clientId;// config.getClientIdPrefix() + ":" + UUID.randomUUID();
+        this.mqttClient = client;
+        // 设置消息回调
+        client.setCallback(this);
     }
 
     public long getArrivedSize() {

@@ -42,7 +42,6 @@
     <module>gateway</module>
     <module>adpter-elasticsearch</module>
     <module>adpter-minio</module>
-    <module>adpter-camunda</module>
     <module>adpter-eventflow</module>
     <module>supos-websocket</module>
   </modules>
@@ -113,12 +112,6 @@
         <groupId>commons-beanutils</groupId>
         <artifactId>commons-beanutils</artifactId>
         <version>1.9.4</version>
-      </dependency>
-      <!-- druid -->
-      <dependency>
-        <groupId>com.alibaba</groupId>
-        <artifactId>druid</artifactId>
-        <version>1.2.24</version>
       </dependency>
 
       <!-- Sa-Token Permission authentication, online documentation:https://sa-token.cc -->

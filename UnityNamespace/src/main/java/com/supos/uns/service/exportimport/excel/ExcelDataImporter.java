@@ -9,6 +9,10 @@ import com.alibaba.excel.write.metadata.WriteSheet;
 import com.supos.common.Constants;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.exception.BuzException;
+import com.supos.uns.service.UnsAddService;
+import com.supos.uns.service.UnsLabelService;
+import com.supos.uns.service.UnsManagerService;
+import com.supos.uns.service.UnsTemplateService;
 import com.supos.uns.service.exportimport.core.DataImporter;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import lombok.extern.slf4j.Slf4j;
@@ -28,8 +32,9 @@ import java.util.Map;
 @Slf4j
 public class ExcelDataImporter extends DataImporter {
 
-    public ExcelDataImporter(ExcelImportContext context) {
-        super(context);
+    public ExcelDataImporter(ExcelImportContext context, UnsManagerService unsManagerService, UnsLabelService unsLabelService,
+                             UnsTemplateService unsTemplateService, UnsAddService unsAddService) {
+        super(context, unsManagerService, unsLabelService, unsTemplateService, unsAddService);
     }
 
     @Override

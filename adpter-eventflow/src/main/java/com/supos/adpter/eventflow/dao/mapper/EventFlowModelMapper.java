@@ -19,7 +19,13 @@ public interface EventFlowModelMapper {
 
     @Select("select parent_id from supos_event_flow_models where topic=#{topic}")
     List<Long> queryByTopic(@Param("topic") String topic);
-
+    @Select("<script>" +
+            "select * from supos_event_flow_models where parent_id in " +
+            "<foreach collection=\"parentIds\" item=\"parentId\" open=\"(\" close=\")\" separator=\",\">" +
+            "        #{parentId} " +
+            "</foreach>" +
+            "</script>")
+    List<NodeFlowModelPO> selectByParentIds(@Param("parentIds") Collection<Long> parentIds);
     @Insert("<script>" +
             "insert into supos_event_flow_models " +
             "(parent_id, topic) values " +

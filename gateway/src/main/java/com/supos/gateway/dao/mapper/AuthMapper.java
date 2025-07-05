@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.supos.common.dto.UserAttributeDto;
 import com.supos.common.dto.auth.ResourceDto;
 import com.supos.common.dto.auth.RoleDto;
+import com.supos.common.vo.UserInfoVo;
+import com.supos.common.vo.UserManageVo;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -51,4 +53,7 @@ public interface AuthMapper extends BaseMapper {
 
     @Select("select name,value from user_attribute where user_id = #{userId}")
     List<UserAttributeDto> getUserAttribute(@Param("userId") String userId);
+
+    @Select("select ue.*,ue.id AS sub,ue.username AS preferredUsername from user_entity ue where ue.id =#{userId}")
+    UserInfoVo getById(@Param("userId") String userId);
 }

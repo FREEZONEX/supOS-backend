@@ -1,5 +1,6 @@
 package com.supos.uns.schdule;
 
+import com.supos.uns.dto.ExternalTopicCacheDto;
 import com.supos.uns.service.UnsQueryService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -16,14 +17,14 @@ public class UnsCacheScheduler {
      */
     @Scheduled(cron = "0 0 22 * * ?")
     public void cleanupExpiredTopics() {
-        Map<String, Date> externalTopics = UnsQueryService.EXTERNAL_TOPIC_CACHE;
+        Map<String, ExternalTopicCacheDto> externalTopics = UnsQueryService.EXTERNAL_TOPIC_CACHE;
         long twelveHoursMillis = 12 * 60 * 60 * 1000; // 12 小时的毫秒数
         long currentTimeMillis = System.currentTimeMillis(); // 当前时间
 
-        Iterator<Map.Entry<String, Date>> iterator = externalTopics.entrySet().iterator();
+        Iterator<Map.Entry<String, ExternalTopicCacheDto>> iterator = externalTopics.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<String, Date> entry = iterator.next();
-            if (currentTimeMillis - entry.getValue().getTime() > twelveHoursMillis) {
+            Map.Entry<String, ExternalTopicCacheDto> entry = iterator.next();
+            if (currentTimeMillis - entry.getValue().getLastTime().getTime() > twelveHoursMillis) {
                 iterator.remove(); // 删除超过 12 小时的 key
             }
         }

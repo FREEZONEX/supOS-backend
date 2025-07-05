@@ -9,6 +9,7 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -52,6 +53,15 @@ public class SwaggerConfig {
                 .group("open-api")
                 .pathsToMatch("/open-api/**")  // 只暴露openAPI
                 .addOperationCustomizer(customOperationCustomizer)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "DEBUG", havingValue = "true", matchIfMissing = false)
+    public GroupedOpenApi interApi() {
+        return GroupedOpenApi.builder()
+                .group("inter-api")
+                .pathsToMatch("/inter-api/supos/notify/**")
                 .build();
     }
 

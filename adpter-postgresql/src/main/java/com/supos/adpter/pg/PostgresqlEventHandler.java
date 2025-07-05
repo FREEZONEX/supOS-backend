@@ -15,6 +15,7 @@ import com.supos.common.enums.FieldType;
 import com.supos.common.event.*;
 import com.supos.common.utils.DbTableNameUtils;
 import com.supos.common.utils.I18nUtils;
+import com.supos.common.utils.PostgresqlTypeUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.context.event.EventListener;
@@ -77,8 +78,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
             return;
         }
         List<String> sqls = Collections.EMPTY_LIST;
-        Collection<String> tables = event.topics.values().stream().filter(ins -> ins.isRemoveTableWhenDeleteInstance())
-                .map(in -> in.getTableName()).collect(Collectors.toSet());
+        Collection<String> tables = event.topics.values().stream().filter(ins -> ins.isRemoveTableWhenDeleteInstance()).map(in -> in.getTableName()).collect(Collectors.toSet());
         if (!CollectionUtils.isEmpty(tables)) {
             sqls = new ArrayList<>(tables.size());
             for (String table : tables) {
@@ -199,13 +199,18 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
         for (Map.Entry<String, String> entry : tableInfo.fieldTypes.entrySet()) {
             String field = entry.getKey(), oldType = entry.getValue();
             FieldDefine curType = curFieldTypes.remove(field);
-            String newType;
             if (curType == null) {
                 delFs.add(field);
-            } else if (oldType != null && !oldType.equals(curType.getType().getName())) {
-                hasTypeChanged = true;
-                log.debug("typeChange {}: {}->{}", field, oldType, getTypeDefineWithoutLen(curType));
-                break;
+                continue;
+            }
+            if (oldType != null) {
+                String newTypeMid = getTypeDefineWithoutLen(curType);
+                String newType = PostgresqlTypeUtils.dbType2FieldTypeMap.get(newTypeMid);
+                if (!oldType.equals(newType)) {
+                    hasTypeChanged = true;
+                    log.debug("typeChange {}: {}->{}", field, oldType, getTypeDefineWithoutLen(curType));
+                    break;
+                }
             }
         }
         if (hasTypeChanged) {// 修改字段类型的情况则删除表
@@ -291,7 +296,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
             case DATETIME:
                 type = "timestamptz(3)";
                 break;
-            case INT:
+            case INTEGER:
                 if (procSerial && def.isUnique()) {
                     type = "serial";
                 }
@@ -313,7 +318,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
     static {
         Map<String, String> _fieldType2DBTypeMap = new HashMap<>(8);
         // {"int", "long", "float", "string", "boolean", "datetime"}
-        _fieldType2DBTypeMap.put(FieldType.INT.name, "int4");
+        _fieldType2DBTypeMap.put(FieldType.INTEGER.name, "int4");
         _fieldType2DBTypeMap.put(FieldType.LONG.name, "int8");
         _fieldType2DBTypeMap.put(FieldType.FLOAT.name, "float4");
         _fieldType2DBTypeMap.put(FieldType.DOUBLE.name, "float8");

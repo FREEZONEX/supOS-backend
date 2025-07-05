@@ -61,7 +61,7 @@ public class UnsMessageConsumerTest {
             if (fieldDefine != null && v != null) {
                 sb.append("\\\"").append(name).append("\\\":");
                 FieldType fieldType = fieldDefine.getType();
-                boolean isZ = fieldType == FieldType.INT || fieldType == FieldType.LONG;
+                boolean isZ = fieldType == FieldType.INTEGER || fieldType == FieldType.LONG;
                 if (Number.class.isAssignableFrom(v.getClass())) {
                     sb.append(isZ ? ((Number) v).longValue() : v).append(',');
                 } else {

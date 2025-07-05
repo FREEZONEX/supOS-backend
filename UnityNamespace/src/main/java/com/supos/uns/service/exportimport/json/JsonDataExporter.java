@@ -2,18 +2,14 @@ package com.supos.uns.service.exportimport.json;
 
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.core.JsonEncoding;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.supos.common.Constants;
-import com.supos.common.dto.InstanceField;
 import com.supos.common.enums.ExcelTypeEnum;
-import com.supos.common.utils.ApplicationContextUtils;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsPo;
-import com.supos.uns.service.UnsExcelService;
 import com.supos.uns.service.UnsManagerService;
 import com.supos.uns.service.exportimport.core.DataExporter;
 import com.supos.uns.service.exportimport.core.ExcelExportContext;
@@ -25,8 +21,9 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 
 import java.io.File;
-import java.util.*;
-import java.util.function.Function;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -40,8 +37,8 @@ public class JsonDataExporter extends DataExporter {
 
     private UnsManagerService unsManagerService;
 
-    public JsonDataExporter() {
-        this.unsManagerService = ApplicationContextUtils.getBean(UnsManagerService.class);
+    public JsonDataExporter(UnsManagerService unsManagerService) {
+        this.unsManagerService = unsManagerService;
     }
 
     @Override

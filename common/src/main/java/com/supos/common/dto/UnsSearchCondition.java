@@ -155,7 +155,8 @@ public class UnsSearchCondition extends PaginationDTO{
      */
     @Hidden
     private Boolean showRec = false;
-
+    @Hidden
+    private Boolean filterFolder;
     public UnsSearchCondition(String keyword){
         this.keyword = keyword;
     }

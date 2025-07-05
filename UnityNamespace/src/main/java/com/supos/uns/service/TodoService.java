@@ -1,15 +1,10 @@
 package com.supos.uns.service;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.supos.camunda.po.ProcessDefinitionPo;
-import com.supos.camunda.service.ProcessService;
-import com.supos.camunda.service.ProcessTaskService;
-import com.supos.camunda.vo.ProcessInstanceVo;
 import com.supos.common.Constants;
 import com.supos.common.dto.*;
 import com.supos.common.enums.SysModuleEnum;
@@ -33,7 +28,6 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.camunda.bpm.model.bpmn.instance.UserTask;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
@@ -53,10 +47,6 @@ public class TodoService extends ServiceImpl<TodoMapper, TodoPo> {
     private TodoMapper todoMapper;
     @Resource
     private AlarmHandlerMapper alarmHandlerMapper;
-    @Resource
-    private ProcessTaskService processTaskService;
-    @Resource
-    private ProcessService processService;
     @Resource
     private UserManageMapper userManageMapper;
 
@@ -81,7 +71,7 @@ public class TodoService extends ServiceImpl<TodoMapper, TodoPo> {
 //        Long processId = instance.getExtend() != null ? Long.valueOf(instance.getExtend()) : null;
         String processInstanceId = null;
         //如果是工作流
-        if (AlarmService.checkWithFlags(instance.getWithFlags()) == Constants.UNS_FLAG_ALARM_ACCEPT_WORKFLOW) {
+/*        if (AlarmService.checkWithFlags(instance.getWithFlags()) == Constants.UNS_FLAG_ALARM_ACCEPT_WORKFLOW) {
             //查询工作流所配置的用户  给每个用户发送待办
             ProcessDefinitionPo processDefinitionPo = processService.getById(processId);
             if (null == processDefinitionPo) {
@@ -103,7 +93,7 @@ public class TodoService extends ServiceImpl<TodoMapper, TodoPo> {
             //启动流程实例
             ProcessInstanceVo processInstanceVo = processTaskService.startProcess(processId, null);
             processInstanceId = processInstanceVo.getProcessInstanceId();
-        } else if (AlarmService.checkWithFlags(instance.getWithFlags()) == Constants.UNS_FLAG_ALARM_ACCEPT_PERSON) {
+        } else*/ if (AlarmService.checkWithFlags(instance.getWithFlags()) == Constants.UNS_FLAG_ALARM_ACCEPT_PERSON) {
             //接收类型：人员
             //获取报警规则配置的处理人列表
             List<AlarmHandlerPo> handlerList = alarmHandlerMapper.getByUnsId(instanceId);
@@ -232,6 +222,11 @@ public class TodoService extends ServiceImpl<TodoMapper, TodoPo> {
         if (todoPo == null) {
             return ResultVO.fail("对应的待办不存在");
         }
+
+        if (todoPo.getStatus() == 1){
+            return ResultVO.fail("此待办已处理完成，不允许再次被处理");
+        }
+
         UserManageVo user = userManageMapper.getByUsername(handleTodoDto.getUsername());
         if (user == null) {
             return ResultVO.fail("用户信息不存在");
@@ -246,23 +241,23 @@ public class TodoService extends ServiceImpl<TodoMapper, TodoPo> {
 
     public boolean handleTodo(SysModuleEnum module, Long businessId, String link, int status, UserInfoVo userInfoVo) {
         //如果是报警模块
-        if (SysModuleEnum.ALARM.equals(module)) {
-            UnsPo instance = unsMapper.selectById(businessId);
-            if (null == instance) {
-                log.warn("报警规则ID:{},报警规则不存在,工作流领取并完成任务跳过", businessId);
-            } else {
-                if (AlarmService.checkWithFlags(instance.getWithFlags()) == Constants.UNS_FLAG_ALARM_ACCEPT_WORKFLOW) {
-                    //如果是配置了工作流，查询工作流的实例ID  领取并完成任务
-                    LambdaQueryWrapper<TodoPo> qw = new LambdaQueryWrapper<>();
-                    qw.eq(TodoPo::getModuleCode, module.getCode()).eq(TodoPo::getBusinessId, businessId)
-                            .eq(TodoPo::getLink, link).eq(TodoPo::getUserId, userInfoVo.getSub()).last("limit 1");
-                    TodoPo todoPo = this.baseMapper.selectOne(qw);
-                    String processInstanceId = todoPo.getProcessInstanceId();
-                    //领取并完成任务
-                    processTaskService.claimAndCompleteTask(processInstanceId, userInfoVo.getSub(), null);
-                }
-            }
-        }
+//        if (SysModuleEnum.ALARM.equals(module)) {
+//            UnsPo instance = unsMapper.selectById(businessId);
+//            if (null == instance) {
+//                log.warn("报警规则ID:{},报警规则不存在,工作流领取并完成任务跳过", businessId);
+//            } else {
+//                if (AlarmService.checkWithFlags(instance.getWithFlags()) == Constants.UNS_FLAG_ALARM_ACCEPT_WORKFLOW) {
+//                    //如果是配置了工作流，查询工作流的实例ID  领取并完成任务
+//                    LambdaQueryWrapper<TodoPo> qw = new LambdaQueryWrapper<>();
+//                    qw.eq(TodoPo::getModuleCode, module.getCode()).eq(TodoPo::getBusinessId, businessId)
+//                            .eq(TodoPo::getLink, link).eq(TodoPo::getUserId, userInfoVo.getSub()).last("limit 1");
+//                    TodoPo todoPo = this.baseMapper.selectOne(qw);
+//                    String processInstanceId = todoPo.getProcessInstanceId();
+//                    //领取并完成任务
+//                    processTaskService.claimAndCompleteTask(processInstanceId, userInfoVo.getSub(), null);
+//                }
+//            }
+//        }
         return todoMapper.updateTodoStatus(module.getCode(), businessId, status, userInfoVo.getPreferredUsername(), userInfoVo.getSub(), link) > 0;
     }
 

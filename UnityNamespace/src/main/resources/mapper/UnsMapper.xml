@@ -156,7 +156,6 @@
 
     <select id="pageListByConditions" parameterType="com.supos.common.dto.UnsSearchCondition" resultMap="unsResultMap">
         SELECT a.* , t.name AS template_name,t.alias AS template_alias,
-               (SELECT COUNT(*) FROM uns_namespace c WHERE c.parent_id = a.id) AS count_direct_children,
         (SELECT COALESCE(string_agg(l.label_name,','),'') FROM uns_label_ref r LEFT JOIN uns_label l ON r.label_id = l.id WHERE r.uns_id = a.id) AS labels
         FROM uns_namespace a
         LEFT JOIN uns_namespace t ON a.model_id = t.id

@@ -1,18 +1,13 @@
 package com.supos.uns.service.exportimport.excel;
 
-import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.supos.common.Constants;
-import com.supos.common.dto.InstanceField;
 import com.supos.common.enums.ExcelTypeEnum;
-import com.supos.common.utils.ApplicationContextUtils;
 import com.supos.uns.dao.po.UnsLabelPo;
-import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.service.UnsExcelService;
 import com.supos.uns.service.UnsManagerService;
 import com.supos.uns.service.exportimport.core.DataExporter;
@@ -26,9 +21,9 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.springframework.core.io.ClassPathResource;
 
-import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -43,9 +38,9 @@ public class ExcelDataExporter extends DataExporter {
     private UnsManagerService unsManagerService;
     private UnsExcelService unsExcelService;
 
-    public ExcelDataExporter() {
-        this.unsManagerService = ApplicationContextUtils.getBean(UnsManagerService.class);
-        this.unsExcelService = ApplicationContextUtils.getBean(UnsExcelService.class);
+    public ExcelDataExporter(UnsManagerService unsManagerService, UnsExcelService unsExcelService) {
+        this.unsManagerService = unsManagerService;
+        this.unsExcelService = unsExcelService;
     }
 
     @Override

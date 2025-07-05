@@ -190,3 +190,27 @@ CREATE TABLE if not exists "supos_app_key" (
 "app_secret_value" varchar(200) NOT NULL,
 "status" int2 default 1,
 "create_time" timestamptz(6) DEFAULT now());
+
+CREATE TABLE if not exists "supos"."global_export_record" (
+	id int8 NOT NULL,
+	user_id varchar(64) NULL,
+	file_path varchar(2000) NULL,
+	create_time timestamptz NULL DEFAULT CURRENT_TIMESTAMP,
+	update_time timestamptz NULL,
+	confirm bool NULL,
+	CONSTRAINT global_export_record_pk PRIMARY KEY (id)
+);
+
+CREATE TABLE if not exists "uns_history_delete_job" (
+    "id" BIGSERIAL PRIMARY KEY,
+    "alias" varchar(128) NOT NULL,
+    "name" varchar(512) NOT NULL,
+    "table_name" varchar(128) NULL,
+    "path" text NOT NULL,
+    "path_type" int2 NOT NULL,
+    "data_type" int2 NULL,
+    "fields" json NULL,
+    "status" smallint DEFAULT 1 NULL,
+    "create_at" timestamptz DEFAULT now() NULL
+);
+CREATE INDEX if not exists idx_uns_delete_alias ON uns_history_delete_job (alias);

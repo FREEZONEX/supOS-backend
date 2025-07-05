@@ -144,7 +144,7 @@ public class LayRecUtils {
                 group.sort(Comparator.comparingLong(UnsPo::getId));
                 for (int i = 0; i < group.size(); i++) {
                     UnsPo node = group.get(i);
-                    node.setPathName(pathName + "-" + i);
+                    node.setPathName(i > 0 ? pathName + "-" + i : pathName);
                     if (!addFiles.containsKey(node.getId()) && !Objects.equals(PathUtil.getName(node.getPath()), node.getPathName())) {
                         String pDir = PathUtil.subParentPath(node.getPath());
                         String path = pDir != null ? pDir + "/" + node.getPathName() : node.getPathName();
@@ -161,7 +161,7 @@ public class LayRecUtils {
         boolean changed = false;
         for (int i = 0; i < cs.length; i++) {
             char c = cs[i];
-            if (!Character.isJavaIdentifierPart(c) || c == '$') {
+            if ((!Character.isJavaIdentifierPart(c)  && c != '-') || c == '$') {
                 changed = true;
                 cs[i] = '_';
             }

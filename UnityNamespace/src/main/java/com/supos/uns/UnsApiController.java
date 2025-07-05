@@ -44,6 +44,8 @@ public class UnsApiController {
     UnsMapper unsMapper;
     @Autowired
     UnsDataService unsDataService;
+    @Autowired
+    UnsExternalTopicService unsExternalTopicService;
 
     private static final Set<Integer> baseDataTypes = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE)));
 
@@ -69,10 +71,11 @@ public class UnsApiController {
     public JsonResult<List<TopicTreeResult>> searchTree(@RequestParam(name = "key", required = false) @Parameter(description = "子节点模糊搜索词") String keyword,
                                                         @RequestParam(name = "parentId", required = false) @Parameter(description = "父级ID") Long parentId,
                                                         @RequestParam(name = "showRec", required = false, defaultValue = "false") @Parameter(description = "显示记录条数") boolean showRec,
-                                                        @RequestParam(name = "type", required = false, defaultValue = "1") @Parameter(description = "搜索类型: 1--文本搜索, 2--标签搜索，3--模板搜索") int searchType
+                                                        @RequestParam(name = "type", required = false, defaultValue = "1") @Parameter(description = "搜索类型: 1--文本搜索, 2--标签搜索，3--模板搜索") int searchType,
+                                                        @RequestParam(name = "pathType", required = false) @Parameter(description = "路径类型: 0--文件夹，1--模板，2--文件") Integer pathType
     ) throws Exception {
         if (1 == searchType) {
-            return unsQueryService.searchTree(keyword, parentId, showRec);
+            return unsQueryService.searchTree(keyword, parentId, showRec,pathType);
         } else if (2 == searchType) {
             return unsQueryService.searchByTag(keyword);
         } else if (3 == searchType) {
@@ -371,5 +374,17 @@ public class UnsApiController {
     @PostMapping(path = {"/inter-api/supos/uns/file/current/batchUpdate", "/open-api/supos/uns/file/current/batchUpdate"})
     public ResponseEntity<ResultVO<UnsDataResponseVo>> batchUpdateFile(@RequestBody List<UpdateFileDTO> list) {
         return ResponseEntity.ok(unsDataService.batchUpdateFile(list));
+    }
+
+    @Operation(summary = "外部topic payload解析" , tags = "openapi.tag.folder.management")
+    @GetMapping(path = {"/inter-api/supos/external/parserTopicPayload"})
+    public ResultVO<List<OuterStructureVo>> parserTopicPayload(@RequestParam String topic) {
+        return unsExternalTopicService.parserTopicPayload(topic);
+    }
+
+    @Operation(summary = "外部topic转UNS" , tags = "openapi.tag.folder.management")
+    @PostMapping(path = {"/inter-api/supos/external/topic2Uns"})
+    public ResultVO externalTopicAdd(@RequestBody CreateFileDto createFileDto) {
+        return unsExternalTopicService.topic2Uns(createFileDto);
     }
 }

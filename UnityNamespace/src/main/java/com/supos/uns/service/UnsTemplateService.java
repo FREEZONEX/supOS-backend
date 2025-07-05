@@ -75,6 +75,12 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
             resultVO.setData(unsPos.get(0).getId().toString());
             return resultVO;
         }
+
+        String fieldError = FieldUtils.validateFields(createTemplateVo.getFields(), true);
+        if (StringUtils.hasText(fieldError)){
+            return ResultVO.fail(fieldError);
+        }
+
         UnsPo unsPo = new UnsPo();
         unsPo.setId(nextId());
         unsPo.setName(name);
@@ -150,7 +156,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
                 .eq("path_type", Constants.PATH_TYPE_FILE);
         QueryWrapper<UnsPo> removeQuery = queryWrapper.or().eq("id", id);
         List<UnsPo> unsPos = this.list(
-                queryWrapper.select("id", "path", "path_type", "data_src_id", "alias", "ref_uns", "refers",
+                queryWrapper.select("id", "name", "path", "fields", "path_type", "data_src_id", "alias", "ref_uns", "refers",
                         "data_type", "table_name", "with_flags"));
         unsPos.add(template);
 
@@ -357,7 +363,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
             HashMap<SrcJdbcType, Map<Long, SimpleUnsInstance>> typeListMap = new HashMap<>();
             for (UnsPo po : delCalcInst) {
                 SimpleUnsInstance sui = new SimpleUnsInstance(po.getId(), po.getPath(), po.getAlias(),
-                        po.getTableName(), po.getDataType(), po.getParentId(), false);
+                        po.getTableName(), po.getDataType(), po.getParentId(), false, po.getFields(), po.getName());
                 SrcJdbcType srcJdbcType = SrcJdbcType.getById(po.getDataSrcId());
                 Map<Long, SimpleUnsInstance> calcInstances = typeListMap.computeIfAbsent(srcJdbcType, k -> new HashMap<>());
                 calcInstances.put(po.getId(), sui);

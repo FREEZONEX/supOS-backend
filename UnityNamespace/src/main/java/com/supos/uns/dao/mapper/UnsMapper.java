@@ -197,8 +197,6 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
 
     List<UnsPo> selectByLayRecPrefixes(@Param("prefixes") Set<String> prefixes);
 
-    List<UnsPo> selectByLayRecPrefix(@Param("layRecPrefix") String layRecPrefix);
-
     class UnsRefUpdateProvider {
         public static String updateRefUns(@Param("id") Long id, @Param("ids") Map<Long, Integer> idDataTypes) {
             StringBuilder sql = new StringBuilder(128 + idDataTypes.size());

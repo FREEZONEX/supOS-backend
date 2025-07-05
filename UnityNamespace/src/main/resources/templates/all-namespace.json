@@ -2,12 +2,12 @@
   "Template" : [ {
     "name" : "template2",
     "alias" : "template2_6bfcc3ab582442a889df",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
     "description" : ""
   }, {
     "name" : "template1",
     "alias" : "template1_ea5ef2be45724a57b1a5",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
     "description" : ""
   } ],
   "Label" : [ {
@@ -20,14 +20,14 @@
     "alias" : "folder1_f59c16d609e744c5a546",
     "displayName" : "",
     "templateAlias" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
     "description" : ""
   }, {
     "path" : "folder1/folder2",
     "alias" : "folder1_folder2_3f223a9803434b04af23",
     "displayName" : "",
     "templateAlias" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
     "description" : ""
   } ],
   "File-timeseries" : [ {
@@ -35,7 +35,7 @@
     "alias" : "tag2_xxx",
     "displayName" : "",
     "templateAlias" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
     "description" : "",
     "autoDashboard" : "TRUE",
     "persistence" : "FALSE",
@@ -45,7 +45,7 @@
     "alias" : "tag1_xxx",
     "displayName" : "",
     "templateAlias" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
     "description" : "",
     "autoDashboard" : "TRUE",
     "persistence" : "FALSE",
@@ -56,7 +56,7 @@
     "alias" : "rel1_xxx",
     "displayName" : "",
     "templateAlias" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
     "description" : "",
     "autoDashboard" : "TRUE",
     "persistence" : "FALSE",
@@ -66,7 +66,7 @@
     "alias" : "rel2_xxx",
     "displayName" : "",
     "templateAlias" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
     "description" : "",
     "autoDashboard" : "TRUE",
     "persistence" : "FALSE",
@@ -76,7 +76,7 @@
     "path" : "folder1/cal2",
     "alias" : "cal2_xxx",
     "displayName" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"}]",
     "refers" : "[{\"path\":\"folder1/tag1\",\"field\":\"t0\",\"alias\":\"tag1_xxx\",\"uts\":true},{\"path\":\"folder1/tag2\",\"field\":\"t1\",\"alias\":\"tag2_xxx\"}]",
     "expression" : "a1+a2>0",
     "description" : "",
@@ -87,7 +87,7 @@
     "path" : "folder1/cal1",
     "alias" : "cal1_xxx",
     "displayName" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INT\"}]",
+    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"}]",
     "refers" : "[{\"path\":\"folder1/tag1\",\"field\":\"t0\",\"alias\":\"tag1_xxx\"},{\"path\":\"folder1/tag2\",\"field\":\"t1\",\"alias\":\"tag2_xxx\"}]",
     "expression" : "a1+a2>0",
     "description" : "",

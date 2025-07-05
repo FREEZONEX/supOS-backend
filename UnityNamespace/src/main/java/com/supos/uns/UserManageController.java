@@ -5,14 +5,11 @@ import com.supos.common.dto.auth.*;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.vo.UserManageVo;
 import com.supos.uns.service.UserManageService;
-import com.supos.uns.vo.RoleVo;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @Slf4j
 @RestController
@@ -61,13 +58,12 @@ public class UserManageController {
     }
 
     /**
-     * 用户设置
+     * 用户管理-用户设置
      * @param updateUserDto
      * @return
      */
     @PutMapping({"/inter-api/supos/userManage/updateUser"})
     public ResultVO updateUser(@Valid @RequestBody UpdateUserDto updateUserDto){
-        updateUserDto.setOperateRole(true);
         return userManageService.updateUser(updateUserDto);
     }
 

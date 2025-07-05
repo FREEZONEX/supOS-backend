@@ -17,7 +17,7 @@ public enum RoleEnum {
      */
     SUPER_ADMIN("7ca9f922-0d35-44cf-8747-8dcfd5e66f8e","super-admin", "user.role.supAdmin","超级管理员"),
     ADMIN("a22ce15f-7bef-4e2e-9909-78f51b91c799", "admin","user.role.admin","管理员"),
-    NORMAL_USER("71dd6dc2-6b12-4273-9ec0-b44b86e5b500", "normal-user","user.role.normalUser","普通用户"),
+    NORMAL_USER("71dd6dc2-6b12-4273-9ec0-b44b86e5b500", "normal-user","user.role.normalUser","一般用户"),
     ;
 
     /**
@@ -43,9 +43,10 @@ public enum RoleEnum {
         IGNORE_ROLE_ID.add("831f62ab-d306-4b11-882e-b23c37ee8c7e");//uma_protection
         IGNORE_ROLE_ID.add("2152d19d-e4f9-488d-8509-e49cf239596a");//supos-default
         IGNORE_ROLE_ID.add("a22ce15f-7bef-4e2e-9909-78f51b91c799");//admin
-        IGNORE_ROLE_ID.add("71dd6dc2-6b12-4273-9ec0-b44b86e5b500");//normal-user
+//        IGNORE_ROLE_ID.add("71dd6dc2-6b12-4273-9ec0-b44b86e5b500");//normal-user
 
         IGNORE_ROLE_NAME.add("supos-default");
+        IGNORE_ROLE_NAME.add("ldap-initialized");
     }
 
     public static RoleEnum parse(String id) {

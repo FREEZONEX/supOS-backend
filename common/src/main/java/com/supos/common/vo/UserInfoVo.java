@@ -3,6 +3,7 @@ package com.supos.common.vo;
 import com.alibaba.fastjson.annotation.JSONField;
 import com.alibaba.fastjson2.JSONObject;
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.supos.common.dto.auth.ResourceDto;
 import com.supos.common.dto.auth.RoleDto;
@@ -21,6 +22,7 @@ import java.util.List;
  * @description
  */
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserInfoVo extends UserAttributeVo{

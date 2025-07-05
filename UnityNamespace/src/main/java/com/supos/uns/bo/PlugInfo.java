@@ -40,6 +40,11 @@ public class PlugInfo {
     private String plugPath;
 
     /**
+     * 插件安装时间
+     */
+    private Long installTime;
+
+    /**
      * 插件安装步骤标记
      */
     private Set<String> installStepFlags = new HashSet<>();

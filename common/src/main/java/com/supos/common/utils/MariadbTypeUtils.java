@@ -9,9 +9,9 @@ public class MariadbTypeUtils {
     public static final Map<String, String> dbType2FieldTypeMap = new HashMap<>(16);
 
     static {
-        dbType2FieldTypeMap.put("int", FieldType.INT.name);
-        dbType2FieldTypeMap.put("smallint", FieldType.INT.name);
-        dbType2FieldTypeMap.put("tinyint", FieldType.INT.name);
+        dbType2FieldTypeMap.put("int", FieldType.INTEGER.name);
+        dbType2FieldTypeMap.put("smallint", FieldType.INTEGER.name);
+        dbType2FieldTypeMap.put("tinyint", FieldType.INTEGER.name);
         dbType2FieldTypeMap.put("MEDIUMINT", FieldType.LONG.name);
         dbType2FieldTypeMap.put("bigint", FieldType.LONG.name);
 

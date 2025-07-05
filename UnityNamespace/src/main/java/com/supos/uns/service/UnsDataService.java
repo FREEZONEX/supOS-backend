@@ -4,7 +4,6 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.codec.Base64;
 import cn.hutool.core.convert.Convert;
 import cn.hutool.core.io.FileUtil;
-import cn.hutool.core.util.NumberUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson2.JSONObject;
@@ -212,8 +211,8 @@ public class UnsDataService {
             if (cValue.length() > fieldDefine.getMaxLen()) {
                 errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
             }
-        } else if (type == FieldType.INT) {
-            if (NumberRangeValidator.isOutOfRange(value, FieldType.INT)) {
+        } else if (type == FieldType.INTEGER) {
+            if (NumberRangeValidator.isOutOfRange(value, FieldType.INTEGER)) {
                 errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
             }
         } else if (type == FieldType.LONG) {

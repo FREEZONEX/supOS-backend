@@ -36,10 +36,7 @@ import java.util.stream.Collectors;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CreateUnsNodeRedDto {
 
-    @NotEmpty(message = "uns.name.empty")
-    String name;// 文件名
-
-    @Hidden
+    @NotEmpty(message = "uns.topic.empty")
     String path;// 文件路径
 
     @AliasValidator

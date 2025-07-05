@@ -248,4 +248,53 @@ public class PathUtil {
         }
         return changed ? new String(cs) : name;
     }
+
+    /**
+     * 去掉 path 的最后一级路径
+     * @param path 原始路径，如 "a/b/c/d/e"
+     * @return 去掉最后一级后的路径，如 "a/b/c/d"
+     */
+    public static String removeLastLevel(String path) {
+        if (path == null || path.isEmpty()) {
+            return path;
+        }
+
+        String[] parts = path.split("/");
+
+        // 如果只有一级或为空，直接返回空字符串
+        if (parts.length <= 1) {
+            return "";
+        }
+
+        // 用 StringBuilder 组装前面部分
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < parts.length - 1; i++) {
+            if (i > 0) {
+                result.append("/");
+            }
+            result.append(parts[i]);
+        }
+
+        return result.toString();
+    }
+
+    /**
+     * 返回路径的最后一级
+     * @param path 原始路径，如 "a/b/c/d/e"
+     * @return 最后一级，如 "e"
+     */
+    public static String getLastLevel(String path) {
+        if (path == null || path.isEmpty()) {
+            return "";
+        }
+
+        String[] parts = path.split("/");
+
+        // 如果路径为空或无有效层级，返回空字符串
+        if (parts.length == 0) {
+            return "";
+        }
+
+        return parts[parts.length - 1];
+    }
 }

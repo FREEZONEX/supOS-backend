@@ -5,7 +5,7 @@ import com.supos.common.exception.vo.ResultVO;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.service.UnsLabelService;
 import com.supos.uns.vo.FileVo;
-import com.supos.uns.vo.LabelVo;
+import com.supos.common.vo.LabelVo;
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;

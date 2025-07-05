@@ -7,29 +7,26 @@ import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.ServletUtil;
 import com.supos.common.vo.UserInfoVo;
 import com.supos.gateway.service.AuthService;
-import jakarta.annotation.Resource;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
 @RequestMapping("/inter-api/supos/auth")
 public class AuthController {
 
-    @Resource
+    @Autowired
     private AuthService authService;
-    @Resource
+    @Autowired
     private OAuthKeyCloakConfig keyCloakConfig;
 
     /**
@@ -108,6 +105,15 @@ public class AuthController {
         return ResponseEntity.ok().body(code);
     }
 
+    @DeleteMapping("/logout")
+    public ResultVO logout(HttpServletRequest request) {
+        Cookie cookie = ServletUtil.getCookie(request, Constants.ACCESS_TOKEN_KEY);
+        if (null != cookie) {
+            return authService.logout(cookie.getValue());
+        }
+        return ResultVO.success("ok");
+    }
+
     @GetMapping("/test")
     public ResponseEntity test(@RequestParam String id) {
         UserInfoVo userInfoVo = new UserInfoVo();
@@ -116,9 +122,4 @@ public class AuthController {
         return ResponseEntity.ok(userInfoVo);
     }
 
-//    @GetMapping("/clean")
-//    public ResponseEntity clean() {
-//        tokenCache.clear();
-//        return ResponseEntity.ok("ok");
-//    }
 }

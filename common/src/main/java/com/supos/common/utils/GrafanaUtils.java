@@ -36,11 +36,12 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 public class GrafanaUtils {
+    private GrafanaUtils(){}
 
     public static String getGrafanaUrl() {
         String grafanaUrl;
         if (RuntimeUtil.isLocalProfile()) {
-            grafanaUrl = "http://100.100.100.22:33893/grafana/home";
+            grafanaUrl = "http://100.100.100.22:33997/grafana/home";
         } else {
             grafanaUrl = "http://grafana:3000";
         }
@@ -101,13 +102,14 @@ public class GrafanaUtils {
 
     /**
      * @param table 表名
+     * @param tagNameCondition vqt模式  位号名称sql条件tag_name='{tbValue}'
      * @param jdbcType 数据源类型
      * @param schema
      * @param title 用uns alias作为title
      * @param columns 字段列表
      * @return
      */
-    public static String createDashboard(String table, SrcJdbcType jdbcType, String schema, String title,String columns, String ct) {
+    public static String createDashboard(String table,String tagNameCondition, SrcJdbcType jdbcType, String schema, String title,String columns, String ct) {
         String template = "";
         String dashboardJson ="";
         String uid = getDashboardUuidByAlias(title);
@@ -132,6 +134,7 @@ public class GrafanaUtils {
             tdDashboard.setDataSourceUid(getDatasourceUuidByJdbc(jdbcType));
             tdDashboard.setSchema(schema);
             tdDashboard.setTableName(table);
+            tdDashboard.setTagNameCondition(tagNameCondition);
             tdDashboard.setColumns(columns);
             dbParams = BeanUtil.beanToMap(tdDashboard);
         } else if (SrcJdbcType.TimeScaleDB == jdbcType){ //timescale 使用时序模板
@@ -143,6 +146,7 @@ public class GrafanaUtils {
             tdDashboard.setDataSourceUid(getDatasourceUuidByJdbc(jdbcType));
             tdDashboard.setSchema(schema);
             tdDashboard.setTableName(table);
+            tdDashboard.setTagNameCondition(tagNameCondition);
             tdDashboard.setColumns(columns);
             dbParams = BeanUtil.beanToMap(tdDashboard);
         }
@@ -269,5 +273,22 @@ public class GrafanaUtils {
         HttpResponse response =  HttpUtil.createRequest(Method.PUT,url).body(json).execute();
         log.info(">>>>>>>>>>>>>>>设置grafana 语言 返回结果:{}", response.body());
         return response;
+    }
+    public static boolean create(String dashboardJson) {
+        log.debug(">>>>>>>>>>>>>>>grafana 创建 dashboards 请求:{}", dashboardJson);
+        HttpResponse dashboardResponse = HttpUtil.createPost(GrafanaUtils.getGrafanaUrl() + "/api/dashboards/db").body(dashboardJson).execute();
+        log.debug(">>>>>>>>>>>>>>>grafana 创建 dashboards 返回结果:{}", dashboardResponse.body());
+        return 200 == dashboardResponse.getStatus();
+    }
+
+    public static String get(String uuid) {
+        String url = getGrafanaUrl() + "/api/dashboards/uid/" + uuid;
+        log.debug(">>>>>>>>>>>>>>>grafana 查询 dashboards 请求 :{}", url);
+        HttpResponse response = HttpUtil.createGet(url).execute();
+        log.debug(">>>>>>>>>>>>>>>grafana 查询 dashboards 返回结果:{}", response.body());
+        if (response.getStatus() != 200) {
+            return null;
+        }
+        return response.body();
     }
 }

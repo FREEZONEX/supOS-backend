@@ -1,6 +1,6 @@
 package com.supos.uns.vo;
 
-import com.supos.camunda.po.ProcessDefinitionPo;
+//import com.supos.camunda.po.ProcessDefinitionPo;
 import com.supos.common.dto.AlarmRuleDefine;
 import com.supos.uns.dao.po.AlarmHandlerPo;
 import lombok.Data;
@@ -61,5 +61,5 @@ public class AlarmRuleSearchResult {
     /**
      * 工作流流程定义
      */
-    ProcessDefinitionPo processDefinition;
+//    ProcessDefinitionPo processDefinition;
 }

@@ -31,7 +31,7 @@ spring:
     username: postgres
     password: ${POSTGRES_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
-    type: com.alibaba.druid.pool.DruidDataSource
+    type: com.zaxxer.hikari.HikariDataSource
     dynamic:
       primary: supos   #supos设置为默认数据源
       strict: false
@@ -41,20 +41,18 @@ spring:
           username: postgres
           password: ${POSTGRES_PASSWORD:postgres}
           driver-class-name: org.postgresql.Driver
-          type: com.alibaba.druid.pool.DruidDataSource
-          druid:
-            initial-size: 5        # 初始连接数
-            min-idle: 5            # 最小空闲连接
-            max-active: 20         # 最大连接数（建议为 CPU 核心数*2）
-            max-wait: 60000        # 获取连接超时时间（毫秒）
-            test-while-idle: true  # 空闲时检测连接有效性
-            validation-query: SELECT 1  # 健康检查 SQL
-            time-between-eviction-runs-millis: 60000  # 检测间隔
+          type: com.zaxxer.hikari.HikariDataSource
         keycloak:
           url: jdbc:postgresql://${ENV_DB_HOST:postgresql}:${ENV_DB_PORT:5432}/keycloak?currentSchema=public
           username: postgres
           password: ${POSTGRES_PASSWORD:postgres}
           driver-class-name: org.postgresql.Driver
+          type: com.zaxxer.hikari.HikariDataSource
+          hikari:
+            minimum-idle: 2                 # 最小空闲连接
+            maximum-pool-size: 4           # 最大连接数
+            idle-timeout: 600000            # 空闲连接超时(ms)
+            max-lifetime: 1800000            # 连接最大生存时间(ms)
   batch:
     jdbc:
       initializeSchema: ALWAYS
@@ -110,21 +108,21 @@ minio:
   endpoint: ${MINIO_ENDPOINT:http://minio:9000}
   accessKey: ${MINIO_ACCESSKEY:admin}
   secreKey: ${MINIO_SECREKEY:adminpassword}
-camunda:
-  bpm:
-    database:
-      type: postgres
-    admin-user:
-      id: admin  #用户名
-      password: Supos@1304  #密码
-    generic-properties:
-      properties:
-        enforceHistoryTimeToLive: false
-        data-source-name: camundaDataSource
-  datasource:
-    url: jdbc:postgresql://${ENV_DB_HOST:postgresql}:${ENV_DB_PORT:5432}/camunda?currentSchema=public
-    driver-class-name: org.postgresql.Driver
-    username: postgres
-    password: postgres
-    hikari:
-      pool-name: CamundaDataSource
+#camunda:
+#  bpm:
+#    database:
+#      type: postgres
+#    admin-user:
+#      id: admin  #用户名
+#      password: Supos@1304  #密码
+#    generic-properties:
+#      properties:
+#        enforceHistoryTimeToLive: false
+#        data-source-name: camundaDataSource
+#  datasource:
+#    url: jdbc:postgresql://${ENV_DB_HOST:postgresql}:${ENV_DB_PORT:5432}/camunda?currentSchema=public
+#    driver-class-name: org.postgresql.Driver
+#    username: postgres
+#    password: postgres
+#    hikari:
+#      pool-name: CamundaDataSource

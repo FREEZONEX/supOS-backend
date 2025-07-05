@@ -92,6 +92,7 @@ public class PostgresqlConfig {
         // connection pool configurations
         config.setMinimumIdle(minIdle); // minimum number of idle connection
         config.setMaximumPoolSize(maxPoolSize); // maximum number of connection in the pool
+
         config.setConnectionTimeout(connectionTimeout); // maximum wait milliseconds for get connection from pool
         config.setMaxLifetime(maxLiteTime); // maximum life time for each connection
         config.setIdleTimeout(idleTimeout); // max idle time for recycle idle connection]

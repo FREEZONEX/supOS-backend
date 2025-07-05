@@ -4,6 +4,7 @@ import com.supos.common.dto.excel.ExcelUnsWrapDto;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.uns.vo.CreateTemplateVo;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.util.*;
 
@@ -14,8 +15,10 @@ import java.util.*;
  * @date 2025/4/22 19:23
  */
 @Getter
+@Setter
 public class ExcelImportContext {
-
+    private int totalCount;
+    private int errorCount;
     private String file;
 
     private Map<String, String> excelCheckErrorMap = new HashMap<>(4);

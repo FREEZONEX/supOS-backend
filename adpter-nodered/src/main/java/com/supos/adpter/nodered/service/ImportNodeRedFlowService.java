@@ -4,10 +4,13 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowMapper;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowModelMapper;
+import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
 import com.supos.adpter.nodered.dao.po.NodeFlowPO;
 import com.supos.adpter.nodered.service.parse.*;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
+import com.supos.adpter.nodered.vo.NodeFlowVO;
 import com.supos.common.dto.ResultDTO;
+import com.supos.common.dto.protocol.ProtocolTagEnums;
 import com.supos.common.event.BatchCreateTableEvent;
 import com.supos.common.event.FlowInstallEvent;
 import com.supos.common.exception.NodeRedException;
@@ -23,6 +26,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -73,6 +77,26 @@ public class ImportNodeRedFlowService {
         long id = nodeRedAdapterService.createFlow(requestVO.getName(), "", "node-red");
         List<String> aliases = requestVO.getUns().stream().map(BatchImportRequestVO.UnsVO::getAlias).collect(Collectors.toList());
         nodeRedAdapterService.proxyDeploy(id, fullNodes, aliases);
+    }
+
+    public NodeFlowVO createMockFlow(String path, String alias) {
+        NodeFlowVO byAlias = nodeRedAdapterService.getByAlias(alias);
+        if (byAlias != null) {
+            return byAlias;
+        }
+        BatchImportRequestVO bir = new BatchImportRequestVO();
+        bir.setName(path);
+        BatchImportRequestVO.UnsVO uns = new BatchImportRequestVO.UnsVO();
+        uns.setUnsTopic(path);
+        uns.setAlias(alias);
+        uns.setProtocol("mock");
+        uns.setTplFile("/mock.json.tpl");
+        uns.setJsonExample("");
+        bir.setUns(List.of(uns));
+        importFlowFromUns(bir);
+
+        return nodeRedAdapterService.getByAlias(alias);
+
     }
 
     public ParserApi getParserImpl(String protocol, int topicSize) {

@@ -38,6 +38,11 @@ public class PluginController {
         return pluginManager.installPlugin(plugInfoDto.getName());
     }
 
+    @PostMapping("/inter-api/supos/plugin/upgrade")
+    public JsonResult<String> upgradePlugin(@RequestParam("name") String name, @RequestParam("file") MultipartFile file) throws Exception {
+        return pluginManager.upgradePlugin(name, file);
+    }
+
     /**
      * 安装插件
      *

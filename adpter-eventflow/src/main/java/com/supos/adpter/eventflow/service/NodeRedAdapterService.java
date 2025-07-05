@@ -18,6 +18,7 @@ import com.supos.adpter.eventflow.vo.NodeFlowVO;
 import com.supos.adpter.eventflow.vo.UpdateFlowRequestVO;
 import com.supos.common.dto.PageResultDTO;
 import com.supos.common.exception.NodeRedException;
+import com.supos.common.utils.RuntimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -33,7 +34,20 @@ public class NodeRedAdapterService {
 
     private static final String nodeRedHost = "eventflow";
     private static final String nodeRedPort = "1889";
-
+    public String getNodeRedHost(){
+        if (RuntimeUtil.isLocalProfile()) {
+            return "http://100.100.100.22:33893/eventflow/home";
+        } else {
+            return nodeRedHost;
+        }
+    }
+    public String getNodeRedPort(){
+        if (RuntimeUtil.isLocalProfile()) {
+            return "";
+        } else {
+            return nodeRedPort;
+        }
+    }
     @Autowired
     private EventFlowMapper nodeFlowMapper;
     @Autowired

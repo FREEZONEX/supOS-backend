@@ -3,6 +3,7 @@ package com.supos.gateway.service;
 import cn.hutool.cache.impl.TimedCache;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.core.util.NumberUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.jwt.JWT;
@@ -15,6 +16,7 @@ import com.supos.common.dto.auth.ResourceDto;
 import com.supos.common.dto.auth.RoleDto;
 import com.supos.common.enums.RoleEnum;
 import com.supos.common.exception.vo.ResultVO;
+import com.supos.common.service.IRoleService;
 import com.supos.common.utils.KeycloakUtil;
 import com.supos.common.vo.UserInfoVo;
 import com.supos.gateway.dao.mapper.AuthMapper;
@@ -39,6 +41,11 @@ public class AuthService {
     private OAuthKeyCloakConfig keyCloakConfig;
     @Resource
     private AuthMapper authMapper;
+    @Resource
+    IRoleService roleService;
+
+    //token过期时间6小时
+    private static final long EXPIRES_IN = 1000 * 60 * 60 * 6;
 
     private static final List<String> DEF_METHODS = Arrays.asList("get", "post", "put", "delete", "patch", "head", "options");
 
@@ -138,7 +145,7 @@ public class AuthService {
      * @param accessToken
      * @return
      */
-    private UserInfoVo getUserInfoVoByCache(String accessToken, boolean getCache) {
+    public UserInfoVo getUserInfoVoByCache(String accessToken, boolean getCache) {
         JWT jwt = JWT.of(accessToken);
         String sub = jwt.getPayloads().getStr("sub");
         UserInfoVo userInfoVo = null;
@@ -148,17 +155,23 @@ public class AuthService {
                 return userInfoVo;
             }
         }
-        HttpResponse response = keycloakUtil.userinfo(accessToken);
-        if (200 != response.getStatus()) {
-            log.warn("accessToken:{}查询keycloak用户信息失败", accessToken);
-            return null;
-        }
-        //设置用户信息缓存 key = sub   value = user_info
-        JSONObject userinfoObj = JSON.parseObject(response.body());
-        userInfoVo = JSON.parseObject(response.body(), UserInfoVo.class);
-        String phone = getUserAttributeById(userInfoVo.getSub()).get("phone");
-        userInfoVo.setPhone(phone);
-        userInfoVo.setFirstName(userinfoObj.getString("name"));
+
+//        HttpResponse response = keycloakUtil.userinfo(accessToken);
+//        if (200 != response.getStatus()) {
+//            log.warn("accessToken:{}查询keycloak用户信息失败", accessToken);
+//            return null;
+//        }
+//        //设置用户信息缓存 key = sub   value = user_info
+//        JSONObject userinfoObj = JSON.parseObject(response.body());
+//        userInfoVo = JSON.parseObject(response.body(), UserInfoVo.class);
+
+        userInfoVo = authMapper.getById(sub);
+        Map<String, String> userAttribute = getUserAttributeById(userInfoVo.getSub());
+        String phone = userAttribute.get("phone");
+        userInfoVo.setPhone(userAttribute.get("phone"));
+        userInfoVo.setFirstTimeLogin(NumberUtil.parseInt(userAttribute.get("firstTimeLogin"),1));
+        userInfoVo.setTipsEnable(NumberUtil.parseInt(userAttribute.get("firstTimeLogin"),1));
+        userInfoVo.setHomePage(StrUtil.blankToDefault(userAttribute.get("homePage"),"/home"));
 
         //首次登录
         if (1 == userInfoVo.getFirstTimeLogin()) {
@@ -179,24 +192,37 @@ public class AuthService {
         return userInfoVo;
     }
 
+    public ResultVO logout(String token){
+        JSONObject tokenObj = tokenCache.get(token);
+        if (tokenObj != null){
+            String refreshToken = tokenObj.getString("refresh_token");
+            keycloakUtil.logout(refreshToken);
+            tokenCache.remove(token);
+        }
+        return ResultVO.success("ok");
+    }
+
     public UserInfoVo getUserRolesResources(UserInfoVo userInfoVo) {
+        String userId = userInfoVo.getSub();
         //查询用户的所有角色  包含组合角色
-        List<RoleDto> roleList = authMapper.roleListByUserId(keyCloakConfig.getRealm(), userInfoVo.getSub());
+        List<RoleDto> roleList = authMapper.roleListByUserId(keyCloakConfig.getRealm(), userId);
         if (CollectionUtil.isEmpty(roleList)) {
             return userInfoVo;
         }
 
-        //默认角色(组合角色)
-        List<String> compositeRoleIds = roleList.stream().filter(r -> !r.getClientRole()).map(RoleDto::getRoleId).collect(Collectors.toList());
-        //查询组合角色下的子角色
-        List<RoleDto> compositeRoleList = authMapper.getChildRoleListByCompositeRoleId(compositeRoleIds);
+//        //默认角色(组合角色)
+//        List<String> compositeRoleIds = roleList.stream().filter(r -> !r.getClientRole()).map(RoleDto::getRoleId).collect(Collectors.toList());
+//        //查询组合角色下的子角色
+//        List<RoleDto> compositeRoleList = authMapper.getChildRoleListByCompositeRoleId(compositeRoleIds);
+//
+//        //client role
+//        List<RoleDto> clientRoleList = roleList.stream().filter(RoleDto::getClientRole).collect(Collectors.toList());
+//
+//        List<RoleDto> allRoleList = new ArrayList<>();
+//        allRoleList.addAll(compositeRoleList);
+//        allRoleList.addAll(clientRoleList);
 
-        //client role
-        List<RoleDto> clientRoleList = roleList.stream().filter(RoleDto::getClientRole).collect(Collectors.toList());
-
-        List<RoleDto> allRoleList = new ArrayList<>();
-        allRoleList.addAll(compositeRoleList);
-        allRoleList.addAll(clientRoleList);
+        List<RoleDto> allRoleList = roleService.getRoleListByUserId(userId);
 
         userInfoVo.setRoleList(allRoleList.stream().filter(r -> !RoleEnum.IGNORE_ROLE_ID.contains(r.getRoleId()) && !RoleEnum.IGNORE_ROLE_NAME.contains(r.getRoleName()) && !r.getRoleName().startsWith("deny-")).collect(Collectors.toList()));
 
@@ -292,7 +318,7 @@ public class AuthService {
                 .values());
     }
 
-    private Map<String, String> getUserAttributeById(String userId) {
+    public Map<String, String> getUserAttributeById(String userId) {
         Map<String, String> attrMap = new HashMap<>();
         List<UserAttributeDto> attrList = authMapper.getUserAttribute(userId);
         if (CollectionUtil.isNotEmpty(attrList)) {

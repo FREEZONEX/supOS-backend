@@ -127,7 +127,7 @@ public class FindDataListUtils {
             }
             if (vNum.intValue() == 0) {
                 switch (fieldType) {
-                    case INT:
+                    case INTEGER:
                         vHolder.set(vNum.intValue());
                         break;
                     case LONG:
@@ -143,7 +143,7 @@ public class FindDataListUtils {
                 return score;
             }
             switch (fieldType) {
-                case INT:
+                case INTEGER:
                     if (vNum.compareTo(minInt) < 0 || vNum.compareTo(maxInt) > 0) {
                         return ERR_OUT_OF_RANGE;
                     }

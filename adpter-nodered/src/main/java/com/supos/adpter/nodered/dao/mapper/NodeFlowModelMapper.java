@@ -18,8 +18,16 @@ public interface NodeFlowModelMapper {
             "</script>")
     List<Long> selectByAliases(@Param("aliases") Collection<String> aliases);
 
-    @Select("select parent_id from supos_node_flow_models where alias=#{alias}")
-    List<Long> queryByAlias(@Param("alias") String alias);
+    @Select("select * from supos_node_flow_models where alias=#{alias} order by create_time desc LIMIT 1")
+    NodeFlowModelPO queryLatestByAlias(@Param("alias") String alias);
+
+    @Select("<script>" +
+            "select * from supos_node_flow_models where parent_id in " +
+            "<foreach collection=\"parentIds\" item=\"parentId\" open=\"(\" close=\")\" separator=\",\">" +
+            "        #{parentId} " +
+            "</foreach>" +
+            "</script>")
+    List<NodeFlowModelPO> selectByParentIds(@Param("parentIds") Collection<Long> parentIds);
 
     @Insert("<script>" +
             "insert into supos_node_flow_models " +

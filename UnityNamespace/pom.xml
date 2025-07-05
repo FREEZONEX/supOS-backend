@@ -50,9 +50,19 @@
             <artifactId>adpter-minio</artifactId>
             <version>${project.version}</version>
         </dependency>
+<!--        <dependency>-->
+<!--            <groupId>com.supos</groupId>-->
+<!--            <artifactId>adpter-camunda</artifactId>-->
+<!--            <version>${project.version}</version>-->
+<!--        </dependency>-->
         <dependency>
             <groupId>com.supos</groupId>
-            <artifactId>adpter-camunda</artifactId>
+            <artifactId>adpter-nodered</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.supos</groupId>
+            <artifactId>adpter-eventflow</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

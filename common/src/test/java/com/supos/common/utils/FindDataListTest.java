@@ -32,7 +32,7 @@ public class FindDataListTest {
     @Test
     public void test_findDataNum() {
         FieldDefine f1 = new FieldDefine("_id", FieldType.LONG, true);
-        FieldDefine f2 = new FieldDefine("int1", FieldType.INT);
+        FieldDefine f2 = new FieldDefine("int1", FieldType.INTEGER);
         FieldDefine[] fs = new FieldDefine[]{f1, f2};
 
         Object vo = JsonUtil.fromJson("23.01");
@@ -112,7 +112,7 @@ public class FindDataListTest {
 
     @Test
     public void test_findDataIndexMap() {
-        FieldDefine f1 = new FieldDefine("id", FieldType.INT, true);
+        FieldDefine f1 = new FieldDefine("id", FieldType.INTEGER, true);
         FieldDefine f2 = new FieldDefine("tag", FieldType.STRING);
         FieldDefine f3 = new FieldDefine("desc", FieldType.STRING);
         f2.setIndex("0");
@@ -176,7 +176,7 @@ public class FindDataListTest {
     @Test
     public void test_fastJsonW() {
         FieldDefine f1 = new FieldDefine("tag", FieldType.STRING);
-        FieldDefine f2 = new FieldDefine("id", FieldType.INT, true);
+        FieldDefine f2 = new FieldDefine("id", FieldType.INTEGER, true);
         FieldDefine f3 = new FieldDefine("desc", FieldType.STRING);
         f3.setIndex("16");
         FieldDefine[] fs = new FieldDefine[]{f1, f2, f3};
@@ -253,7 +253,7 @@ public class FindDataListTest {
         Object vo = JsonUtil.fromJson(json);
 //        vo = JsonUtil.fromJson(json, Map.class);
 
-        FieldDefine[] fs = new FieldDefine[]{new FieldDefine("id", FieldType.INT), new FieldDefine("tag", FieldType.STRING, "Tag2")};
+        FieldDefine[] fs = new FieldDefine[]{new FieldDefine("id", FieldType.INTEGER), new FieldDefine("tag", FieldType.STRING, "Tag2")};
         FindDataListUtils.SearchResult rs = FindDataListUtils.
                 findDataList(vo, 1, new FieldDefines(fs));
 
