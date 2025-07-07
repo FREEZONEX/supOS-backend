@@ -10,6 +10,7 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.adpater.DataSourceProperties;
 import com.supos.common.adpater.DataStorageAdapter;
@@ -110,7 +111,7 @@ public class GrafanaEventHandler {
                 String tbValue = dto.getTbFieldName();
                 String tagNameCondition = "";
                 if (StringUtils.isNotBlank(tbValue)){
-                    tagNameCondition = " and tag_name='" + table + "' ";
+                    tagNameCondition = " and tag_name='" + dto.getAlias() + "' ";
                 }
                 log.debug(">>>>>> create grafana dashboard columns:{},title:{},schema:{},table:{},tagNameCondition:{}", columns, title, schema, table,tagNameCondition);
                 int dot = table.indexOf('.');
@@ -118,7 +119,7 @@ public class GrafanaEventHandler {
                     schema = table.substring(0, dot);
                     table = table.substring(dot + 1);
                 }
-                String uuid = GrafanaUtils.createDashboard(table,tagNameCondition, jdbcType, schema, title, columns, dto.getTimestampField());
+                String uuid = GrafanaUtils.createDashboard(table,tagNameCondition, jdbcType, schema, title, columns, Constants.SYS_FIELD_CREATE_TIME);
                 //当创建类型为 非导入（手动创建），发送事件，创建数据看板
                 if (!fromImport) {
                     EventBus.publishEvent(new CreateDashboardEvent(this, uuid, title, title));

@@ -677,6 +677,9 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             }
             newUns = tar;
         } else {
+            if (bo.getFlags() == null) {
+                newUns.setWithFlags(generateFlag(bo.getAddFlow(), bo.getSave2db(), bo.getAddDashBoard(), bo.getRetainTableWhenDeleteInstance(), bo.getAccessLevel()));
+            }
             String err = UnsCalcService.checkRefers(bo);
             if (err == null) {
                 err = UnsCalcService.checkExpression(bo);
@@ -1106,9 +1109,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             return;
         }
 
-        if (dto.getFlags() == null) {
-            dto.setFlags(generateFlag(dto.getAddFlow(), dto.getSave2db(), dto.getAddDashBoard(), dto.getRetainTableWhenDeleteInstance(), dto.getAccessLevel()));
-        }
+
 
         if (pathType == Constants.PATH_TYPE_DIR) {// current is folder
             dto.setDataType(0);

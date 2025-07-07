@@ -369,7 +369,7 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
             schema = table.substring(0, dot);
             table = table.substring(dot + 1);
         }
-        String uuid = GrafanaUtils.createDashboard(table, tagNameCondition, jdbcType, schema, title, columns, Constants.SYS_SAVE_TIME);
+        String uuid = GrafanaUtils.createDashboard(table, tagNameCondition, jdbcType, schema, title, columns, Constants.SYS_FIELD_CREATE_TIME);
 
         DashboardPo dashboardPo = getById(uuid);
         if (dashboardPo == null) {

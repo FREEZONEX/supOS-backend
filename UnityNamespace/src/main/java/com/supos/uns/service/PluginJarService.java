@@ -38,6 +38,7 @@ import org.springframework.beans.BeansException;
 import org.springframework.beans.SimpleTypeConverter;
 import org.springframework.beans.TypeConverter;
 import org.springframework.beans.TypeMismatchException;
+import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -128,6 +129,7 @@ public class PluginJarService {
     ApplicationEventMulticaster eventMulticaster;
     @Autowired
     MybatisPlusAutoConfiguration mybatisPlusAutoConfiguration;
+    Method getMergedLocalBeanDefinition;
 
     @Order(1001)
     @EventListener(classes = ContextRefreshedEvent.class)
@@ -153,6 +155,8 @@ public class PluginJarService {
         Field attr = ConfigurationClassUtils.class.getDeclaredField("CONFIGURATION_CLASS_ATTRIBUTE");
         attr.setAccessible(true);
         CONFIGURATION_CLASS_ATTRIBUTE = (String) attr.get(null);
+        getMergedLocalBeanDefinition = AbstractBeanFactory.class.getDeclaredMethod("getMergedLocalBeanDefinition", String.class);//
+        getMergedLocalBeanDefinition.setAccessible(true);
     }
 
     public void setPlugName(File pluginJar, PlugInfo plugInfo) throws IOException {
@@ -365,14 +369,17 @@ public class PluginJarService {
         DefaultResourceLoader resourceLoader = new DefaultResourceLoader(classLoader);
         BeanDefinitionRegistry beanDefinitionRegistry = (BeanDefinitionRegistry) beanFactory;
         // 创建 @Mapper 扫描器
-        String[] mapperNames = this.scanPluginMappers(beanDefinitionRegistry, resourceLoader, classLoader, basePackage);
-        log.info("{}：{} 扫描Mapper：{}", plugInfo.getName(), plugInfo.getBasePackage(), Arrays.toString(mapperNames));
-
-        // 扫描Bean
-        String[] pkgBeanNames = this.scanPluginBeans(classLoader, resourceLoader, basePackage);
-
-        if (pkgBeanNames.length == 0) {
-            return false;
+        String[] mapperNames, pkgBeanNames;
+        try {
+            mapperNames = this.scanPluginMappers(beanDefinitionRegistry, resourceLoader, classLoader, basePackage);
+            log.info("{}：{} 扫描Mapper：{}", plugInfo.getName(), plugInfo.getBasePackage(), Arrays.toString(mapperNames));
+            // 扫描Bean
+            pkgBeanNames = this.scanPluginBeans(classLoader, resourceLoader, basePackage);
+        } catch (Exception ex) {
+            log.error("PluginScanERR: {}: {}", plugInfo.getName(), ex.getMessage());
+            uninstallPlugin(plugInfo);
+            plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALL_FAIL);
+            throw ex;
         }
         Method processCandidateBean = AbstractHandlerMethodMapping.class.getDeclaredMethod("processCandidateBean", String.class);
         processCandidateBean.setAccessible(true);
@@ -586,6 +593,7 @@ public class PluginJarService {
         log.info("扫描数量：{}", count);
         String[] beanNames = beanFactory.getBeanDefinitionNames();
         String[] pkgBeanNames = new String[count];
+        final ConfigurableBeanFactory configurableBeanFactory = (ConfigurableBeanFactory) beanFactory.getAutowireCapableBeanFactory();
         for (int i = size - count, j = 0; i < size; i++) {
             final String beanName = beanNames[i];
             pkgBeanNames[j++] = beanName;
@@ -594,6 +602,14 @@ public class PluginJarService {
             Class klass = classLoader.loadClass(definition.getBeanClassName());
             if (definition instanceof AbstractBeanDefinition rv) {
                 rv.setBeanClass(klass);
+            }
+            RootBeanDefinition rootBeanDefinition = null;
+            try {
+                rootBeanDefinition = (RootBeanDefinition) getMergedLocalBeanDefinition.invoke(configurableBeanFactory, beanName);
+            } catch (Exception e) {
+            }
+            if (rootBeanDefinition != null) {
+                rootBeanDefinition.setTargetType(klass);
             }
         }
         log.info("{} 扫描组件：{}", basePackage, pkgBeanNames);
@@ -622,9 +638,18 @@ public class PluginJarService {
                     final String beanName = beanNamesAfterCfg[beanNamesAfterCfg.length - i];
                     cfgBeans.add(beanName);
                     BeanDefinition definition = listableBeanFactory.getBeanDefinition(beanName);
-                    log.debug("扫描配置：{}, def={}:{}", beanName, definition.getClass().getSimpleName(), definition);
+                    Class klass = classLoader.loadClass(definition.getBeanClassName());
+                    RootBeanDefinition rootBeanDefinition = null;
+                    try {
+                        rootBeanDefinition = (RootBeanDefinition) getMergedLocalBeanDefinition.invoke(configurableBeanFactory, beanName);
+                    } catch (Exception e) {
+                    }
+                    if (rootBeanDefinition != null) {
+                        rootBeanDefinition.setTargetType(klass);
+                    }
+
+                    log.debug("扫描配置：{}, def={}:{}", beanName, definition.getClass().getSimpleName(), rootBeanDefinition);
                     if (definition.getBeanClassName() != null) {
-                        Class klass = classLoader.loadClass(definition.getBeanClassName());
                         if (definition instanceof AbstractBeanDefinition rv) {
                             rv.setBeanClass(klass);
                         }
@@ -671,6 +696,7 @@ public class PluginJarService {
                                 T cls = (T) classLoader.loadClass(str);
                                 return cls;
                             } catch (ClassNotFoundException e) {
+                                log.error("ClassNotFoundException: {}, loader={}", str, classLoader, e);
                             }
                         }
                         return super.convertIfNecessary(value, requiredType, typeDescriptor);
@@ -679,8 +705,30 @@ public class PluginJarService {
                 for (int i = size - mapperCount, j = 0; i < size; i++) {
                     final String mapperName = beanNames[i];
                     mapperNames[j++] = mapperName;
-                    Class mapper = beanFactory.getType(mapperName, true);
-                    log.debug("扫描Mapper：{}, mapper={}", mapperName, mapper);
+
+                    RootBeanDefinition rootBeanDefinition = null;
+                    try {
+                        rootBeanDefinition = (RootBeanDefinition) getMergedLocalBeanDefinition.invoke(configurableBeanFactory, mapperName);
+                    } catch (Exception e) {
+                    }
+                    if (rootBeanDefinition != null) {
+                        rootBeanDefinition.setTargetType(FactoryBean.class);
+                    }
+                    try {
+                        Class mapper = beanFactory.getType(mapperName, true);
+                        log.debug("扫描Mapper：{}, mapper={}", mapperName, mapper);
+                    } catch (RuntimeException lex) {
+                        BeanDefinition beanDefinition = beanDefinitionRegistry.getBeanDefinition(mapperName);
+                        if (beanDefinition.getAttribute(FactoryBean.OBJECT_TYPE_ATTRIBUTE) instanceof String cls) {
+                            try {
+                                log.info("{}.className = {}, class={}", mapperName, cls, classLoader.loadClass(cls));
+                            } catch (ClassNotFoundException e) {
+                                log.warn("ClassNotFoundException: {}", cls);
+                            }
+                        }
+                        log.error("扫描Mapper Err:mapperName={},err= {}", mapperName, lex.getMessage());
+                        throw lex;
+                    }
                 }
                 tryMapperXml(resourceLoader, sqlSessionTemplate);
             } finally {
