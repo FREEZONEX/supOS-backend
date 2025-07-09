@@ -25,6 +25,7 @@ import org.apache.ibatis.session.defaults.DefaultSqlSessionFactory;
 import org.jetbrains.annotations.NotNull;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.mybatis.spring.mapper.ClassPathMapperScanner;
+import org.mybatis.spring.mapper.MapperFactoryBean;
 import org.springdoc.api.AbstractOpenApiResource;
 import org.springdoc.core.providers.SpringWebProvider;
 import org.springdoc.core.service.OpenAPIService;
@@ -638,18 +639,9 @@ public class PluginJarService {
                     final String beanName = beanNamesAfterCfg[beanNamesAfterCfg.length - i];
                     cfgBeans.add(beanName);
                     BeanDefinition definition = listableBeanFactory.getBeanDefinition(beanName);
-                    Class klass = classLoader.loadClass(definition.getBeanClassName());
-                    RootBeanDefinition rootBeanDefinition = null;
-                    try {
-                        rootBeanDefinition = (RootBeanDefinition) getMergedLocalBeanDefinition.invoke(configurableBeanFactory, beanName);
-                    } catch (Exception e) {
-                    }
-                    if (rootBeanDefinition != null) {
-                        rootBeanDefinition.setTargetType(klass);
-                    }
-
-                    log.debug("扫描配置：{}, def={}:{}", beanName, definition.getClass().getSimpleName(), rootBeanDefinition);
+                    log.debug("扫描配置：{}, def={}:{}", beanName, definition.getClass().getSimpleName(), definition);
                     if (definition.getBeanClassName() != null) {
+                        Class klass = classLoader.loadClass(definition.getBeanClassName());
                         if (definition instanceof AbstractBeanDefinition rv) {
                             rv.setBeanClass(klass);
                         }
@@ -711,8 +703,8 @@ public class PluginJarService {
                         rootBeanDefinition = (RootBeanDefinition) getMergedLocalBeanDefinition.invoke(configurableBeanFactory, mapperName);
                     } catch (Exception e) {
                     }
-                    if (rootBeanDefinition != null) {
-                        rootBeanDefinition.setTargetType(FactoryBean.class);
+                    if (rootBeanDefinition != null && !rootBeanDefinition.hasBeanClass()) {
+                        rootBeanDefinition.setBeanClass(MapperFactoryBean.class);
                     }
                     try {
                         Class mapper = beanFactory.getType(mapperName, true);

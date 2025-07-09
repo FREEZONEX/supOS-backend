@@ -25,7 +25,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserInfoVo extends UserAttributeVo{
+public class UserInfoVo extends UserAttributeVo {
 
 
     /**
@@ -78,12 +78,22 @@ public class UserInfoVo extends UserAttributeVo{
         this.preferredUsername = preferredUsername;
     }
 
-    public boolean isSuperAdmin(){
-        if (CollectionUtils.isEmpty(this.roleList)){
+    public boolean isSuperAdmin() {
+        if (CollectionUtils.isEmpty(this.roleList)) {
             return false;
         }
         RoleDto roleDto = this.roleList.stream().filter(role -> RoleEnum.SUPER_ADMIN.getId().equals(role.getRoleId())).findFirst().orElse(null);
         return null != roleDto;
+    }
+
+    public static UserInfoVo guest() {
+        var user = new UserInfoVo("guest", "guest");
+        user.setFirstName("guest");
+        user.setEnabled(true);
+        user.setFirstTimeLogin(0);
+        user.setTipsEnable(0);
+        user.setHomePage("/home");
+        return user;
     }
 
     @Override

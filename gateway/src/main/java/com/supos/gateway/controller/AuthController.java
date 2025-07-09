@@ -1,6 +1,7 @@
 package com.supos.gateway.controller;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.system.SystemUtil;
 import com.supos.common.Constants;
 import com.supos.common.config.OAuthKeyCloakConfig;
 import com.supos.common.exception.vo.ResultVO;
@@ -68,12 +69,19 @@ public class AuthController {
      */
     @GetMapping("/user")
     public ResponseEntity<ResultVO<UserInfoVo>> getUserInfoVoByToken(HttpServletRequest request) {
+        String authEnable = SystemUtil.get("SYS_OS_AUTH_ENABLE", "false");
         Cookie cookie = ServletUtil.getCookie(request, Constants.ACCESS_TOKEN_KEY);
-        if (null == cookie) {
+        if (cookie == null) {
+            if ("false".equals(authEnable)){
+                return ResponseEntity.ok(ResultVO.successWithData(UserInfoVo.guest()));
+            }
             return ResponseEntity.ok(ResultVO.success("not found user info"));
         }
         UserInfoVo vo = authService.getUserInfoVoByToken(cookie.getValue());
         if (null == vo) {
+            if ("false".equals(authEnable)){
+                return ResponseEntity.ok(ResultVO.successWithData(UserInfoVo.guest()));
+            }
             return ResponseEntity.ok(ResultVO.success("not found user info"));
         }
         ResponseCookie newCookie = ResponseCookie.from(Constants.ACCESS_TOKEN_KEY, cookie.getValue())
