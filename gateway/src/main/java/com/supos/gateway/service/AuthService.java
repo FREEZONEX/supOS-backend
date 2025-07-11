@@ -5,9 +5,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.NumberUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.http.HttpResponse;
 import cn.hutool.jwt.JWT;
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.supos.common.Constants;
 import com.supos.common.config.OAuthKeyCloakConfig;
@@ -43,9 +41,6 @@ public class AuthService {
     private AuthMapper authMapper;
     @Resource
     IRoleService roleService;
-
-    //token过期时间6小时
-    private static final long EXPIRES_IN = 1000 * 60 * 60 * 6;
 
     private static final List<String> DEF_METHODS = Arrays.asList("get", "post", "put", "delete", "patch", "head", "options");
 
@@ -88,37 +83,20 @@ public class AuthService {
         //获取token json info
         JSONObject tokenObj = tokenCache.get(token);
         if (null == tokenObj) {
+            keycloakUtil.removeSession(token);
             return ResponseEntity.status(401).body("can not find token obj from cache");
         }
         String accessToken = tokenObj.getString("access_token");
-        JWT jwt = JWT.of(accessToken);
-        long exp = jwt.getPayloads().getLong("exp");
-        //单位：秒
-        long currentTimeInSeconds = System.currentTimeMillis() / 1000;
-        // 判断是否过期
-        if (currentTimeInSeconds > exp) {
-            return ResponseEntity.status(401).body("Token is expired.");
-        }
-        //如果过期时间小于5分钟，刷新token
-        if ((exp - currentTimeInSeconds) <= keyCloakConfig.getRefreshTokenTime()) {
-//        if (true) {
-            log.info(">>>>>>>>>>>>token：{}过期时间小于RefreshTokenTime，进行refreshToken", token);
-            //使用refresh刷新token
-            HttpResponse refreshRes = keycloakUtil.refreshToken(tokenObj.getString("refresh_token"));
-            if (200 == refreshRes.getStatus()) {
-                JSONObject refreshTokenObj = JSON.parseObject(refreshRes.body());
-                tokenCache.put(token, refreshTokenObj, refreshTokenObj.getLong("expires_in") * 1000);
-                log.info(">>>>>>>>>>>>token：{}，完成保活", token);
-            }
-        }
+        tokenCache.put(token, tokenObj, Constants.TOKEN_MAX_AGE * 1000L);
         UserInfoVo userInfoVo = getUserInfoVoByCache(accessToken, true);
         if (null == userInfoVo) {
+            keycloakUtil.removeSession(token);
             return ResponseEntity.status(401).body("keycloak token获取用户信息失败");
         }
 
         ResponseCookie cookie = ResponseCookie.from(Constants.ACCESS_TOKEN_KEY, token)
                 .path("/")
-                .maxAge(Constants.TOKEN_MAX_AGE) // 秒
+                .maxAge(Constants.COOKIE_MAX_AGE)
                 .build();
         HttpHeaders headers = new HttpHeaders();
         headers.add(HttpHeaders.SET_COOKIE, cookie.toString());
@@ -131,8 +109,9 @@ public class AuthService {
             return null;
         }
         //设置 token与token_info
-        String token = IdUtil.fastUUID();
-        tokenCache.put(token, tokenObj, tokenObj.getLong("expires_in") * 1000);
+//        String token = IdUtil.fastUUID();
+        String token = tokenObj.getString("session_state");
+        tokenCache.put(token, tokenObj, Constants.TOKEN_MAX_AGE * 1000L);
         //设置用户信息缓存：key:sub   value:user_info
         String accessToken = tokenObj.getString("access_token");
         getUserInfoVoByCache(accessToken, false);
@@ -155,15 +134,6 @@ public class AuthService {
                 return userInfoVo;
             }
         }
-
-//        HttpResponse response = keycloakUtil.userinfo(accessToken);
-//        if (200 != response.getStatus()) {
-//            log.warn("accessToken:{}查询keycloak用户信息失败", accessToken);
-//            return null;
-//        }
-//        //设置用户信息缓存 key = sub   value = user_info
-//        JSONObject userinfoObj = JSON.parseObject(response.body());
-//        userInfoVo = JSON.parseObject(response.body(), UserInfoVo.class);
 
         userInfoVo = authMapper.getById(sub);
         Map<String, String> userAttribute = getUserAttributeById(userInfoVo.getSub());

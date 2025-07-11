@@ -36,7 +36,7 @@ public class Constants {
 
         SYS_FIELD_CREATE_TIME = SystemUtil.get("SYS_OS_TIMESTAMP_NAME", "timeStamp");
         QOS_FIELD = SystemUtil.get("SYS_OS_QUALITY_NAME", "status");
-        UNS_ADD_BATCH_SIZE = Integer.parseInt(SystemUtil.get("UNS_ADD_BATCH_SIZE", "1000"));
+        UNS_ADD_BATCH_SIZE = SystemUtil.getInt("UNS_ADD_BATCH_SIZE", 1000);
 
         MQTT_PLUGIN =  SystemUtil.get("MQTT_PLUGIN", "emqx");
         WS_SESSION_LIMIT =  SystemUtil.getInt("WS_SESSION_LIMIT", 50);
@@ -44,6 +44,7 @@ public class Constants {
 
         systemFields = new HashSet<>(Arrays.asList(SYSTEM_SEQ_TAG, SYS_FIELD_ID, SYS_FIELD_CREATE_TIME, Constants.QOS_FIELD, Constants.SYS_SAVE_TIME, "_ct"));
 
+        TOKEN_MAX_AGE = SystemUtil.getInt("TOKEN_MAX_AGE", 21600);
     }
 
     public static final int PATH_TYPE_DIR = 0;// 目录
@@ -171,7 +172,8 @@ public class Constants {
     public static final String BLOB_PATH = "/data/uns";
 
     public static final String ACCESS_TOKEN_KEY = "supos_community_token";
-    public static final int TOKEN_MAX_AGE = 60 * 60 * 6;//token失效时间（秒）
+    public static final int TOKEN_MAX_AGE; //token失效时间（秒）
+    public final static int COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
     public static final String ALIAS_REG = "[a-zA-Z_\\$][a-zA-Z0-9_\\$]*$";
     public static final String TOPIC_REG = "^[\\u4e00-\\u9fa5a-zA-Z0-9/_-]+$";

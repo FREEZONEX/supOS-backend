@@ -26,6 +26,6 @@ public class TokenCacheConfig {
      */
     @Bean
     public TimedCache<String, UserInfoVo> userInfoCache() {
-        return CacheUtil.newTimedCache(60 * 60 * 1000 * 12);
+        return CacheUtil.newTimedCache(Long.MAX_VALUE);
     }
 }

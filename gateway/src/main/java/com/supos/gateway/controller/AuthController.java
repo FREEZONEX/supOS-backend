@@ -5,6 +5,7 @@ import cn.hutool.system.SystemUtil;
 import com.supos.common.Constants;
 import com.supos.common.config.OAuthKeyCloakConfig;
 import com.supos.common.exception.vo.ResultVO;
+import com.supos.common.utils.KeycloakUtil;
 import com.supos.common.utils.ServletUtil;
 import com.supos.common.vo.UserInfoVo;
 import com.supos.gateway.service.AuthService;
@@ -29,6 +30,8 @@ public class AuthController {
     private AuthService authService;
     @Autowired
     private OAuthKeyCloakConfig keyCloakConfig;
+    @Autowired
+    private KeycloakUtil keycloakUtil;
 
     /**
      * OAuth 获取token
@@ -51,7 +54,7 @@ public class AuthController {
         }
         Cookie cookie = new Cookie(Constants.ACCESS_TOKEN_KEY, token);
         cookie.setPath("/");      // 设置路径
-        cookie.setMaxAge(Constants.TOKEN_MAX_AGE);
+        cookie.setMaxAge(Constants.COOKIE_MAX_AGE);
         response.addCookie(cookie);
         response.setStatus(HttpStatus.FOUND.value());
         UserInfoVo userInfoVo = authService.getUserInfoVoByToken(token);
@@ -82,11 +85,12 @@ public class AuthController {
             if ("false".equals(authEnable)){
                 return ResponseEntity.ok(ResultVO.successWithData(UserInfoVo.guest()));
             }
+            keycloakUtil.removeSession(cookie.getValue());
             return ResponseEntity.ok(ResultVO.success("not found user info"));
         }
         ResponseCookie newCookie = ResponseCookie.from(Constants.ACCESS_TOKEN_KEY, cookie.getValue())
                 .path("/")
-                .maxAge(Constants.TOKEN_MAX_AGE) // 秒
+                .maxAge(Constants.COOKIE_MAX_AGE) // 秒
                 .build();
         HttpHeaders headers = new HttpHeaders();
         headers.add(HttpHeaders.SET_COOKIE, newCookie.toString());

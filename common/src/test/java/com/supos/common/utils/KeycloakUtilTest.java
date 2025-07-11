@@ -124,4 +124,16 @@ public class KeycloakUtilTest {
         String token = JSON.parseObject(response.body()).getString("access_token");
         return token;
     }
+
+    @Test
+    public void removeSession(){
+        String sessionState = "ac379e27-af5a-44e9-8f99-207bec82f27f";
+        String url = "http://100.100.100.22:33997/keycloak/home/auth/admin/realms/supos/sessions/" + sessionState;
+        log.info(">>>>>>>>>>>>Keycloak removeSession URL：{}", url);
+        HttpResponse response = HttpRequest.delete(url).bearerAuth(adminToken())
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .timeout(5000)
+                .execute();
+        log.info(">>>>>>>>>>>>Keycloak removeSession response code：{}", response.getStatus());
+    }
 }

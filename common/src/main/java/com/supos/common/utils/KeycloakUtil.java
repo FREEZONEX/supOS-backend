@@ -751,4 +751,14 @@ public class KeycloakUtil {
             log.warn("Keycloak logout 失败");
         }
     }
+
+    public void removeSession(String sessionState ){
+        String url = getAdminApiUrl() + "/sessions/" + sessionState;
+        log.info(">>>>>>>>>>>>Keycloak removeSession URL：{},params:{}", url, sessionState);
+        HttpResponse response = HttpRequest.delete(url).bearerAuth(getAdminToken())
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .timeout(5000)
+                .execute();
+        log.info(">>>>>>>>>>>>Keycloak removeSession response code：{}", response.getStatus());
+    }
 }
