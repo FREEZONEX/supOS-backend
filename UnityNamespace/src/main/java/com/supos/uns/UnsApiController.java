@@ -25,7 +25,6 @@ import java.util.*;
 
 @RestController
 @Slf4j
-@Hidden
 public class UnsApiController {
 
     @Autowired
