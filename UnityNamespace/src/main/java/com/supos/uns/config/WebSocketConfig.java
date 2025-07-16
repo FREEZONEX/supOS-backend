@@ -20,7 +20,11 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(websocketHandler, "/inter-api/supos/uns/ws","/open-api/supos/uns/ws").setAllowedOriginPatterns("*").addInterceptors(new HttpSessionHandshakeInterceptor());
+        registry.addHandler(websocketHandler,
+                        "/inter-api/supos/uns/ws",
+                        "/open-api/supos/uns/ws")
+                .setAllowedOriginPatterns("*")
+                .addInterceptors(new HttpSessionHandshakeInterceptor());
     }
 
     @Bean

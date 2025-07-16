@@ -2,11 +2,12 @@ package com.supos.adapter.mqtt.webapi;
 
 import com.alibaba.fastjson2.JSONObject;
 import com.supos.adapter.mqtt.adapter.MQTTConsumerAdapter;
-import com.supos.adapter.mqtt.dto.TopicDefinition;
 import com.supos.adapter.mqtt.service.MessageConsumer;
 import com.supos.adapter.mqtt.service.impl.UnsMessageConsumer;
 import com.supos.adapter.mqtt.util.DateUtil;
 import com.supos.common.dto.BaseResult;
+import com.supos.common.dto.mqtt.TopicDefinition;
+import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.JsonUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
@@ -23,6 +24,8 @@ public class MQTTMetricsController {
     MQTTConsumerAdapter mqttAdapter;
     @Autowired
     MessageConsumer messageConsumer;
+    @Autowired
+    private IUnsDefinitionService uds;
     String startTime = DateUtil.dateStr(System.currentTimeMillis());
 
 
@@ -77,7 +80,7 @@ public class MQTTMetricsController {
     ) {
         LinkedHashMap<String, Object> json = new LinkedHashMap<>();
         json.put("startTime", startTime);
-        Map<Long, TopicDefinition> map = messageConsumer.getTopicDefinitionMap();
+        Map<Long, TopicDefinition> map = uds.getTopicDefinitionMap();
         if (id != null) {
             TopicDefinition definition = map.get(id);
             json.put("definition", definition);

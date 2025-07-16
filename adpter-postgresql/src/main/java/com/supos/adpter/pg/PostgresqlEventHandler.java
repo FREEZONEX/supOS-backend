@@ -18,8 +18,10 @@ import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PostgresqlTypeUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.CollectionUtils;
 
@@ -109,7 +111,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
             for (SaveDataDto dto : event.topicData) {
                 String table = DbTableNameUtils.getFullTableName(dto.getTable());
                 for (List<Map<String, Object>> list : Lists.partition(dto.getList(), Constants.SQL_BATCH_SIZE)) {
-                    String insertSQL = getInsertSQL(list, table, dto, false);
+                    String insertSQL = getInsertSQL(list, table, dto, "false");
                     SQLs.add(Pair.of(dto.getCreateTopicDto(), insertSQL));
                 }
                 dto.getList().clear();
@@ -331,7 +333,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
     }
 
 
-    static String getInsertSQL(Collection<Map<String, Object>> list, String table, SaveDataDto saveDataDto, boolean ignore) {
+    static String getInsertSQL(Collection<Map<String, Object>> list, String table, SaveDataDto saveDataDto, String ignore) {
         /**
          * INSERT INTO test (id, name, email)
          * VALUES (1, 'Alice', 'alice@example.com')
@@ -395,24 +397,25 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
             builder.append(',');
         }
         builder.setCharAt(builder.length() - 1, ' ');
-
-        if (pks != null && pks.length > 0) {
-            builder.append("ON CONFLICT(");
-            for (String f : pks) {
-                builder.append('"').append(f).append("\",");
-            }
-            builder.setCharAt(builder.length() - 1, ')');
-            if (ignore) {
-                builder.append(" do nothing");
-            } else {
-                builder.append(" do update set ");
-                for (FieldDefine define : columns) {
-                    if (!define.isUnique()) {
-                        String f = define.getName();
-                        builder.append('"').append(f).append("\"=EXCLUDED.\"").append(f).append("\",");
-                    }
+        if (StringUtils.isNotEmpty(ignore)) {
+            if (pks != null && pks.length > 0) {
+                builder.append("ON CONFLICT(");
+                for (String f : pks) {
+                    builder.append('"').append(f).append("\",");
                 }
-                builder.setCharAt(builder.length() - 1, ' ');
+                builder.setCharAt(builder.length() - 1, ')');
+                if ("true".equals(ignore)) {
+                    builder.append(" do nothing");
+                } else {
+                    builder.append(" do update set ");
+                    for (FieldDefine define : columns) {
+                        if (!define.isUnique()) {
+                            String f = define.getName();
+                            builder.append('"').append(f).append("\"=EXCLUDED.\"").append(f).append("\",");
+                        }
+                    }
+                    builder.setCharAt(builder.length() - 1, ' ');
+                }
             }
         }
         String insertSQL = builder.toString();
@@ -448,6 +451,8 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
             if (def.isUnique()) {
                 builder.append(" NOT NULL ");
             } else if (type.startsWith("timestamp") && name.equals(Constants.SYS_SAVE_TIME)) {
+                builder.append(" DEFAULT now() ");
+            } else if (type.startsWith("timestamp") && name.equals(Constants.SYS_FIELD_CREATE_TIME)) {
                 builder.append(" DEFAULT now() ");
             }
             builder.append(',');

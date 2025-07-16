@@ -28,8 +28,8 @@ public class WebsocketServer implements WebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         wssm.put(session.getId(), session);
-    }
 
+    }
 
     /**
      * 接收client发送过来的数据

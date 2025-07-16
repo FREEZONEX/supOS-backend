@@ -9,6 +9,7 @@ import cn.hutool.extra.spring.SpringUtil;
 import cn.hutool.system.SystemUtil;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
 import com.bluejeans.common.bigqueue.BigArray;
 import com.bluejeans.common.bigqueue.BigQueue;
 import com.codahale.metrics.Counter;
@@ -17,22 +18,27 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Snapshot;
 import com.supos.adapter.mqtt.dto.FieldErrMsg;
 import com.supos.adapter.mqtt.dto.LastMessage;
-import com.supos.adapter.mqtt.dto.TopicDefinition;
 import com.supos.adapter.mqtt.dto.TopicMessage;
 import com.supos.adapter.mqtt.service.MQTTPublisher;
 import com.supos.adapter.mqtt.service.MessageConsumer;
+import com.supos.adapter.mqtt.util.DateUtil;
 import com.supos.adapter.mqtt.util.SystemWheeledTimer;
 import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.adpater.TopicMessageConsumer;
 import com.supos.common.annotation.Description;
 import com.supos.common.dto.*;
+import com.supos.common.dto.mqtt.TopicDefinition;
 import com.supos.common.enums.FieldType;
 import com.supos.common.event.*;
+import com.supos.common.exception.BuzException;
+import com.supos.common.sdk.UnsQueryApi;
+import com.supos.common.sdk.WebsocketSender;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.*;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.MqttException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
@@ -57,23 +63,23 @@ import static com.codahale.metrics.MetricRegistry.name;
 
 @Service
 @Slf4j
-public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer, IUnsDefinitionService {
-    private final ConcurrentHashMap<Long, TopicDefinition> topicDefinitionMap = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Long> aliasMap = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Long> pathMap = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Long> topicMap = Constants.useAliasAsTopic ? aliasMap : pathMap;
+public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer {
 
     private final ConcurrentHashSet<Long> scheduleCalcTopics = new ConcurrentHashSet<>();
-
-    public Map<Long, TopicDefinition> getTopicDefinitionMap() {
-        return topicDefinitionMap;
-    }
+    @Autowired
+    private IUnsDefinitionService uds;
+    @Autowired
+    private UnsQueryApi unsQueryService;
+    @Autowired
+    private WebsocketSender websocketSender;
 
     private final ExecutorService dataPublishExecutor = ThreadUtil.newFixedExecutor(Integer.parseInt(System.getProperty("sink.thread", "4")), 100, "dbPub-", RejectPolicy.CALLER_RUNS.getValue());
-    private final ExecutorService topicSender = ThreadUtil.newFixedExecutor(2, 100, "topicSend-", RejectPolicy.CALLER_RUNS.getValue());
+    private final ExecutorService topicSender = ThreadUtil.newFixedExecutor(1, 100, "topicSend-", RejectPolicy.CALLER_RUNS.getValue());
 
     private static final String QUEUE_DIR = Constants.LOG_PATH + File.separator + "queue";
     private final BigQueue queue;
+
+    private static final String DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSXXX";
 
     {
         BigQueue Q = new BigQueue(QUEUE_DIR, "mqtt_queue_cache", 64 * 1024 * 1024);
@@ -151,7 +157,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         }));
     }
 
-    public static int FETCH_SIZE = Integer.parseInt(System.getProperty("fetch", "8000"));
+    public static int FETCH_SIZE = Integer.parseInt(System.getProperty("fetch", "20000"));
     public static int MAX_WAIT_MILLS = Integer.parseInt(System.getProperty("maxWait", "1000"));
 
     private boolean subscribeALL;
@@ -257,7 +263,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                 String json = new String(dataBs, StandardCharsets.UTF_8);
                 TopicMessage msg = JSON.parseObject(json, TopicMessage.class);
                 Long id = msg.getId();
-                TopicDefinition definition = topicDefinitionMap.get(id);
+                TopicDefinition definition = uds.getTopicDefinitionMap().get(id);
                 if (definition != null) {
                     List<Map<String, Object>> list = msg.getMsg();
                     HashMap<Long, SaveDataDto> topicData = typedDataMap.computeIfAbsent(definition.getJdbcType(), k -> new HashMap<>());
@@ -274,38 +280,11 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                     }
                 }
             }
-            putByCt(typedDataMap);
-            sendData(typedDataMap);
+            sendData(typedDataMap, "");
         }
     }
 
-    private static void putByCt(Map<SrcJdbcType, HashMap<Long, SaveDataDto>> typedDataMap) {
-        for (Map.Entry<SrcJdbcType, HashMap<Long, SaveDataDto>> entry : typedDataMap.entrySet()) {
-            Collection<SaveDataDto> vs = entry.getValue().values();
-            for (SaveDataDto dto : vs) {
-                List<Map<String, Object>> list = dto.getList();
-                Collections.reverse(list);
-                Iterator<Map<String, Object>> iterator = list.iterator();
-                Object prevCt = null;
-                Map<String, Object> prevBean = null;
-                final String CT = dto.getCreateTopicDto().getTimestampField();
-                while (iterator.hasNext()) {
-                    Map<String, Object> data = iterator.next();
-                    Object ct = data.get(CT);
-                    if (ct != null && ct.equals(prevCt)) {
-                        log.debug("删除时间重复数据: {}", data);
-                        iterator.remove();
-                        prevBean.replace(Constants.MERGE_FLAG, 1, 2);
-                    }
-                    prevCt = ct;
-                    prevBean = data;
-                }
-                Collections.reverse(list);
-            }
-        }
-    }
-
-    private void sendData(Map<SrcJdbcType, HashMap<Long, SaveDataDto>> typedDataMap) {
+    private void sendData(Map<SrcJdbcType, HashMap<Long, SaveDataDto>> typedDataMap, String duplicateIgnore) {
 
         for (Map.Entry<SrcJdbcType, HashMap<Long, SaveDataDto>> entry : typedDataMap.entrySet()) {
 
@@ -314,38 +293,26 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
 
             SrcJdbcType jdbcType = entry.getKey();
             HashMap<Long, SaveDataDto> topicData = entry.getValue();
-            long countRecords = 0;
-            Iterator<Map.Entry<Long, SaveDataDto>> itr = topicData.entrySet().iterator();
-            while (itr.hasNext()) {
-                SaveDataDto dto = itr.next().getValue();
-                Long id = dto.getId();
-                TopicDefinition definition = topicDefinitionMap.get(id);
+            HashMap<String, SaveDataDto> tableData = new HashMap<>(topicData.size());
+            for (SaveDataDto d : topicData.values()) {
+                TopicDefinition definition = uds.getTopicDefinitionMap().get(d.getId());
                 if (definition == null) {
-                    log.warn("{} 已被删除!", id);
-                    itr.remove();
                     continue;
                 }
-                countRecords += dto.getList().size();
                 if (definition.getCompileExpression() != null) {
-                    arrivedCalcSize.getAndAdd(dto.getList().size());
+                    arrivedCalcSize.getAndAdd(d.getList().size());
                 }
                 Set<Long> calcTopics = definition.getReferCalcUns();
                 if (calcTopics != null && calcTopics.size() > 0) {
                     for (Long calcTopic : calcTopics) {
-                        TopicDefinition calc = topicDefinitionMap.get(calcTopic);
+                        TopicDefinition calc = uds.getTopicDefinitionMap().get(calcTopic);
                         if (calc != null) {
-                            calcMap.compute(calc, (k, oldV) -> oldV == null || oldV.getList().size() < dto.getList().size() ? dto : oldV);
+                            calcMap.compute(calc, (k, oldV) -> oldV == null || oldV.getList().size() < d.getList().size() ? d : oldV);
                         } else {
                             log.debug("calc TopicDefinitionNotFound: {}", calcTopic);
                         }
                     }
                 }
-            }
-            this.computeCalcTopic(calcMap, topicData);
-
-            HashMap<String, SaveDataDto> tableData = new HashMap<>(topicData.size());
-            for (SaveDataDto d : topicData.values()) {
-                TopicDefinition definition = topicDefinitionMap.get(d.getId());
                 if (definition != null && definition.isSave2db()) {
                     String table = d.getTable();
                     SaveDataDto data = tableData.get(table);
@@ -356,12 +323,15 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                     }
                 }
             }
+
+            this.computeCalcTopic(calcMap, topicData);
+
             if (log.isDebugEnabled()) {
-                log.debug("publishData: {}, size={}, dataLen={}, topics={}", jdbcType.name(), countRecords, tableData.size(), tableData.keySet());
+                log.debug("publishData: {}, dataLen={}, topics={}", jdbcType.name(), tableData.size(), tableData.keySet());
             }
             topicData.clear();
-            if (tableData.size() > 0) {
-                SaveDataEvent event = new SaveDataEvent(this, jdbcType, tableData.values().toArray(new SaveDataDto[0]));
+            if (!tableData.isEmpty()) {
+                SaveDataEvent event = new SaveDataEvent(this, jdbcType, tableData.values().toArray(new SaveDataDto[0]), duplicateIgnore);
                 dataPublishExecutor.submit(() -> EventBus.publishEvent(event));
             }
         }
@@ -376,7 +346,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             String calcTopic = calc.getTopic();
             final String CT = calc.getCreateTopicDto().getTimestampField();
             final String qosField = calc.getCreateTopicDto().getQualityField();
-            Map<Long, Object[]> calcRs = tryCalc(topicDefinitionMap, calc, dto, topicData, count);
+            Map<Long, Object[]> calcRs = tryCalc(uds.getTopicDefinitionMap(), calc, dto, topicData, count);
             if (calcRs != null) {
                 Object oldRsValue = null;
                 Object oldValue = null;
@@ -577,21 +547,21 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         if (Character.isDigit(topic.charAt(0))) {
             try {
                 unsId = Long.parseLong(topic);
-                definition = topicDefinitionMap.get(unsId);
+                definition = uds.getTopicDefinitionMap().get(unsId);
                 if (definition == null) {
-                    unsId = topicMap.get(topic);
+                    unsId = uds.getTopicMap().get(topic);
                 }
             } catch (NumberFormatException ex) {
-                unsId = topicMap.get(topic);
+                unsId = uds.getTopicMap().get(topic);
             }
         } else {
-            unsId = topicMap.get(topic);
+            unsId = uds.getTopicMap().get(topic);
             if (unsId == null) {
-                unsId = Constants.useAliasAsTopic ? pathMap.get(topic) : aliasMap.get(topic);
+                unsId = Constants.useAliasAsTopic ? uds.getPathMap().get(topic) : uds.getAliasMap().get(topic);
             }
         }
         if (definition == null && unsId != null) {
-            definition = topicDefinitionMap.get(unsId);
+            definition = uds.getTopicDefinitionMap().get(unsId);
         }
         return definition;
     }
@@ -603,21 +573,21 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         if (Character.isDigit(topic.charAt(0))) {
             try {
                 unsId = Long.parseLong(topic);
-                definition = topicDefinitionMap.get(unsId);
+                definition = uds.getTopicDefinitionMap().get(unsId);
                 if (definition == null) {
-                    unsId = topicMap.get(topic);
+                    unsId = uds.getTopicMap().get(topic);
                 }
             } catch (NumberFormatException ex) {
-                unsId = topicMap.get(topic);
+                unsId = uds.getTopicMap().get(topic);
             }
         } else {
-            unsId = topicMap.get(topic);
+            unsId = uds.getTopicMap().get(topic);
             if (unsId == null) {
-                unsId = aliasMap.get(topic);
+                unsId = uds.getAliasMap().get(topic);
             }
         }
         if (definition == null && unsId != null) {
-            definition = topicDefinitionMap.get(unsId);
+            definition = uds.getTopicDefinitionMap().get(unsId);
         } else if (definition == null && MERGE_TOPIC.equals(topic)) {
             try {
                 JSONArray array = JSON.parseArray(new String(bytes, StandardCharsets.UTF_8));
@@ -647,9 +617,9 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             String payload = new String(bytes, StandardCharsets.UTF_8);
             log.debug("TopicDefinition NotFound[{}] : payload = {}", topic, payload);
             if (subscribeALL) {
-                TopicMessageEvent event = new TopicMessageEvent(this, null, null, -1, topic, payload);
                 dataPublishExecutor.submit(() -> {
-                    this.topicSender.submit(() -> EventBus.publishEvent(event));
+                    sendToRefreshLatestMsg(null, topic, payload, null, null, "");
+                    sendToWebsocket(null, topic);
                 });
             }
             return;
@@ -802,16 +772,44 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         String topic = definition.getTopic();
         CreateTopicDto info = definition.getCreateTopicDto();
         Integer dataType = info.getDataType();
-        TopicMessageEvent event = new TopicMessageEvent(this, info, info.getId(), dataType != null ? dataType : -1, definition.getFieldDefines().getFieldsMap(), topic, info.getProtocolType(), dataToSend != null ? dataToSend.get(dataToSend.size() - 1) : null, definition.getLastMsg(), definition.getLastDt(), rawData, nowInMills, errMsg);
-        dataPublishExecutor.submit(() -> {
-            this.topicSender.submit(() -> EventBus.publishEvent(event));
+
+        this.dataPublishExecutor.submit(() -> {
+            sendToRefreshLatestMsg(info.getId(), topic, rawData, definition.getLastDt(), dataToSend != null ? dataToSend.get(dataToSend.size() - 1) : null, errMsg);
+            sendToWebsocket(info.getId(), topic);
+            if (definition.getDataType() == Constants.ALARM_RULE_TYPE) {
+                AlertEvent event = new AlertEvent(
+                        this,
+                        info,
+                        info.getId(),
+                        dataType != null ? dataType : -1,
+                        definition.getFieldDefines().getFieldsMap(),
+                        topic,
+                        info.getProtocolType(),
+                        dataToSend != null ? dataToSend.get(dataToSend.size() - 1) : null,
+                        definition.getLastMsg(),
+                        definition.getLastDt(),
+                        rawData,
+                        nowInMills,
+                        errMsg);
+                EventBus.publishEvent(event);
+            }
         });
+    }
+
+    private void sendToWebsocket(Long unsId, String path) {
+        WebsocketNotifyEvent event = new WebsocketNotifyEvent(this, unsId, path);
+        this.topicSender.submit(() -> websocketSender.sendLatestMsg(event));
+    }
+
+    private void sendToRefreshLatestMsg(Long unsId, String path, String payload, Map<String, Long> dt, Map<String, Object> data, String errorMsg) {
+        RefreshLatestMsgEvent event = new RefreshLatestMsgEvent(this, unsId, path, payload, dt, data, errorMsg);
+        unsQueryService.refreshLatestMsg(event);
     }
 
     private static List<Map<String, Object>> mergeBeansWithTimestamp(List<Map<String, Object>> list, TopicDefinition definition, long nowInMills) {
         Long prevTime = null;
-        ConcurrentHashMap<String, Object> lastMsg = definition.getLastMsg();
-        ConcurrentHashMap<String, Long> dtMap = definition.getLastDt();
+        Map<String, Object> lastMsg = definition.getLastMsg();
+        Map<String, Long> dtMap = definition.getLastDt();
         Map<String, Object> prevBean = new HashMap<>();
         final String CT = definition.getCreateTopicDto().getTimestampField();
         if (lastMsg != null) {
@@ -881,16 +879,16 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                     }
                 }
             }
-            if (firstMsg) {
+            /*if (firstMsg) {
                 bean.put(Constants.FIRST_MSG_FLAG, 1);
-            }
+            }*/
             definition.setLastDateTime(curTime);
         }
         log.debug("merge: {} -> {}", list, mergedList);
 
         Map<String, FieldDefine> fieldsMap = definition.getFieldDefines().getFieldsMap();
         if (lastMsg.size() > fieldsMap.size() || (lastUpdateTime == null || nowInMills - lastUpdateTime > 5000)) {
-            ConcurrentHashMap<String, Long> dt = dtMap;
+            Map<String, Long> dt = dtMap;
             lastMsg.keySet().removeIf(field -> {
                 boolean invalid = !fieldsMap.containsKey(field);
                 if (invalid) {
@@ -1016,7 +1014,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
         if (!CollectionUtils.isEmpty(event.topics)) {
             for (Long id : event.topics.keySet()) {
-                TopicDefinition definition = topicDefinitionMap.remove(id);
+                TopicDefinition definition = uds.getTopicDefinitionMap().remove(id);
                 if (definition != null) {
                     int dataType = definition.getDataType();
                     if (dataType == Constants.MERGE_TYPE) {
@@ -1025,7 +1023,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                         InstanceField[] refers = definition.getRefers();
                         if (refers != null) {
                             for (InstanceField file : refers) {
-                                TopicDefinition def = topicDefinitionMap.get(file.getId());
+                                TopicDefinition def = uds.getTopicDefinitionMap().get(file.getId());
                                 if (def != null) {
                                     def.getCreateTopicDto().getCited().remove(id);
                                 }
@@ -1033,8 +1031,8 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                         }
                     }
                     CreateTopicDto old = definition.getCreateTopicDto();
-                    aliasMap.remove(old.getAlias(), id);
-                    pathMap.remove(old.getPath(), id);
+                    uds.getAliasMap().remove(old.getAlias(), id);
+                    uds.getPathMap().remove(old.getPath(), id);
                 }
             }
             reCalculateRefers();
@@ -1198,14 +1196,14 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
     }
 
     private void reCalculateRefers() {
-        for (TopicDefinition definition : topicDefinitionMap.values()) {
+        for (TopicDefinition definition : uds.getTopicDefinitionMap().values()) {
             InstanceField[] refers = definition.getRefers();
             Set<Long> refTopics;
             if (ArrayUtil.isNotEmpty(refers)) {
                 Long calcTopic = definition.getCreateTopicDto().getId();
                 for (InstanceField field : refers) {
                     if (field != null && field.getId() != null) {
-                        TopicDefinition def = topicDefinitionMap.get(field.getId());
+                        TopicDefinition def = uds.getTopicDefinitionMap().get(field.getId());
                         if (def != null) {
                             if (definition.getDataType() == Constants.CITING_TYPE) {
                                 def.getCreateTopicDto().getCited().add(calcTopic);// 标记为被引用类型文件所引用
@@ -1219,7 +1217,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                 Iterator<Long> refItr = refTopics.iterator();
                 while (refItr.hasNext()) {
                     Long refTopic = refItr.next();
-                    if (!topicDefinitionMap.containsKey(refTopic)) {
+                    if (!uds.getTopicDefinitionMap().containsKey(refTopic)) {
                         refItr.remove();// remove invalid reference
                     }
                 }
@@ -1231,7 +1229,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
     }
 
     void addTopicFields(CreateTopicDto dto) {
-        addTopicFields(topicDefinitionMap, dto);
+        addTopicFields(uds.getTopicDefinitionMap(), dto);
         addScheduleCalcTask(dto);
     }
 
@@ -1245,7 +1243,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
     }
 
     private void tryMergeTopics(Long id) {
-        TopicDefinition definition = topicDefinitionMap.get(id);
+        TopicDefinition definition = uds.getTopicDefinitionMap().get(id);
         CreateTopicDto dto = definition != null ? definition.getCreateTopicDto() : null;
         Long freq;
         if (dto != null && dto.getDataType() == Constants.MERGE_TYPE && (freq = dto.getFrequencySeconds()) != null && freq > 0) {
@@ -1265,13 +1263,13 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         StringBuilder sb = new StringBuilder(256);
         for (InstanceField field : dto.getRefers()) {
             Long refId = field.getId();
-            TopicDefinition definition = topicDefinitionMap.get(refId);
+            TopicDefinition definition = uds.getTopicDefinitionMap().get(refId);
             Map<String, Object> lastMsg = definition.getLastMsg();
             if (lastMsg != null) {
                 if (sb.length() > 0) {
                     sb.append(',');
                 } else {
-                    TopicDefinition mdf = topicDefinitionMap.get(dto.getId());
+                    TopicDefinition mdf = uds.getTopicDefinitionMap().get(dto.getId());
                     FieldDefines defines = mdf.getFieldDefines();
                     sb.append("{\"").append(defines.getCalcField().getName()).append("\":\"{");
                 }
@@ -1331,16 +1329,16 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         final Long id = dto.getId();
         TopicDefinition prevDefinition = topicDefinitionMap.get(id);
         String a = dto.getAlias(), p = dto.getPath();
-        Long oldAId = aliasMap.put(a, id);
-        Long oldPId = pathMap.put(p, id);
+        Long oldAId = uds.getAliasMap().put(a, id);
+        Long oldPId = uds.getPathMap().put(p, id);
         if (prevDefinition != null) {
             CreateTopicDto old = prevDefinition.getCreateTopicDto();
             String a1 = old.getAlias(), p1 = old.getPath();
             if (!Objects.equals(a, a1) && id.equals(oldAId)) {
-                aliasMap.remove(a1);
+                uds.getAliasMap().remove(a1);
             }
             if (!Objects.equals(p, p1) && id.equals(oldPId)) {
-                pathMap.remove(p1);
+                uds.getPathMap().remove(p1);
             }
             prevDefinition.setCreateTopicDto(dto);
         } else {
@@ -1350,49 +1348,172 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
 
     @Override
     public void onMessageByAlias(String alias, String payload) {
-        if (alias != null) {
-            Long id = aliasMap.get(alias);
-            TopicDefinition definition = id != null ? topicDefinitionMap.get(id) : null;
-            if (definition != null && definition.getDataType() == Constants.CITING_TYPE) {
-                log.warn("拒绝引用类型写值: alias={}", alias);
-                return;
-            }
-            onMessage(definition, alias, -1, payload.getBytes(StandardCharsets.UTF_8));
+        Long unsId = uds.getAliasMap().get(alias);
+        if (unsId == null) {
+            return;
         }
+        Map<String, Object> dataMap = JSONObject.parseObject(payload, Map.class);
+        TopicDefinition definition = initTopicDefinitionData(dataMap, unsId);
+        // 刷新位号内存最近的数据
+        sendToRefreshLatestMsg(unsId, "", payload, definition.getLastDt(), definition.getLastMsg(), "");
+        // 通知前端websocket显示
+        sendToWebsocket(unsId, "");
+
+        if (definition.getDataType() == Constants.ALARM_RULE_TYPE) {
+            return;
+        }
+        List<Map<String, Object>> singlePayloadList = Collections.singletonList(definition.getLastMsg());
+        // 写入磁盘队列
+        flushToDiskQueue(unsId, singlePayloadList);
+
     }
 
+    /**
+     *
+     * @param aliasVqtMap key=alias value=VQT json
+     */
     @Override
-    public CreateTopicDto getDefinitionByAlias(String alias) {
-        if (alias != null) {
-            Long id = aliasMap.get(alias);
-            return getUnsById(id);
-        } else {
-            return null;
-        }
-    }
-
-    @Override
-    public CreateTopicDto getDefinitionByPath(String path) {
-        if (path != null) {
-            Long id = pathMap.get(path);
-            return getUnsById(id);
-        } else {
-            return null;
-        }
-    }
-
-    public CreateTopicDto getDefinitionById(Long id) {
-        return getUnsById(id);
-    }
-
-    private CreateTopicDto getUnsById(Long id) {
-        if (id != null) {
-            TopicDefinition definition = topicDefinitionMap.get(id);
-            if (definition != null) {
-                return definition.getCreateTopicDto();
+    public void onMessageByAliasOnUpdate(Map<String, String> aliasVqtMap) {
+        TreeMap<SrcJdbcType, HashMap<Long, SaveDataDto>> typedDataMap = new TreeMap<>();
+        for (Map.Entry<String, String> entry : aliasVqtMap.entrySet()) {
+            Long unsId = uds.getAliasMap().get(entry.getKey());
+            if (unsId == null) {
+                continue;
             }
+            Map<String, Object> vqtMap = JSONObject.parseObject(entry.getValue(), Map.class);
+            TopicDefinition definition = initTopicDefinitionData(vqtMap, unsId);
+            // 刷新位号内存最近的数据
+            sendToRefreshLatestMsg(unsId, "", entry.getValue(), definition.getLastDt(), definition.getLastMsg(), "");
+            // 通知前端websocket显示
+            sendToWebsocket(unsId, "");
+
+            HashMap<Long, SaveDataDto> topicData = typedDataMap.computeIfAbsent(definition.getJdbcType(), k -> new HashMap<>());
+            SaveDataDto saveDataDto = topicData.computeIfAbsent(unsId, k -> new SaveDataDto(unsId, definition.getTable(), definition.getFieldDefines(), new LinkedList<>()));
+            CreateTopicDto def = definition.getCreateTopicDto();
+            saveDataDto.setCreateTopicDto(def);
+            saveDataDto.getList().add(vqtMap);
+            String fieldValue = def.getTbFieldName();
+            if (fieldValue != null) {
+                final String curUns = def.getAlias();
+                for (Map<String, Object> data : saveDataDto.getList()) {
+                    data.put(fieldValue, curUns);
+                }
+            }
+
+        }
+        sendData(typedDataMap, "false");
+    }
+
+    private TopicDefinition initTopicDefinitionData(Map<String, Object> dataMap, long unsId) {
+        TopicDefinition definition = uds.getTopicDefinitionMap().get(unsId);
+        if (definition == null) {
+            definition = new TopicDefinition(null);
+        }
+        // 对数据进行加工处理，数据类型校验和时间统一转换成长整型
+        if (definition.getCreateTopicDto() != null) {
+            Iterator<Map.Entry<String, Object>> iterator = dataMap.entrySet().iterator();
+            FieldDefine[] fields = definition.getCreateTopicDto().getFields();
+
+            if (fields == null) {
+                throw new BuzException("字段定义为空");
+            }
+
+            while(iterator.hasNext()) {
+                Map.Entry<String, Object> entry = iterator.next();
+                boolean bingo = false;
+                for (FieldDefine field : fields) {
+                    if (field.getName().equals(entry.getKey())) {
+                        bingo = true;
+                        // 系统字段时间类型统一转成长整型
+                        if (field.isSystemField() && field.getType() == FieldType.DATETIME) {
+                            dataMap.put(entry.getKey(), DateUtil.dateToLong(entry.getValue(), DATE_FORMAT));
+                        }
+                        // 针对非系统字段进行数据类型的校验,并将合适的进行数据类型转换，例如字符串"11"可以转成整型11
+                        if (!field.isSystemField()) {
+                            Object newValue = valueTypeTransfer(entry.getValue(), field);
+                            if (newValue != null) {
+                                dataMap.put(entry.getKey(), newValue);
+                            } else {
+                                // 如果数据类型转换失败，从当前更新的属性中移除
+                                iterator.remove();
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (!bingo) {
+                    iterator.remove(); // 键不在数组中则移除
+                }
+            }
+        }
+
+        definition.setLastMsg(dataMap);
+        Map<String, Long> dtMap = new HashMap<>();
+        long current = new Date().getTime();
+        // 设置每个字段最近更新时间
+        for (String key : dataMap.keySet()) {
+            dtMap.put(key, current);
+        }
+        definition.setLastDt(dtMap);
+        return definition;
+    }
+
+    private Object valueTypeTransfer(Object value, FieldDefine field) {
+        try {
+            switch (field.getType()) {
+                case STRING -> {
+                    return value.toString();
+                }
+                case LONG -> {
+                    if (value instanceof Long) {
+                        return value;
+                    }
+                    return Long.parseLong(value.toString());
+                }
+                case INTEGER -> {
+                    if (value instanceof Integer) {
+                        return value;
+                    }
+                    return Integer.parseInt(value.toString());
+                }
+                case DOUBLE -> {
+                    if (value instanceof Double) {
+                        return value;
+                    }
+                    return Double.parseDouble(value.toString());
+                }
+                case BOOLEAN -> {
+                    if (value instanceof Boolean) {
+                        return value;
+                    }
+                    return Boolean.parseBoolean(value.toString());
+                }
+                case FLOAT -> {
+                    if (value instanceof Float) {
+                        return value;
+                    }
+                    return Float.parseFloat(value.toString());
+                }
+                // 其他类型不做处理，直接返回
+                default -> {
+                    return value;
+                }
+            }
+        } catch (Exception e) {
+            log.error("key（{}）解析错误，value={}, type={}", field.getName(), value, field.getType());
         }
         return null;
+    }
+
+    private void flushToDiskQueue(Long unsId, List<Map<String, Object>> dataList) {
+        queueLocker.readLock().lock();
+        try {
+            queue.enqueue(JsonUtil.toJsonBytes(new TopicMessage(unsId, dataList)));
+            enqueuedSize.incrementAndGet();
+            semaphore.release();
+        } finally {
+            queueLocker.readLock().unlock();
+        }
     }
 
     private final MetricRegistry metrics = new MetricRegistry();

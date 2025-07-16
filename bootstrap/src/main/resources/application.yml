@@ -8,8 +8,8 @@ grpc:
   server:
     port: 19099
   thread-pool:
-    core-size: 16      # 核心线程数（建议为 CPU核数 × 2）
-    max-size: 64       # 最大线程数（建议为 CPU核数 × 4）
+    core-size: ${GRPC_POOL_CORE_SIZE:8}      # 核心线程数（建议为 CPU核数 × 2）
+    max-size: ${GRPC_POOL_MAX_SIZE:32}       # 最大线程数（建议为 CPU核数 × 4）
     queue-capacity: 200 # 队列容量
     keep-alive-time: 60 # 线程空闲存活时间（秒）
 spring:
@@ -108,6 +108,9 @@ minio:
   endpoint: ${MINIO_ENDPOINT:http://minio:9000}
   accessKey: ${MINIO_ACCESSKEY:admin}
   secreKey: ${MINIO_SECREKEY:adminpassword}
+
+chat2db:
+  enable: ${ENABLE_CHAT2DB:true}
 #camunda:
 #  bpm:
 #    database:

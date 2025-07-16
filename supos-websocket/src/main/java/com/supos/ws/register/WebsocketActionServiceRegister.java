@@ -1,6 +1,5 @@
 package com.supos.ws.register;
 
-import com.supos.common.annotation.ProtocolIdentifierProvider;
 import com.supos.common.annotation.WSAction;
 import com.supos.common.register.AbstractBeanRegister;
 import org.springframework.beans.BeansException;

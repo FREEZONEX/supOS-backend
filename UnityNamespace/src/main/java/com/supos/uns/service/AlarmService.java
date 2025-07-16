@@ -13,6 +13,7 @@ import com.supos.common.Constants;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.*;
 import com.supos.common.enums.SysModuleEnum;
+import com.supos.common.event.AlertEvent;
 import com.supos.common.event.TopicMessageEvent;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.I18nUtils;
@@ -34,7 +35,6 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -63,8 +63,8 @@ public class AlarmService extends ServiceImpl<AlarmMapper, AlarmPo> {
     @Autowired
     IUnsDefinitionService unsDefinitionService;
 
-    @EventListener(classes = TopicMessageEvent.class)
-    public void alarmEvent(TopicMessageEvent event) {
+    @EventListener(classes = AlertEvent.class)
+    public void alarmEvent(AlertEvent event) {
         if (event.dataType != Constants.ALARM_RULE_TYPE || MapUtils.isEmpty(event.data)) {
             return;
         }

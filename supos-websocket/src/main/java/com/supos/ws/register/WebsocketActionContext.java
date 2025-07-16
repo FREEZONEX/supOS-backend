@@ -1,7 +1,5 @@
 package com.supos.ws.register;
 
-import com.supos.common.dto.protocol.BaseConfigDTO;
-import com.supos.common.enums.IOTProtocol;
 import com.supos.common.enums.WSActionEnum;
 import com.supos.ws.action.ActionApi;
 import com.supos.ws.dto.ActionBaseRequest;

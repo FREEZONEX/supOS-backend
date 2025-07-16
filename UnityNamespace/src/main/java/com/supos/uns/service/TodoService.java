@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.supos.common.Constants;
 import com.supos.common.dto.*;
 import com.supos.common.enums.SysModuleEnum;
+import com.supos.common.event.AlertEvent;
 import com.supos.common.event.TopicMessageEvent;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.I18nUtils;
@@ -50,8 +51,8 @@ public class TodoService extends ServiceImpl<TodoMapper, TodoPo> {
     @Resource
     private UserManageMapper userManageMapper;
 
-    @EventListener(classes = TopicMessageEvent.class)
-    public void alarmEvent(TopicMessageEvent event) {
+    @EventListener(classes = AlertEvent.class)
+    public void alarmEvent(AlertEvent event) {
         if (event.dataType != Constants.ALARM_RULE_TYPE) {
             return;
         }

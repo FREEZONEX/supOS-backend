@@ -77,7 +77,7 @@ public class TodoController {
 //        data.put("_ct", new Date());
 //        data.put("_id", "454545");
         TopicMessageEvent topicMessageEvent = new TopicMessageEvent(this,null, 1922566317403439104L, 5, null, "/$alarm/ceshi2_c6d71b518e6447ccbc69", "", data, null, null, null, 1L, null);
-        todoService.alarmEvent(topicMessageEvent);
+//        todoService.alarmEvent(topicMessageEvent);
 //        EventBus.publishEvent(topicMessageEvent);
     }
 }

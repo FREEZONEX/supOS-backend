@@ -26,12 +26,10 @@ import com.supos.common.annotation.DateTimeConstraint;
 import com.supos.common.dto.*;
 import com.supos.common.dto.protocol.RestServerConfigDTO;
 import com.supos.common.enums.FieldType;
-import com.supos.common.event.EventBus;
-import com.supos.common.event.QueryLastMsgEvent;
-import com.supos.common.event.RemoveTopicsEvent;
-import com.supos.common.event.TopicMessageEvent;
+import com.supos.common.event.*;
 import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
+import com.supos.common.sdk.UnsQueryApi;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.*;
 import com.supos.common.vo.FieldDefineVo;
@@ -68,7 +66,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-public class UnsQueryService {
+public class UnsQueryService implements UnsQueryApi {
 
     private final UnsMapper unsMapper;
     private final AlarmMapper alarmMapper;
@@ -949,15 +947,35 @@ public class UnsQueryService {
 
         synchronized void update(long lastUpdateTime, String payload, Map<String, Object> data, final Map<String, Long> dt, String err) {
             jsonObject.put("updateTime", lastUpdateTime);
-            jsonObject.put("payload", payload);
             jsonObject.put("msg", err);
             if (data != null) {
-                jsonObject.put("data", data);
-                jsonObject.put("dt", dt);
+                JSONObject dataJsonObj = jsonObject.getJSONObject("data");
+                if (dataJsonObj == null) {
+                    jsonObject.put("data", data);
+                } else {
+                    dataJsonObj.putAll(data);
+                    // TODO tag_name
+                    dataJsonObj.remove(Constants.SYSTEM_SEQ_TAG);
+                    dataJsonObj.remove(Constants.MERGE_FLAG);
+                }
+                JSONObject dtJsonObj = jsonObject.getJSONObject("dt");
+                if (dtJsonObj == null) {
+                    jsonObject.put("dt", dt);
+                } else {
+                    dtJsonObj.putAll(dt);
+                }
             } else {
                 jsonObject.remove("data");
                 jsonObject.remove("dt");
             }
+
+            JSONObject dataJsonObj = jsonObject.getJSONObject("data");
+            if (dataJsonObj == null) {
+                jsonObject.put("payload", payload);
+            } else {
+                jsonObject.put("payload", dataJsonObj.toJSONString());
+            }
+
             newestMessage = jsonObject.toJSONString();
             messageCount++;
             this.lastUpdateTime = lastUpdateTime;
@@ -975,9 +993,30 @@ public class UnsQueryService {
         }
     }
 
+    /**
+     * 刷新缓存最新数据
+     * @param event
+     */
+    public void refreshLatestMsg(RefreshLatestMsgEvent event) {
+        TopicMessageInfo msgInfo;
+        if (event.unsId == null) {
+            // 非 UNS topic
+            // cache external topics
+            ExternalTopicCacheDto cacheDto = new ExternalTopicCacheDto(event.payload,new Date());
+            EXTERNAL_TOPIC_CACHE.put(event.path, cacheDto);
+            msgInfo = externTopicLastMessages.computeIfAbsent(event.path, k -> new TopicMessageInfo());
+            msgInfo.update(new Date().getTime(), event.payload, null, event.dt, null);
+        } else {
+            // 从缓存中取最近一条数据与最近发过来的数据进行合并
+            msgInfo = topicLastMessages.computeIfAbsent(event.unsId, k -> new TopicMessageInfo());
+            msgInfo.update(new Date().getTime(), event.payload, event.data, event.dt, "");
+        }
 
-    @EventListener(classes = TopicMessageEvent.class)
-    @Order(9)
+    }
+
+
+//    @EventListener(classes = TopicMessageEvent.class)
+//    @Order(9)
     void onTopicMessageEvent(TopicMessageEvent event) {
         TopicMessageInfo msgInfo;
         if (event.fieldsMap == null) {

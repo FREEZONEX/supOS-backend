@@ -30,6 +30,10 @@ public class WebsocketSessionManager {
         sessions.put(sessionId, session);
     }
 
+    public int getSize() {
+        return sessions.size();
+    }
+
     /**
      * 缓存ws client， 绑定topic和sessionId的关系
      * @param topic

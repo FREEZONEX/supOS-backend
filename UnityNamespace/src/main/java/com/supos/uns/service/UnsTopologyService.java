@@ -194,43 +194,6 @@ public class UnsTopologyService {
 
 
     /**
-     * 监听icmp数据推送
-     *
-     * @param event
-     */
-    @EventListener(classes = TopicMessageEvent.class)
-    public void icmpRealDataChange(TopicMessageEvent event) {
-        if (!IOTProtocol.ICMP.name().equalsIgnoreCase(event.protocol)) {
-            return;
-        }
-        // 设置icmp数据
-        Map<String, Object> data = event.data;
-        Set<ICMPStateVO> icmpStates = globalTopologyData.getIcmpStates();
-        Object status = data.get("status"); // icmp类型都有固定status属性
-        ICMPStateVO realState = new ICMPStateVO(event.topic, Integer.valueOf(status.toString()));
-        boolean isChanged = false;
-        if (icmpStates.contains(realState)) {
-            for (ICMPStateVO state : icmpStates) {
-                // 比较状态是否一致
-                if (state.getTopic().equals(event.topic) && realState.getStatus().intValue() != state.getStatus().intValue()) {
-                    state.setStatus(realState.getStatus());
-                    isChanged = true;
-                    break;
-                }
-            }
-        } else {
-            icmpStates.add(realState);
-            isChanged = true;
-        }
-        if (isChanged) {
-            log.debug("icmp节点（{}）状态发生变化: {} -> {}", event.topic, 1 - realState.getStatus(), realState.getStatus());
-            topologyJson = globalTopologyData.toMessage();
-            EventBus.publishEvent(new UnsTopologyChangeEvent(this));
-        }
-    }
-
-
-    /**
      * 获取文件的拓扑节点状态
      *
      * @param unsId
