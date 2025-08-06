@@ -7,7 +7,6 @@ import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.util.IdUtil;
-import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
@@ -166,11 +165,12 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
 
     @EventListener(classes = RemoveTopicsEvent.class)
     public void onRemoveTopics(RemoveTopicsEvent event) {
-        if (CollectionUtil.isEmpty(event.topics) || !event.withDashboard) {
+        if (CollectionUtil.isEmpty(event.topics) || !event.withDashboard ||event.jdbcType==null||event.jdbcType==SrcJdbcType.None) {
             return;
         }
+        long t0 = System.currentTimeMillis();
         Collection<String> aliasList = event.topics.values().stream()
-                .filter(even -> ObjectUtil.isNotNull(event.jdbcType))
+                .filter(SimpleUnsInstance::isRemoveDashboard)
                 .map(SimpleUnsInstance::getAlias).collect(Collectors.toSet());
         List<String> ids = aliasList.stream().map(alias -> {
             //tableName = alias
@@ -180,6 +180,8 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
         for (List<String> idList : Lists.partition(ids, Constants.SQL_BATCH_SIZE)) {
             dashboardMapper.deleteBatchIds(idList);
         }
+        long t1 = System.currentTimeMillis();
+        log.info("Dashboard删除耗时 : {} ms, size={}", t1-t0, ids.size());
     }
 
 
@@ -361,7 +363,7 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
         String tagNameCondition = "";
         if (StringUtils.isNotBlank(uns.getTbFieldName())) {
             table = uns.getTableName();
-            tagNameCondition = " and tag_name='" + alias + "' ";
+            tagNameCondition =   " and " + Constants.SYSTEM_SEQ_TAG + "='" + uns.getId() + "' ";
         }
         log.debug(">>>>>> create grafana dashboard columns:{},title:{},schema:{},table:{},tagNameCondition:{}", columns, title, schema, table, tagNameCondition);
         int dot = table.indexOf('.');

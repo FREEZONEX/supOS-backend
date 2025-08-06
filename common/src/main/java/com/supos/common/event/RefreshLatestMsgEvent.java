@@ -1,27 +1,27 @@
 package com.supos.common.event;
 
-import com.supos.common.SrcJdbcType;
 import org.springframework.context.ApplicationEvent;
 
 import java.util.Map;
 
 public class RefreshLatestMsgEvent extends ApplicationEvent {
 
-    public Long unsId;
+    public final Long unsId;
+    public final Integer dataType;
+    public final String path;
 
-    public String path;
+    public final String payload;
 
-    public String payload;
+    public final Map<String, Long> dt;
 
-    public Map<String, Long> dt;
+    public final Map<String, Object> data;
 
-    public Map<String, Object> data;
+    public final String errorMsg;
 
-    public String errorMsg;
-
-    public RefreshLatestMsgEvent(Object source, Long unsId, String path, String payload, Map<String, Long> dt, Map<String, Object> data, String errorMsg) {
+    public RefreshLatestMsgEvent(Object source, Long unsId, Integer dataType, String path, String payload, Map<String, Long> dt, Map<String, Object> data, String errorMsg) {
         super(source);
         this.unsId = unsId;
+        this.dataType = dataType;
         this.path = path;
         this.payload = payload;
         this.dt = dt;

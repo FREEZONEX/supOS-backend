@@ -26,7 +26,7 @@ spring:
       max-file-size: 300MB
       max-request-size: 300MB
   datasource:
-    url: jdbc:postgresql://100.100.100.22:33890/postgres?currentSchema=supos
+    url: jdbc:postgresql://100.100.100.20:31014/postgres?currentSchema=supos
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
@@ -35,12 +35,12 @@ spring:
       strict: false
       datasource:
         supos:
-          url: jdbc:postgresql://100.100.100.22:33890/postgres?currentSchema=supos
+          url: jdbc:postgresql://100.100.100.20:31014/postgres?currentSchema=supos
           username: postgres
           password: postgres
           driver-class-name: org.postgresql.Driver
         keycloak:
-          url: jdbc:postgresql://100.100.100.22:33890/keycloak?currentSchema=public
+          url: jdbc:postgresql://100.100.100.20:31014/keycloak?currentSchema=public
           username: postgres
           password: postgres
           driver-class-name: org.postgresql.Driver

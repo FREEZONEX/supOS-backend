@@ -15,9 +15,6 @@ public class UnsLabelRefPo {
 
     public static final String TABLE_NAME = "uns_label_ref";
 
-    @TableId(type = IdType.AUTO)
-    private Long id;
-
     private Long labelId;
 
     private Long unsId;

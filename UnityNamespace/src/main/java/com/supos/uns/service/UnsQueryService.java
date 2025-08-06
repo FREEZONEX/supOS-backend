@@ -12,6 +12,8 @@ import cn.hutool.http.Method;
 import cn.hutool.http.ssl.DefaultSSLFactory;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.serializer.PropertyFilter;
+import com.alibaba.fastjson.serializer.SerializeFilter;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -432,7 +434,7 @@ public class UnsQueryService implements UnsQueryApi {
         return new JsonResult<>(0, "ok", treeResults);
     }
 
-    public JsonResult<List<TopicTreeResult>> searchTree(String keyword, Long parentId, boolean showRec,Integer pathType) {
+    public JsonResult<List<TopicTreeResult>> searchTree(String keyword, Long parentId, boolean showRec, Integer pathType) {
         UnsSearchCondition condition = new UnsSearchCondition();
         condition.setKeyword(keyword);
         condition.setParentId(parentId);
@@ -945,7 +947,7 @@ public class UnsQueryService implements UnsQueryApi {
             this.jsonObject = new JSONObject();
         }
 
-        synchronized void update(long lastUpdateTime, String payload, Map<String, Object> data, final Map<String, Long> dt, String err) {
+        synchronized void update(long lastUpdateTime, Integer dataType, String payload, Map<String, Object> data, final Map<String, Long> dt, String err) {
             jsonObject.put("updateTime", lastUpdateTime);
             jsonObject.put("msg", err);
             if (data != null) {
@@ -975,8 +977,9 @@ public class UnsQueryService implements UnsQueryApi {
             } else {
                 jsonObject.put("payload", dataJsonObj.toJSONString());
             }
-
-            newestMessage = jsonObject.toJSONString();
+            SerializeFilter filter = dataType != null && dataType == Constants.RELATION_TYPE ?
+                    (PropertyFilter) (object, name, value) -> !Constants.SYS_FIELD_CREATE_TIME.equals(name) : null;
+            newestMessage = JSON.toJSONString(jsonObject, filter);
             messageCount++;
             this.lastUpdateTime = lastUpdateTime;
         }
@@ -995,6 +998,7 @@ public class UnsQueryService implements UnsQueryApi {
 
     /**
      * 刷新缓存最新数据
+     *
      * @param event
      */
     public void refreshLatestMsg(RefreshLatestMsgEvent event) {
@@ -1002,30 +1006,30 @@ public class UnsQueryService implements UnsQueryApi {
         if (event.unsId == null) {
             // 非 UNS topic
             // cache external topics
-            ExternalTopicCacheDto cacheDto = new ExternalTopicCacheDto(event.payload,new Date());
+            ExternalTopicCacheDto cacheDto = new ExternalTopicCacheDto(event.payload, new Date());
             EXTERNAL_TOPIC_CACHE.put(event.path, cacheDto);
             msgInfo = externTopicLastMessages.computeIfAbsent(event.path, k -> new TopicMessageInfo());
-            msgInfo.update(new Date().getTime(), event.payload, null, event.dt, null);
+            msgInfo.update(new Date().getTime(), event.dataType, event.payload, null, event.dt, null);
         } else {
             // 从缓存中取最近一条数据与最近发过来的数据进行合并
             msgInfo = topicLastMessages.computeIfAbsent(event.unsId, k -> new TopicMessageInfo());
-            msgInfo.update(new Date().getTime(), event.payload, event.data, event.dt, "");
+            msgInfo.update(new Date().getTime(), event.dataType, event.payload, event.data, event.dt, "");
         }
 
     }
 
 
-//    @EventListener(classes = TopicMessageEvent.class)
+    //    @EventListener(classes = TopicMessageEvent.class)
 //    @Order(9)
     void onTopicMessageEvent(TopicMessageEvent event) {
         TopicMessageInfo msgInfo;
         if (event.fieldsMap == null) {
             // 非 UNS topic
             // cache external topics
-            ExternalTopicCacheDto cacheDto = new ExternalTopicCacheDto(event.payload,new Date());
+            ExternalTopicCacheDto cacheDto = new ExternalTopicCacheDto(event.payload, new Date());
             EXTERNAL_TOPIC_CACHE.put(event.topic, cacheDto);
             msgInfo = externTopicLastMessages.computeIfAbsent(event.topic, k -> new TopicMessageInfo());
-            msgInfo.update(event.nowInMills, event.payload, null, event.lastDataTime, event.err);
+            msgInfo.update(event.nowInMills, event.dataType, event.payload, null, event.lastDataTime, event.err);
             return;
         } else {
             msgInfo = topicLastMessages.computeIfAbsent(event.unsId, k -> new TopicMessageInfo());
@@ -1034,6 +1038,7 @@ public class UnsQueryService implements UnsQueryApi {
             Map<String, Object> bean = event.lastData != null ? event.lastData : event.data;
             JSONObject data = new JSONObject(Math.max(bean.size(), 8));
             CreateTopicDto info = event.def;
+
             Map<String, FieldDefine> fieldsMap = info.getFieldDefines().getFieldsMap();
             for (Map.Entry<String, Object> entry : bean.entrySet()) {
                 String name = entry.getKey();
@@ -1043,7 +1048,13 @@ public class UnsQueryService implements UnsQueryApi {
                 Object v = entry.getValue();
                 if (v != null) {
                     FieldDefine fd = fieldsMap.get(name);
-                    if (fd != null && (fd.getType() == FieldType.LONG || fd.getType() == FieldType.DOUBLE)) {
+                    if (fd == null) {
+                        continue;
+                    }
+                    if (fd.isSystemField() && info.getDataType() == Constants.RELATION_TYPE) {
+                        continue;
+                    }
+                    if (fd.getType() == FieldType.LONG || fd.getType() == FieldType.DOUBLE) {
                         v = v.toString();
                     }
                 }
@@ -1071,9 +1082,9 @@ public class UnsQueryService implements UnsQueryApi {
                     }
                 }
             }
-            msgInfo.update(event.nowInMills, event.payload, lastMsg, lastDt, event.err);
+            msgInfo.update(event.nowInMills, event.dataType, event.payload, lastMsg, lastDt, event.err);
         } else {
-            msgInfo.update(event.nowInMills, event.payload, null, event.lastDataTime, event.err);
+            msgInfo.update(event.nowInMills, event.dataType, event.payload, null, event.lastDataTime, event.err);
         }
     }
 
@@ -1248,7 +1259,7 @@ public class UnsQueryService implements UnsQueryApi {
                 Set<String> childMap = childrenMap.computeIfAbsent(parentPath, k -> new HashSet<>());
                 if (childMap.add(tempParentNode.getPath())) {
 //                    if (StringUtils.hasText(tempParentNode.getId())) {
-                        rootNodes.put(tempParentNode.getPath(), tempParentNode);
+                    rootNodes.put(tempParentNode.getPath(), tempParentNode);
 //                    }
                 }
             }
@@ -1514,7 +1525,7 @@ public class UnsQueryService implements UnsQueryApi {
     public void standardizingData(String alias, Map<String, Object> data) {
         CreateTopicDto def = unsDefinitionService.getDefinitionByAlias(alias);
         if (def != null) {
-            if (def.getDataType() == Constants.CITING_TYPE){
+            if (def.getDataType() == Constants.CITING_TYPE) {
                 def = unsDefinitionService.getDefinitionById(def.getRefers()[0].getId());
             }
             Map<String, FieldDefine> fieldsMap = def.getFieldDefines().getFieldsMap();

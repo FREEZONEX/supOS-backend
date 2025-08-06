@@ -16,6 +16,7 @@ import com.supos.common.enums.*;
 import com.supos.common.event.*;
 import com.supos.common.event.multicaster.EventStatusAware;
 import com.supos.common.exception.vo.ResultVO;
+import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.service.IUnsManagerService;
 import com.supos.common.utils.FieldUtils;
 import com.supos.common.utils.I18nUtils;
@@ -23,7 +24,11 @@ import com.supos.common.utils.JsonUtil;
 import com.supos.common.utils.PathUtil;
 import com.supos.uns.bo.CreateModelInstancesArgs;
 import com.supos.uns.bo.RunningStatus;
+import com.supos.uns.bo.UnsPoLabels;
+import com.supos.uns.dao.mapper.UnsHistoryDeleteJobMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
+import com.supos.uns.dao.po.UnsHistoryDeleteJobPo;
+import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.dto.WebhookDataDTO;
 import com.supos.uns.util.LayRecUtils;
@@ -71,9 +76,11 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     @Autowired
     UnsConverter unsConverter;
     @Autowired
+    UnsHistoryDeleteJobMapper unsHistoryDeleteJobMapper;
+    @Autowired
     UnsTemplateService unsTemplateService;
     @Resource
-    private UnsMapper unsMapper;
+    private IUnsDefinitionService unsDefinitionService;
 
     /**
      * 创建目录或文件 -- 前端界面创建单个实例发起
@@ -245,7 +252,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                     tmp = folders[ii] + "/" + tmp;
                 }
                 if (!aliasMap.containsKey(tmp)) {
-                    String falias = unsMapper.selectAliasByPath(tmp);
+                    String falias = baseMapper.selectAliasByPath(tmp);
                     if (!StringUtils.hasText(falias)) {
                         falias = PathUtil.generateFileAlias(tmp);
                     }
@@ -291,7 +298,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     public List<String[]> createModelsForNodeRed(List<CreateUnsNodeRedDto> requestDto) {
         List<CreateTopicDto> createTopicDtos = modelTransfer(requestDto);
         if (!createTopicDtos.isEmpty()) {
-            createModelAndInstance(createTopicDtos,false);
+            createModelAndInstance(createTopicDtos, false);
         }
         List<String[]> results = new ArrayList<>();
         // 填充别名返回
@@ -386,6 +393,15 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         HashMap<Long, UnsPo> dbFiles = new HashMap<>(topicDtos.size());
         Map<String, UnsPo> existsUns = this.listUnsByAliasAndIds(aliasSet, ids, dbFiles);
         tryFillIdOrAlias(paramFiles, existsUns, dbFiles, errTipMap);
+        HashMap<String, Long> histAliasIdMap = new HashMap<>(8 + aliasSet.size() / 8);
+
+        if (aliasSet.size() <= 1000) {
+            addOldId(aliasSet, histAliasIdMap);
+        } else {
+            for (List<String> aliasList : Lists.partition(new ArrayList<>(aliasSet), 1000)) {
+                addOldId(aliasList, histAliasIdMap);
+            }
+        }
 
         HashMap<Long, UnsPo> addFiles = new HashMap<>(topicDtos.size());
         HashMap<String, UnsPo> aliasMap = new HashMap<>(topicDtos.size());
@@ -412,20 +428,20 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         };
 
         for (CreateTopicDto bo : folders) {
-            UnsPo po = trySetId(args, bo, allUns, dbFiles, errTipMap);
+            UnsPo po = trySetId(args, bo, histAliasIdMap, allUns, dbFiles, errTipMap);
             if (po != null) {
                 addFiles.put(po.getId(), po);
                 aliasMap.put(po.getAlias(), po);
             }
         }
-        final HashMap<Long, String[]> addLabelMap = new HashMap<>(paramFiles.size());
+        Map<Long, UnsPoLabels> unsPoLabels = new HashMap<Long, UnsPoLabels>(paramFiles.size());
         for (CreateTopicDto bo : paramFiles.values()) {
-            UnsPo po = trySetId(args, bo, allUns, dbFiles, errTipMap);
+            UnsPo po = trySetId(args, bo, histAliasIdMap, allUns, dbFiles, errTipMap);
             if (po != null) {
                 addFiles.put(po.getId(), po);
                 aliasMap.put(po.getAlias(), po);
                 if (ArrayUtils.isNotEmpty(bo.getLabelNames())) {
-                    addLabelMap.put(po.getId(), bo.getLabelNames());
+                    unsPoLabels.put(po.getId(), new UnsPoLabels(po, dbFiles.containsKey(po.getId()), bo.getLabelNames()));
                 }
             }
         }
@@ -452,20 +468,36 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         ArrayList<CreateTopicDto> createList = new ArrayList<>(addFiles.size());
         ArrayList<CreateTopicDto> dtoUpdateList = new ArrayList<>(addFiles.size());
         for (UnsPo file : addFiles.values()) {
-            if (file.getPathType() == 2) {
-                CreateTopicDto createTopicDto = unsConverter.po2dto(file);
-                if (dbFiles.containsKey(file.getId())) {
-                    createTopicDto.setFieldsChanged(file.getFieldsChanged());
-                    dtoUpdateList.add(createTopicDto);
-                } else {
-                    createList.add(createTopicDto);
+            CreateTopicDto createTopicDto = unsConverter.po2dto(file);
+            UnsPo dbF = dbFiles.get(file.getId());
+            if (dbF == null) {
+                dbF = existsUns.get(file.getAlias());
+            }
+            UnsPoLabels labels = unsPoLabels.get(file.getId());
+            if (labels != null) {
+                labels.setDto(createTopicDto);
+            }
+            if (dbF != null) {
+                if (file.getPathType() == Constants.PATH_TYPE_FILE) {
+                    createTopicDto.setFieldsChanged(!Arrays.deepEquals(file.getFields(), dbF.getFields()));
                 }
+                dtoUpdateList.add(createTopicDto);
+            } else {
+                createList.add(createTopicDto);
             }
         }
 
-        this.saveBatchAndSendEvent(args, rs.insertList, rs.updateList, createList, dtoUpdateList, addLabelMap);
+        this.saveBatchAndSendEvent(args, rs.insertList, rs.updateList, createList, dtoUpdateList, unsPoLabels.values());
 
         return errTipMap;
+    }
+
+    private void addOldId(Collection<String> alias, HashMap<String, Long> histAliasIdMap) {
+        unsHistoryDeleteJobMapper.selectList(new QueryWrapper<UnsHistoryDeleteJobPo>()
+                .in("alias", alias)
+                .select("id", "alias")).forEach(po -> {
+            histAliasIdMap.put(po.getAlias(), po.getId());
+        });
     }
 
     private void tryAddLayRecOrPathChangedChildren(Collection<CreateTopicDto> paramFolders, Collection<CreateTopicDto> paramFiles, Map<String, UnsPo> existsUns, HashMap<Long, UnsPo> dbFiles) {
@@ -620,7 +652,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         }
     }
 
-    private UnsPo trySetId(CreateModelInstancesArgs args, CreateTopicDto bo, Function<String, UnsPo> existsUns, HashMap<Long, UnsPo> dbFiles, Map<String, String> errTipMap) {
+    private UnsPo trySetId(CreateModelInstancesArgs args, CreateTopicDto bo, HashMap<String, Long> histAliasIdMap, Function<String, UnsPo> existsUns, HashMap<Long, UnsPo> dbFiles, Map<String, String> errTipMap) {
         final String batchIndex = bo.gainBatchIndex();
         boolean[] invalid = new boolean[1];
         UnsPo template = this.getTemplate(bo, existsUns, dbFiles, batchIndex, errTipMap, invalid);
@@ -641,7 +673,8 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             }
             bo.setId(dbPo.getId());
         } else {
-            bo.setId(nextId());
+            Long oldId = histAliasIdMap.get(bo.getAlias());
+            bo.setId(oldId != null ? oldId : nextId());
         }
 
         UnsPo newUns = newUnsFile(args, bo);
@@ -653,7 +686,6 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
 
         if (dbPo != null) {
             UnsPo tar = dbPo.clone();
-            tar.setFieldsChanged(!Arrays.deepEquals(newUns.getFields(), tar.getFields()));
             BeanUtil.copyProperties(newUns, tar, copyOptions);
             String expression = newUns.getExpression();
             boolean expChanged = (expression != null && !expression.equals(dbPo.getExpression()));
@@ -871,9 +903,11 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     private void saveBatchAndSendEvent(CreateModelInstancesArgs args,
                                        Collection<UnsPo> insertList, Collection<UnsPo> updateList,
                                        List<CreateTopicDto> notifyCreateList, List<CreateTopicDto> notifyUpdateList,
-                                       Map<Long, String[]> addLabelMap) {
+                                       Collection<UnsPoLabels> unsLabels) {
         Consumer<RunningStatus> statusConsumer = args.statusConsumer;
-        AtomicInteger total = new AtomicInteger();
+
+        List<UnsLabelPo> labelPos = unsLabelService.makeLabel(unsLabels);
+        Map<SrcJdbcType, CreateTopicDto[]> topics = Collections.emptyMap();
         if (!notifyCreateList.isEmpty()) {
             Map<SrcJdbcType, ArrayList<CreateTopicDto>> jdbcFiles = new HashMap<>(2);
             for (CreateTopicDto f : notifyCreateList) {
@@ -883,14 +917,15 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             for (Map.Entry<SrcJdbcType, ArrayList<CreateTopicDto>> entry : jdbcFiles.entrySet()) {
                 tmp.put(entry.getKey(), entry.getValue().toArray(new CreateTopicDto[0]));
             }
-            Map<SrcJdbcType, CreateTopicDto[]> topics = tmp;
-            BatchCreateTableEvent event = new BatchCreateTableEvent(this, args.fromImport, topics).setFlowName(args.flowName);
-            if (statusConsumer != null) {
-                setEventStatusCallback(statusConsumer, event, total);
-            }
-            UnsRemoveService.batchRemoveExternalTopic(event.topics.values()); // 删除在uns已经存在的topic
-            EventBus.publishEvent(event);
+            topics = tmp;
         }
+        BatchCreateTableEvent event = new BatchCreateTableEvent(this, args.fromImport, topics).setFlowName(args.flowName);
+        AtomicInteger total = new AtomicInteger();
+        if (statusConsumer != null) {
+            setEventStatusCallback(statusConsumer, event, total);
+        }
+        UnsRemoveService.batchRemoveExternalTopic(event.topics.values()); // 删除在uns已经存在的topic
+        EventBus.publishEvent(event);
         if (!CollectionUtils.isEmpty(insertList) || !CollectionUtils.isEmpty(updateList)) {
             if (statusConsumer != null) {
                 long tStart = System.currentTimeMillis();
@@ -902,7 +937,6 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                 try {
                     this.saveBatch(insertList);
                     this.updateBatchById(updateList);
-                    unsLabelService.makeLabel(addLabelMap);
                 } catch (Throwable ex) {
                     err = ex;
                     throw ex;
@@ -919,7 +953,6 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             } else {
                 this.saveBatch(insertList);
                 this.updateBatchById(updateList);
-                unsLabelService.makeLabel(addLabelMap);
             }
         }
         if (!CollectionUtils.isEmpty(notifyUpdateList)) {
@@ -1026,7 +1059,9 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         for (CreateTopicDto dto : bos) {
             {
                 String alias = dto.getAlias();
-                aliasSet.add(alias);
+                if (alias != null) {
+                    aliasSet.add(alias);
+                }
             }
             {
                 String refAlias = dto.getReferUns();
@@ -1110,7 +1145,6 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         }
 
 
-
         if (pathType == Constants.PATH_TYPE_DIR) {// current is folder
             dto.setDataType(0);
             paramFolders.put(alias, dto);
@@ -1174,16 +1208,39 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             timeDataType = storageServiceHelper.getSequenceDbEnabled().getJdbcType();
 
             log.info("** timeDataType={}, relationType={}", timeDataType, relationType);
+            reSyncCache();
         }
-        List<UnsPo> instances = baseMapper.listAllInstance();
-        if (!CollectionUtils.isEmpty(instances)) {
-            HashMap<SrcJdbcType, List<CreateTopicDto>> typeListMap = new HashMap<>();
-            for (UnsPo p : instances) {
-                CreateTopicDto dto = unsConverter.po2dto(p);
-                typeListMap.computeIfAbsent(dto.getDataSrcId(), k -> new LinkedList<>()).add(dto);
+
+    }
+
+    public void reSyncCache() {
+        int cacheSize = unsDefinitionService.getTopicDefinitionMap().size();
+        Long dbSize = baseMapper.selectCount(new QueryWrapper<>());
+        if (dbSize != null && dbSize.intValue() != cacheSize) {
+            log.info("尝试重新同步缓存...");
+            Constants.readOnlyMode.set(true);
+            unsDefinitionService.getTopicDefinitionMap().clear();
+            unsDefinitionService.getAliasMap().clear();
+            unsDefinitionService.getPathMap().clear();
+            List<UnsPo> instances = baseMapper.selectList(new QueryWrapper<>());
+            if (!CollectionUtils.isEmpty(instances)) {
+                HashMap<SrcJdbcType, List<CreateTopicDto>> typeListMap = new HashMap<>();
+                for (UnsPo p : instances) {
+                    CreateTopicDto dto = unsConverter.po2dto(p);
+                    typeListMap.computeIfAbsent(dto.getDataSrcId(), k -> new LinkedList<>()).add(dto);
+                }
+                EventBus.publishEvent(new InitTopicsEvent(this, typeListMap));
             }
-            EventBus.publishEvent(new InitTopicsEvent(this, typeListMap));
+            log.info("重新同步缓存完毕.");
         }
+    }
+
+    @EventListener(classes = UnsFirstDataSavedEvent.class)
+    void onUnsFirstDataSavedEvent(UnsFirstDataSavedEvent event) {
+        UnsPo po = new UnsPo();
+        po.setId(event.unsId);
+        po.setWithFlags(event.unsFlags);
+        baseMapper.updateById(po);
     }
 
     private Map<String, UnsPo> listUnsByAliasAndIds(Set<String> alias, Set<Long> ids, HashMap<Long, UnsPo> dbFiles) {
@@ -1222,6 +1279,43 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         for (ConstraintViolation<Object> v : violations) {
             String t = v.getRootBeanClass().getSimpleName();
             er.append('[').append(t).append('.').append(v.getPropertyPath()).append(' ').append(I18nUtils.getMessage(v.getMessage())).append(']');
+        }
+    }
+
+    //        @EventListener(classes = ContextRefreshedEvent.class)
+//    @Order
+    void benchAddUns5w() {//启动时造数据
+        Long pid = null;
+        {
+            CreateTopicDto po = new CreateTopicDto();
+            po.setAlias("bench4del");
+            po.setName(po.getAlias());
+            po.setPathType(0);
+            createModelAndInstance(List.of(po), false);
+            pid = baseMapper.listByAlias(List.of("bench4del")).get(0).getId();
+        }
+        for (int i = 1, k = 0; i <= 200; i++) {
+            ArrayList<UnsPo> list = new ArrayList<>(1000);
+            for (int n = 1; n <= 1000; n++) {
+                UnsPo po = new UnsPo();
+                list.add(po);
+                po.setId(UnsAddService.nextId());
+                po.setParentId(pid);
+                po.setParentAlias("bench4del");
+                po.setAlias("mock4d_" + (++k));
+                po.setName(po.getAlias());
+                po.setPathType(2);
+                po.setDataType(1);
+                po.setLayRec(pid + "/" + po.getId());
+                po.setPath("bench4del/" + po.getName());
+                po.setNumberFields(1);
+                po.setWithFlags(0);
+                po.setFields(new FieldDefine[]{
+                        new FieldDefine("value", FieldType.DOUBLE),
+                });
+            }
+            saveBatch(list);
+            log.info("造数据: batch: {}", i);
         }
     }
 }

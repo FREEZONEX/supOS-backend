@@ -46,8 +46,9 @@ public class UnsHistoryDeleteJob {
             // 判断安装TDENGINE还是Timescale
             ContainerInfo tsdbContainer = systemConfig.getContainerMap().get("tsdb");
             if (tsdbContainer != null) {
-                List<SimpleUnsInstance> standardList = buildStandardList(batches.get(i));
-                List<SimpleUnsInstance> nonStandardList = buildNonStandardList(batches.get(i));
+                List<SimpleUnsInstance> standardList = new ArrayList<>();
+                List<SimpleUnsInstance> nonStandardList = new ArrayList<>();
+                fillList(batches.get(i), standardList, nonStandardList);
                 EventBus.publishEvent(new RemoveTimeScaleTopicsEvent(this, standardList, nonStandardList));
             } else {
                 EventBus.publishEvent(buildRemoveTDengineEvent(batches.get(i)));
@@ -79,6 +80,7 @@ public class UnsHistoryDeleteJob {
 
     /**
      * 监听uns创建时间， 需要将删除时序数据的job删掉
+     *
      * @param event
      */
     @EventListener(classes = BatchCreateTableEvent.class)
@@ -139,18 +141,20 @@ public class UnsHistoryDeleteJob {
 
     /**
      * 监听uns删除事件， 保存删除的数据并保留7天历史数据
+     *
      * @param event
      */
     @EventListener(RemoveTopicsEvent.class)
     @Order(1000)
     public void saveToHistoryDelete(RemoveTopicsEvent event) {
-        if (event.jdbcType != SrcJdbcType.TimeScaleDB && event.jdbcType != SrcJdbcType.TdEngine) {
+        if (event.jdbcType == null || event.jdbcType.typeCode != Constants.TIME_SEQUENCE_TYPE) {
             return;
         }
-        Collection<SimpleUnsInstance> simpleUnsList = event.topics.values();
+        long t0 = System.currentTimeMillis();
+        Collection<SimpleUnsInstance> simpleUnsList = event.topics.values().stream().filter(t -> Constants.withHasData(t.getFlags())).toList();
         List<UnsHistoryDeleteJobPo> deleteUns = new ArrayList<>();
         for (SimpleUnsInstance simpleUns : simpleUnsList) {
-            log.info("simpleUns==> id={}, name={}, path={}, dataType={}", simpleUns.getId(), simpleUns.getName(), simpleUns.getPath(), simpleUns.getDataType());
+            log.debug("simpleUns==> {}", simpleUns);
             UnsHistoryDeleteJobPo po = new UnsHistoryDeleteJobPo();
 //            long id = IdUtil.getSnowflakeNextId();
             po.setId(simpleUns.getId());
@@ -160,7 +164,7 @@ public class UnsHistoryDeleteJob {
             po.setPathType(Constants.PATH_TYPE_FILE);
             po.setAlias(simpleUns.getAlias());
             po.setDataType(simpleUns.getDataType());
-            po.setTableName(simpleUns.getTableName());
+            po.setTableName(simpleUns.getTableNameOnly());
             deleteUns.add(po);
             if (deleteUns.size() >= 500) {
                 unsHistoryDeleteJobMapper.batchInsert(deleteUns);
@@ -171,33 +175,25 @@ public class UnsHistoryDeleteJob {
             unsHistoryDeleteJobMapper.batchInsert(deleteUns);
             deleteUns.clear();
         }
+        long t1 = System.currentTimeMillis();
+        log.info("历史保存删除耗时 : {} ms, size={} of {}", t1 - t0, simpleUnsList.size(), event.topics.size());
     }
 
-
-    private List<SimpleUnsInstance> buildStandardList(List<UnsHistoryDeleteJobPo> jobs) {
-        List<SimpleUnsInstance> standardList = new ArrayList<>();
+    private void fillList(List<UnsHistoryDeleteJobPo> jobs, List<SimpleUnsInstance> standardList, List<SimpleUnsInstance> nonStandardList) {
         for (UnsHistoryDeleteJobPo job : jobs) {
             if (StringUtils.hasText(job.getTableName())) {
                 SimpleUnsInstance simpleUns = new SimpleUnsInstance();
                 simpleUns.setAlias(job.getAlias());
                 simpleUns.setTableName(job.getTableName());
+                simpleUns.setId(job.getId());
                 standardList.add(simpleUns);
-            }
-        }
-        return standardList;
-    }
-
-    private List<SimpleUnsInstance> buildNonStandardList(List<UnsHistoryDeleteJobPo> jobs) {
-        List<SimpleUnsInstance> nonStandardList = new ArrayList<>();
-        for (UnsHistoryDeleteJobPo job : jobs) {
-            if (!StringUtils.hasText(job.getTableName())) {
+            } else {
                 SimpleUnsInstance simpleUns = new SimpleUnsInstance();
                 simpleUns.setAlias(job.getAlias());
                 simpleUns.setTableName(job.getAlias());
                 nonStandardList.add(simpleUns);
             }
         }
-        return nonStandardList;
     }
 
 }

@@ -273,18 +273,18 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                     dataDto.getList().addAll(list);
                     String fieldValue = def.getTbFieldName();
                     if (fieldValue != null) {
-                        final String curUns = def.getAlias();
+                        final Long curUns = def.getId();
                         for (Map<String, Object> data : list) {
                             data.put(fieldValue, curUns);
                         }
                     }
                 }
             }
-            sendData(typedDataMap, "");
+            sendData(typedDataMap, null);
         }
     }
 
-    private void sendData(Map<SrcJdbcType, HashMap<Long, SaveDataDto>> typedDataMap, String duplicateIgnore) {
+    private void sendData(Map<SrcJdbcType, HashMap<Long, SaveDataDto>> typedDataMap, Boolean duplicateIgnore) {
 
         for (Map.Entry<SrcJdbcType, HashMap<Long, SaveDataDto>> entry : typedDataMap.entrySet()) {
 
@@ -618,7 +618,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             log.debug("TopicDefinition NotFound[{}] : payload = {}", topic, payload);
             if (subscribeALL) {
                 dataPublishExecutor.submit(() -> {
-                    sendToRefreshLatestMsg(null, topic, payload, null, null, "");
+                    sendToRefreshLatestMsg(null, null, topic, payload, null, null, "");
                     sendToWebsocket(null, topic);
                 });
             }
@@ -774,7 +774,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         Integer dataType = info.getDataType();
 
         this.dataPublishExecutor.submit(() -> {
-            sendToRefreshLatestMsg(info.getId(), topic, rawData, definition.getLastDt(), dataToSend != null ? dataToSend.get(dataToSend.size() - 1) : null, errMsg);
+            sendToRefreshLatestMsg(info.getId(),info.getDataType(), topic, rawData, definition.getLastDt(), dataToSend != null ? dataToSend.get(dataToSend.size() - 1) : null, errMsg);
             sendToWebsocket(info.getId(), topic);
             if (definition.getDataType() == Constants.ALARM_RULE_TYPE) {
                 AlertEvent event = new AlertEvent(
@@ -801,8 +801,8 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         this.topicSender.submit(() -> websocketSender.sendLatestMsg(event));
     }
 
-    private void sendToRefreshLatestMsg(Long unsId, String path, String payload, Map<String, Long> dt, Map<String, Object> data, String errorMsg) {
-        RefreshLatestMsgEvent event = new RefreshLatestMsgEvent(this, unsId, path, payload, dt, data, errorMsg);
+    private void sendToRefreshLatestMsg(Long unsId, Integer dataType, String path, String payload, Map<String, Long> dt, Map<String, Object> data, String errorMsg) {
+        RefreshLatestMsgEvent event = new RefreshLatestMsgEvent(this, unsId, dataType, path, payload, dt, data, errorMsg);
         unsQueryService.refreshLatestMsg(event);
     }
 
@@ -825,6 +825,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                 }
             }
         } else {
+            sendFirstInsertEvent(definition.getCreateTopicDto());
             definition.setLastMsg(lastMsg = new ConcurrentHashMap<>());
             definition.setLastDt(dtMap = new ConcurrentHashMap<>());
         }
@@ -898,6 +899,18 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             });
         }
         return mergedList;
+    }
+
+    private static void sendFirstInsertEvent(CreateTopicDto dto) {
+        if (!Constants.withHasData(dto.getFlags())) {
+            Integer flags = dto.getFlags();
+            if (flags == null) {
+                flags = 0;
+            }
+            flags |= Constants.UNS_FLAG_HAS_DATA;
+            dto.setFlags(flags);
+            EventBus.publishEvent(new UnsFirstDataSavedEvent("msgConsumer", dto.getId(), flags));
+        }
     }
 
     static Map<Long, Object[]> tryCalc(Map<Long, TopicDefinition> topicDefinitionMap, TopicDefinition calc, SaveDataDto cur, HashMap<Long, SaveDataDto> topicData, AtomicInteger count) {
@@ -1234,7 +1247,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
     }
 
     private void addScheduleCalcTask(CreateTopicDto dto) {
-        if (dto.getDataType() == Constants.MERGE_TYPE) {
+        if (dto.getDataType() != null && dto.getDataType() == Constants.MERGE_TYPE) {
             Long id = dto.getId();
             if (scheduleCalcTopics.add(id)) {
                 tryMergeTopics(id);
@@ -1246,7 +1259,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         TopicDefinition definition = uds.getTopicDefinitionMap().get(id);
         CreateTopicDto dto = definition != null ? definition.getCreateTopicDto() : null;
         Long freq;
-        if (dto != null && dto.getDataType() == Constants.MERGE_TYPE && (freq = dto.getFrequencySeconds()) != null && freq > 0) {
+        if (dto != null && dto.getDataType() != null && dto.getDataType() == Constants.MERGE_TYPE && (freq = dto.getFrequencySeconds()) != null && freq > 0) {
             systemTimer.addTask(new TimerTask(new Runnable() {
                 @Override
                 public void run() {
@@ -1273,7 +1286,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                     FieldDefines defines = mdf.getFieldDefines();
                     sb.append("{\"").append(defines.getCalcField().getName()).append("\":\"{");
                 }
-                sb.append("\\\"").append(definition.getTable()).append("\\\":");
+                sb.append("\\\"").append(definition.getCreateTopicDto().getAlias()).append("\\\":");
                 add2Json(definition.getFieldDefines(), lastMsg, sb);
             }
         }
@@ -1327,6 +1340,10 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
 
     void addTopicFields(Map<Long, TopicDefinition> topicDefinitionMap, CreateTopicDto dto) {
         final Long id = dto.getId();
+        if (dto.getPathType() != Constants.PATH_TYPE_FILE) {
+            topicDefinitionMap.put(id, new TopicDefinition(dto));
+            return;
+        }
         TopicDefinition prevDefinition = topicDefinitionMap.get(id);
         String a = dto.getAlias(), p = dto.getPath();
         Long oldAId = uds.getAliasMap().put(a, id);
@@ -1355,7 +1372,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         Map<String, Object> dataMap = JSONObject.parseObject(payload, Map.class);
         TopicDefinition definition = initTopicDefinitionData(dataMap, unsId);
         // 刷新位号内存最近的数据
-        sendToRefreshLatestMsg(unsId, "", payload, definition.getLastDt(), definition.getLastMsg(), "");
+        sendToRefreshLatestMsg(unsId, definition.getDataType(),"", payload, definition.getLastDt(), definition.getLastMsg(), "");
         // 通知前端websocket显示
         sendToWebsocket(unsId, "");
 
@@ -1369,7 +1386,6 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
     }
 
     /**
-     *
      * @param aliasVqtMap key=alias value=VQT json
      */
     @Override
@@ -1383,7 +1399,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             Map<String, Object> vqtMap = JSONObject.parseObject(entry.getValue(), Map.class);
             TopicDefinition definition = initTopicDefinitionData(vqtMap, unsId);
             // 刷新位号内存最近的数据
-            sendToRefreshLatestMsg(unsId, "", entry.getValue(), definition.getLastDt(), definition.getLastMsg(), "");
+            sendToRefreshLatestMsg(unsId, definition.getDataType(), "", entry.getValue(), definition.getLastDt(), definition.getLastMsg(), "");
             // 通知前端websocket显示
             sendToWebsocket(unsId, "");
 
@@ -1394,14 +1410,14 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             saveDataDto.getList().add(vqtMap);
             String fieldValue = def.getTbFieldName();
             if (fieldValue != null) {
-                final String curUns = def.getAlias();
+                final Long curUns = def.getId();
                 for (Map<String, Object> data : saveDataDto.getList()) {
                     data.put(fieldValue, curUns);
                 }
             }
 
         }
-        sendData(typedDataMap, "false");
+        sendData(typedDataMap, false);
     }
 
     private TopicDefinition initTopicDefinitionData(Map<String, Object> dataMap, long unsId) {
@@ -1412,41 +1428,46 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         // 对数据进行加工处理，数据类型校验和时间统一转换成长整型
         if (definition.getCreateTopicDto() != null) {
             Iterator<Map.Entry<String, Object>> iterator = dataMap.entrySet().iterator();
-            FieldDefine[] fields = definition.getCreateTopicDto().getFields();
+            Map<String, FieldDefine> fields = definition.getCreateTopicDto().getFieldDefines().getFieldsMap();
 
-            if (fields == null) {
+            if (fields == null || fields.isEmpty()) {
                 throw new BuzException("字段定义为空");
             }
-
-            while(iterator.hasNext()) {
+            LinkedList<AbstractMap.SimpleEntry<String, Object>> addExtras = new LinkedList<>();
+            while (iterator.hasNext()) {
                 Map.Entry<String, Object> entry = iterator.next();
                 boolean bingo = false;
-                for (FieldDefine field : fields) {
-                    if (field.getName().equals(entry.getKey())) {
-                        bingo = true;
-                        // 系统字段时间类型统一转成长整型
-                        if (field.isSystemField() && field.getType() == FieldType.DATETIME) {
-                            dataMap.put(entry.getKey(), DateUtil.dateToLong(entry.getValue(), DATE_FORMAT));
+                FieldDefine field = fields.get(entry.getKey());
+                if (field != null) {
+                    bingo = true;
+                    // 系统字段时间类型统一转成长整型
+                    if (field.isSystemField() && field.getType() == FieldType.DATETIME) {
+                        addExtras.add(new AbstractMap.SimpleEntry<>(entry.getKey(), DateUtil.dateToLong(entry.getValue(), DATE_FORMAT)));
+                    }
+                    // 针对非系统字段进行数据类型的校验,并将合适的进行数据类型转换，例如字符串"11"可以转成整型11
+                    if (!field.isSystemField()) {
+                        Object newValue = valueTypeTransfer(entry.getValue(), field);
+                        if (newValue != null) {
+                            addExtras.add(new AbstractMap.SimpleEntry<>(entry.getKey(), newValue));
+                        } else {
+                            // 如果数据类型转换失败，从当前更新的属性中移除
+                            iterator.remove();
                         }
-                        // 针对非系统字段进行数据类型的校验,并将合适的进行数据类型转换，例如字符串"11"可以转成整型11
-                        if (!field.isSystemField()) {
-                            Object newValue = valueTypeTransfer(entry.getValue(), field);
-                            if (newValue != null) {
-                                dataMap.put(entry.getKey(), newValue);
-                            } else {
-                                // 如果数据类型转换失败，从当前更新的属性中移除
-                                iterator.remove();
-                            }
-                        }
-                        break;
                     }
                 }
+                // 补充时间戳字段
                 if (!bingo) {
                     iterator.remove(); // 键不在数组中则移除
                 }
             }
+            for (AbstractMap.SimpleEntry<String, Object> entry : addExtras) {
+                dataMap.put(entry.getKey(), entry.getValue());
+            }
+            dataMap.computeIfAbsent(Constants.SYS_FIELD_CREATE_TIME, k -> System.currentTimeMillis());
+            if (definition.getLastMsg() == null) {
+                sendFirstInsertEvent(definition.getCreateTopicDto());
+            }
         }
-
         definition.setLastMsg(dataMap);
         Map<String, Long> dtMap = new HashMap<>();
         long current = new Date().getTime();

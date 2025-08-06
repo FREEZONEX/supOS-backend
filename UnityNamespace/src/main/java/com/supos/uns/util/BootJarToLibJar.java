@@ -123,19 +123,23 @@ public class BootJarToLibJar {
                     String classFile = name.substring(classDir.length());
                     int lastX = classFile.lastIndexOf('/');
                     if (lastX > 0) {
-                        String classFileDir = classFile.substring(0, lastX);
+                        final String classFileDir = classFile.substring(0, lastX);
                         int sp = classFileDir.indexOf('/');
                         while (sp > 0) {
                             String pDir = classFileDir.substring(0, sp + 1);
                             if (dirs.add(pDir)) {
                                 jarOutputStream.putNextEntry(new JarEntry(pDir));
-                                jarOutputStream.flush();
                             }
                             sp = classFileDir.indexOf('/', sp + 1);
+                        }
+                        String dir = classFileDir + "/";
+                        if (dirs.add(dir)) {
+                            jarOutputStream.putNextEntry(new JarEntry(dir));
                         }
                     }
                     JarEntry classPathEntry = new JarEntry(classFile);
                     jarOutputStream.putNextEntry(classPathEntry);
+                    jarOutputStream.flush();
                     copy(jarFile.getInputStream(jarEntry), jarOutputStream);
                 } else if (name.contains("META-INF/maven")) {
                     jarOutputStream.putNextEntry(new JarEntry(name));

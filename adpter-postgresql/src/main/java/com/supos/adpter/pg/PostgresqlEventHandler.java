@@ -18,10 +18,8 @@ import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PostgresqlTypeUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.CollectionUtils;
 
@@ -111,7 +109,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
             for (SaveDataDto dto : event.topicData) {
                 String table = DbTableNameUtils.getFullTableName(dto.getTable());
                 for (List<Map<String, Object>> list : Lists.partition(dto.getList(), Constants.SQL_BATCH_SIZE)) {
-                    String insertSQL = getInsertSQL(list, table, dto, "false");
+                    String insertSQL = getInsertSQL(list, table, dto, false);
                     SQLs.add(Pair.of(dto.getCreateTopicDto(), insertSQL));
                 }
                 dto.getList().clear();
@@ -302,10 +300,9 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
                 if (procSerial && def.isUnique()) {
                     type = "serial";
                 }
-            case FLOAT:
+                break;
             case LONG:
-            case DOUBLE:
-                if (procSerial && def.isUnique()) {
+                if (procSerial && def.isUnique() && def.getTbValueName() == null) {
                     type = "bigserial";
                 }
                 break;
@@ -333,7 +330,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
     }
 
 
-    static String getInsertSQL(Collection<Map<String, Object>> list, String table, SaveDataDto saveDataDto, String ignore) {
+    static String getInsertSQL(Collection<Map<String, Object>> list, String table, SaveDataDto saveDataDto, Boolean ignore) {
         /**
          * INSERT INTO test (id, name, email)
          * VALUES (1, 'Alice', 'alice@example.com')
@@ -342,6 +339,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
          *     email = EXCLUDED.email;
          */
         StringBuilder builder = new StringBuilder(255);
+        table = DbTableNameUtils.getFullTableName(table);
         builder.append("INSERT INTO ").append(table).append(" (");
 
         FieldDefine[] columns = saveDataDto.getCreateTopicDto().getFields();
@@ -397,21 +395,22 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
             builder.append(',');
         }
         builder.setCharAt(builder.length() - 1, ' ');
-        if (StringUtils.isNotEmpty(ignore)) {
+        if (ignore != null) {
             if (pks != null && pks.length > 0) {
                 builder.append("ON CONFLICT(");
                 for (String f : pks) {
                     builder.append('"').append(f).append("\",");
                 }
                 builder.setCharAt(builder.length() - 1, ')');
-                if ("true".equals(ignore)) {
+                if (ignore) {
                     builder.append(" do nothing");
                 } else {
                     builder.append(" do update set ");
                     for (FieldDefine define : columns) {
                         if (!define.isUnique()) {
                             String f = define.getName();
-                            builder.append('"').append(f).append("\"=EXCLUDED.\"").append(f).append("\",");
+                            builder.append('"').append(f).append("\"=COALESCE(EXCLUDED.\"").append(f).append("\",")
+                                    .append(table).append('.').append('"').append(f).append("\"),");
                         }
                     }
                     builder.setCharAt(builder.length() - 1, ' ');

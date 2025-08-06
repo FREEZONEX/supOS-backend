@@ -30,7 +30,8 @@ CREATE TABLE if not exists uns_namespace (
 ALTER TABLE uns_namespace ALTER COLUMN fields TYPE json USING fields::json;
 ALTER TABLE uns_namespace ALTER COLUMN refers TYPE json USING refers::json;
 ALTER TABLE uns_namespace ALTER COLUMN extend TYPE jsonb USING extend::jsonb;
-
+ALTER TABLE uns_namespace ADD IF NOT EXISTS "label_ids" jsonb default NULL;
+ALTER TABLE uns_namespace ALTER COLUMN "label_ids" TYPE jsonb USING label_ids::jsonb;
 CREATE UNIQUE INDEX if not exists idx_uns_spacex_alias ON uns_namespace (alias);
 
 insert into uns_namespace("id","path_type","lay_rec","alias","name","path","description")values(1,1,'1','__templates__','tmplt','tmplt','模板顶级目录')ON CONFLICT (id) DO NOTHING;
@@ -106,6 +107,10 @@ CREATE TABLE if not exists "supos"."uns_label_ref" (
 "uns_id" bigint NOT NULL,
 "create_at" timestamptz(6) DEFAULT now()
 );
+
+ALTER TABLE uns_label_ref DROP COLUMN id,
+DROP CONSTRAINT if exists uns_label_ref_pkey,
+ADD PRIMARY KEY (label_id, uns_id);
 
 CREATE TABLE if not exists "supos"."supos_todo" (
 "id" BIGSERIAL PRIMARY KEY,

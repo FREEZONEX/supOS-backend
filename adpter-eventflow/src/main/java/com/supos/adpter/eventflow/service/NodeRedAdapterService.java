@@ -77,9 +77,32 @@ public class NodeRedAdapterService {
         }*/
         JSONArray nodes = StringUtils.hasText(flowJson) ? JSON.parseArray(flowJson) : new JSONArray();
         addLabelNode(nodes, nodeFlow.getFlowId(), nodeFlow.getFlowName(), nodeFlow.getDescription());
+        // 添加全局节点
+        addGlobalNode(nodes);
         JSONObject response = new JSONObject();
         response.put("flows", nodes);
         return response;
+    }
+
+    private void addGlobalNode(JSONArray nodes) {
+        JSONArray globalNodes = retrieveGlobalNodeFromNodeRed();
+        if (globalNodes == null) {
+            return;
+        }
+        for (int i = 0; i < globalNodes.size(); i++) {
+            String gid = globalNodes.getJSONObject(i).getString("id");
+            boolean bingo = true;
+            for (int j = 0; j < nodes.size(); j++) {
+                String id = nodes.getJSONObject(j).getString("id");
+                if (gid.equals(id)) {
+                    bingo = false;
+                    break;
+                }
+            }
+            if (bingo) {
+                nodes.add(globalNodes.getJSONObject(i));
+            }
+        }
     }
 
     /**
@@ -160,8 +183,12 @@ public class NodeRedAdapterService {
             // 全新部署, 先创建一个空的流程，避免节点冲突
             flowId = deployToNodeRed("", nodeFlow.getFlowName(), nodeFlow.getDescription(), null);
         }
+        // 拆分流程节点和全局节点
+        JSONArray globalNodes = filterGlobalNodes(nodes);
         // 更新部署
         deployToNodeRed(flowId, nodeFlow.getFlowName(), nodeFlow.getDescription(), nodes);
+
+        deployGlobalNodesToNodeRed(globalNodes);
 
         // 更新节点的z属性（流程ID）
         for (int i = 0; i < nodes.size(); i++) {
@@ -189,6 +216,25 @@ public class NodeRedAdapterService {
             }
         }
         return flowId;
+    }
+
+    // 从当前节点列表中过滤出全局节点，并返回全局节点列表
+    private JSONArray filterGlobalNodes(JSONArray nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return null;
+        }
+        JSONArray globalNodes = new JSONArray();
+        Iterator iterator = nodes.iterator();
+        while(iterator.hasNext()) {
+            Map<String, Object> obj = (Map)iterator.next();
+            Object type = obj.get("type");
+            Object z = obj.get("z");
+            if (!"tab".equals(type.toString()) && z == null) {
+                globalNodes.add(obj);
+                iterator.remove();
+            }
+        }
+        return globalNodes;
     }
 
     List<NodeFlowModelPO> parseTopicFromFlow(long id, JSONArray nodes) {
@@ -387,27 +433,27 @@ public class NodeRedAdapterService {
 
 
     // 不包含label节点
-    private String getFlowDataFromNodeRed(String flowId) {
-        HttpRequest getClient = HttpUtil.createGet(String.format("http://%s:%s/flow/%s", nodeRedHost, nodeRedPort, flowId));
+    private JSONArray retrieveGlobalNodeFromNodeRed() {
+        HttpRequest getClient = HttpUtil.createGet(String.format("http://%s:%s/flows", nodeRedHost, nodeRedPort));
         HttpResponse response = getClient.execute();
         if (!isSuccess(response.getStatus())) {
-            log.error("node-red获取流程失败：id = {}, error = {}", flowId, response.body());
-            return "";
+            log.error("node-red获取全局节点失败： error = {}", response.body());
+            return null;
         }
-        /**
-         * {                                           [
-         *     id:"",                                    {   id: "",
-         *     nodes: [{}]            ----->                 type: ""
-         * }                                                 ...
-         *                                                }
-         *                                             ]
-         */
-        JSONObject flowJson = JSON.parseObject(response.body());
-        JSONArray nodes = flowJson.getJSONArray("nodes");
+        JSONArray nodes = JSON.parseArray(response.body());
+        JSONArray globalNodes = new JSONArray();
         if (nodes != null && nodes.size() > 0) {
-            return nodes.toString();
+            // 排除type=tab和z属性不为空的节点，只保留全局节点
+            for (int i = 0; i < nodes.size(); i++) {
+                String type = nodes.getJSONObject(i).getString("type");
+                String z = nodes.getJSONObject(i).getString("z");
+                if (!"tab".equals(type) && !StringUtils.hasText(z)) {
+                    globalNodes.add(nodes.getJSONObject(i));
+                }
+            }
+            return globalNodes;
         }
-        return "";
+        return null;
     }
 
     // 添加label节点
@@ -425,6 +471,28 @@ public class NodeRedAdapterService {
         labelNode.put("info", description);
         nodes.add(labelNode);
         return nodes;
+    }
+
+    private void deployGlobalNodesToNodeRed(JSONArray globalNodes) {
+        if (globalNodes == null || globalNodes.isEmpty()) {
+            return;
+        }
+        JSONObject requestBody = new JSONObject();
+        requestBody.put("id", "global");
+        requestBody.put("configs", globalNodes);
+
+        String url = String.format("http://%s:%s/flow/global", nodeRedHost, nodeRedPort);
+        HttpRequest httpClient = HttpUtil.createRequest(Method.PUT, url);
+
+        Map<String, String> headers = new HashMap<>();
+        headers.put("content-type", "application/json; charset=UTF-8");
+        httpClient.addHeaders(headers);
+        httpClient.body(requestBody.toJSONString());
+        // 连接超时和读取响应超时 10分钟
+        httpClient.timeout(10 * 60 * 1000);
+
+        HttpResponse response = httpClient.execute();
+        log.info("update global nodes to node-red, response: {}", response.body());
     }
 
     // 部署流程到node-red

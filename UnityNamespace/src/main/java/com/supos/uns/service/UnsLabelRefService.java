@@ -1,11 +1,15 @@
 package com.supos.uns.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.google.common.collect.Lists;
 import com.supos.uns.dao.mapper.UnsLabelRefMapper;
 import com.supos.uns.dao.po.UnsLabelRefPo;
 import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
 /**
  * @author sunlifang
@@ -21,6 +25,20 @@ public class UnsLabelRefService extends ServiceImpl<UnsLabelRefMapper, UnsLabelR
         LambdaQueryWrapper<UnsLabelRefPo> qw = new LambdaQueryWrapper<>();
         qw.eq(UnsLabelRefPo::getUnsId,unsId).eq(UnsLabelRefPo::getLabelId,labelId);
         return remove(qw);
+    }
+
+    public void saveOrIgnoreBatch(Collection<UnsLabelRefPo> entityList) {
+        if (entityList == null || entityList.isEmpty()) {
+            return;
+        }
+        if (entityList.size() < 500) {
+            baseMapper.saveOrIgnore(entityList);
+        } else {
+            List<UnsLabelRefPo> list = (entityList instanceof List<UnsLabelRefPo> refPoList) ? refPoList : new ArrayList<>(entityList);
+            for (List<UnsLabelRefPo> part : Lists.partition(list, 500)) {
+                baseMapper.saveOrIgnore(part);
+            }
+        }
     }
 
 }

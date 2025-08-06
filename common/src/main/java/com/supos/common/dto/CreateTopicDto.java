@@ -109,7 +109,9 @@ public class CreateTopicDto {
 
     @Schema(description = "聚合的其他多个实例主题IDs")
     Long[] referIds;// 聚合的其他多个实例主题IDs
-
+    @Hidden
+    Map<Long, Integer> refUns;
+    @Hidden String layRec;
     String referTable;
 
     @Schema(description = "流引用表的字段定义")
@@ -228,7 +230,8 @@ public class CreateTopicDto {
 
     @Schema(description = "标签名称列表，创建文件时支持打标签")
     String[] labelNames;//标签名称列表
-
+    @Hidden
+    TreeMap<Long, String> labelIds;
     @Hidden
     Integer order;
 

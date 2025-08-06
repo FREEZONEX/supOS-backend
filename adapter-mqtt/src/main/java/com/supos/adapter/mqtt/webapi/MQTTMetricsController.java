@@ -6,6 +6,7 @@ import com.supos.adapter.mqtt.service.MessageConsumer;
 import com.supos.adapter.mqtt.service.impl.UnsMessageConsumer;
 import com.supos.adapter.mqtt.util.DateUtil;
 import com.supos.common.dto.BaseResult;
+import com.supos.common.dto.PageResultDTO;
 import com.supos.common.dto.mqtt.TopicDefinition;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.JsonUtil;
@@ -29,7 +30,7 @@ public class MQTTMetricsController {
     String startTime = DateUtil.dateStr(System.currentTimeMillis());
 
 
-    @GetMapping(value = "/inter-api/supos/mqtt/metrics", produces = "application/json")
+    @GetMapping(value = "/inter-api/supos/uns/metrics", produces = "application/json")
     public String metrics(@RequestParam(name = "f", required = false) Integer fetchSize,
                           @RequestParam(name = "w", required = false) Integer maxWaitMills,
                           @RequestParam(name = "env", required = false) Boolean showEnv,
@@ -74,7 +75,32 @@ public class MQTTMetricsController {
         return json.toJSONString();
     }
 
-    @GetMapping(value = "/inter-api/supos/mqtt/topics", produces = "application/json")
+    @GetMapping(value = "/inter-api/supos/uns/defs", produces = "application/json")
+    public String unsDefinitions(@RequestParam(name = "id", required = false) Long id,
+                                 @RequestParam(name = "p", required = false, defaultValue = "1") Integer p,
+                                 @RequestParam(name = "sz", required = false, defaultValue = "100") Integer pageSize
+    ) {
+        Map<Long, TopicDefinition> map = uds.getTopicDefinitionMap();
+        if (id != null) {
+            TopicDefinition definition = map.get(id);
+            return JsonUtil.toJsonUseFields(definition);
+        }
+        int offset = (p - 1) * pageSize;
+        PageResultDTO<String> page = new PageResultDTO<>();
+        page.setPageNo(p);
+        page.setPageSize(pageSize);
+        page.setTotal(map.size());
+        if (offset < map.size()) {
+            ArrayList<Long> ids = new ArrayList<>(map.keySet());
+            Collections.sort(ids);
+            int end = Math.min(offset + pageSize, ids.size());
+            List<String> list = ids.subList(offset, end).stream().map(Object::toString).toList();
+            page.setData(list);
+        }
+        return JsonUtil.toJsonUseFields(page);
+    }
+
+    @GetMapping(value = "/inter-api/supos/uns/topics", produces = "application/json")
     public String topicDefinitions(@RequestParam(name = "t", required = false) Long id,
                                    @RequestParam(name = "k", required = false) String key
     ) {

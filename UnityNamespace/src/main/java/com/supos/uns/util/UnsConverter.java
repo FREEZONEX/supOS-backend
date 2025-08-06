@@ -1,13 +1,13 @@
 package com.supos.uns.util;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.dto.AlarmRuleDefine;
 import com.supos.common.dto.CreateTopicDto;
-import com.supos.common.dto.FieldDefine;
-import com.supos.common.enums.FieldType;
 import com.supos.common.enums.TimeUnits;
 import com.supos.common.utils.ExpressionFunctions;
 import com.supos.common.utils.JsonUtil;
@@ -25,24 +25,18 @@ public class UnsConverter {
         return po2dto(p, true);
     }
 
+    final CopyOptions copyOptions = new CopyOptions().ignoreNullValue().ignoreError();
+
     public CreateTopicDto po2dto(UnsPo p, boolean compileExpression) {
         CreateTopicDto dto = new CreateTopicDto();
-        dto.setId(p.getId());
-        dto.setPath(p.getPath());
-        dto.setPathType(p.getPathType());
-        dto.setAlias(p.getAlias());
-        dto.setTableName(p.getTableName());
-        dto.setDescription(p.getDescription());
-        dto.setDataType(p.getDataType());
-        dto.setFlags(p.getWithFlags());
-        int flags = p.getWithFlags() != null ? p.getWithFlags() : 0;
+        BeanUtil.copyProperties(p, dto, copyOptions);
+        Integer withFlags = p.getWithFlags();
+        dto.setFlags(withFlags);
+        int flags = withFlags != null ? withFlags : 0;
         dto.setAddFlow(Constants.withFlow(flags));
         dto.setAddDashBoard(Constants.withDashBoard(flags));
         dto.setSave2db(Constants.withSave2db(flags));
         dto.setRetainTableWhenDeleteInstance(Constants.withRetainTableWhenDeleteInstance(flags));
-
-        dto.setModelId(p.getModelId());
-        dto.setProtocolType(p.getProtocolType());
         String protocolStr = p.getProtocol();
         if (protocolStr != null && protocolStr.length() > 0 && protocolStr.charAt(0) == '{') {
             JSONObject protocol = JSON.parseObject(protocolStr);
@@ -50,6 +44,7 @@ public class UnsConverter {
             if (frequency != null) {
                 dto.setFrequencySeconds(getFrequencySeconds(frequency));
             }
+            dto.setProtocol(protocol);
         }
         SrcJdbcType jdbcType = SrcJdbcType.getById(p.getDataSrcId());
         dto.setDataSrcId(jdbcType);
@@ -59,19 +54,7 @@ public class UnsConverter {
         if (calculationExpr != null && !calculationExpr.isEmpty() && compileExpression) {
             dto.setCompileExpression(ExpressionFunctions.compileExpression(calculationExpr));
         }
-        FieldDefine[] fields = p.getFields();
-        if (fields != null && fields.length > 2 && (
-                (dto.getDataType() == Constants.TIME_SEQUENCE_TYPE
-                        && !fields[fields.length - 1].getName().equals(Constants.SYS_SAVE_TIME))
-        )
-        ) {
-            FieldDefine[] newFs = new FieldDefine[fields.length + 1];
-            System.arraycopy(fields, 0, newFs, 0, fields.length);
-            newFs[newFs.length - 1] = new FieldDefine(Constants.SYS_SAVE_TIME, FieldType.DATETIME);
-            fields = newFs;// 修复末尾缺失的 _st
-        }
-        dto.setFields(fields);
-        if (dto.getDataType() == Constants.ALARM_RULE_TYPE && p.getPathType() == 2) {
+        if (dto.getDataType() != null && dto.getDataType() == Constants.ALARM_RULE_TYPE && p.getPathType() == 2) {
             AlarmRuleDefine ruleDefine = JsonUtil.fromJson(p.getProtocol(), AlarmRuleDefine.class);
             dto.setAlarmRuleDefine(ruleDefine);
         }

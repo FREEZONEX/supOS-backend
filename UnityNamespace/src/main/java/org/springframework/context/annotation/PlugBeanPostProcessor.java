@@ -10,6 +10,7 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.BeanNameGenerator;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.DescriptiveResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.metrics.ApplicationStartup;
@@ -65,7 +66,16 @@ public class PlugBeanPostProcessor {
                 boolean del = false;
                 Resource resource = configurationClass.getResource();
                 if (beanName != null) {
-                    del = registry.containsBeanDefinition(beanName);
+                    if (resource instanceof DescriptiveResource ds) {
+                        String className = ds.getDescription();
+                        try {
+                            localLoader.loadClass(className);
+                            del = true;
+                        } catch (ClassNotFoundException ex) {
+                        }
+                    } else {
+                        del = registry.containsBeanDefinition(beanName);
+                    }
                 } else if (resource instanceof ClassPathResource classPathResource) {
                     String path = classPathResource.getPath();
                     del = localLoader.getResource(path) != null;

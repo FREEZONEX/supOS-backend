@@ -14,6 +14,6 @@ public class PackageClassLoaderInfo {
 
     @Override
     public String toString() {
-        return basePackage;
+        return basePackage + ", cl=" + classLoader;
     }
 }

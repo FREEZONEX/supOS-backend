@@ -2,11 +2,9 @@ package com.supos.common.utils;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
-import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.digest.MD5;
-import cn.hutool.extra.spring.SpringUtil;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.http.Method;
@@ -21,7 +19,6 @@ import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.grafana.*;
 import com.supos.common.enums.FieldType;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -102,7 +99,7 @@ public class GrafanaUtils {
 
     /**
      * @param table 表名
-     * @param tagNameCondition vqt模式  位号名称sql条件tag_name='{tbValue}'
+     * @param tagNameCondition vqt模式  位号名称sql条件tag='{tbValue}'
      * @param jdbcType 数据源类型
      * @param schema
      * @param title 用uns alias作为title
@@ -175,7 +172,7 @@ public class GrafanaUtils {
         String flag = jdbcType.equals(SrcJdbcType.TdEngine) ? "`": "\\\"";
         List<String> fieldNames = Arrays.stream(fields).filter(field ->{
             boolean matchType = field.getType() != FieldType.BLOB && field.getType() != FieldType.LBLOB;//过滤blob
-            boolean matchName = !Constants.QOS_FIELD.equals(field.getName()) && !Constants.SYS_SAVE_TIME.equals(field.getName());//过滤qos 和_st
+            boolean matchName = !Constants.QOS_FIELD.equals(field.getName()) && !Constants.SYS_SAVE_TIME.equals(field.getName()) && !"tag".equals(field.getName());//过滤qos 和_st
             return matchType && matchName;
         }).map(FieldDefine::getName).collect(Collectors.toList());
         return fieldNames.stream().map(field -> flag + field + flag).collect(Collectors.joining(", "));

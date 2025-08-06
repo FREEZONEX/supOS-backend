@@ -7,10 +7,10 @@ import org.springframework.context.ApplicationEvent;
 public class SaveDataEvent extends ApplicationEvent {
     public final SrcJdbcType jdbcType;
     public final SaveDataDto[] topicData;
-    // "true" or "false" or ""
-    public final String duplicateIgnore;
+    // "true" or "false" or null
+    public final Boolean duplicateIgnore;
 
-    public SaveDataEvent(Object source, SrcJdbcType jdbcType, SaveDataDto[] topicData, String duplicateIgnore) {
+    public SaveDataEvent(Object source, SrcJdbcType jdbcType, SaveDataDto[] topicData, Boolean duplicateIgnore) {
         super(source);
         this.jdbcType = jdbcType;
         this.topicData = topicData;

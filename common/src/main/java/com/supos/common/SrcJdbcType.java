@@ -1,6 +1,7 @@
 package com.supos.common;
 
 public enum SrcJdbcType {
+    None(0, "", "", 0),
     TdEngine(1, "tdengine-datasource", "td", Constants.TIME_SEQUENCE_TYPE),
     Postgresql(2, "postgresql", "pg", Constants.RELATION_TYPE),
     TimeScaleDB(3, "postgresql", "tmsc", Constants.TIME_SEQUENCE_TYPE),
@@ -21,10 +22,10 @@ public enum SrcJdbcType {
 
     public static SrcJdbcType getById(Integer id) {
         if (id == null) {
-            return null;
+            return None;
         }
         int index = id;
-        return index <= MAX_ID && index>= 0 ? types[index] : null;
+        return index <= MAX_ID && index >= 0 ? types[index] : None;
     }
 
     private static final SrcJdbcType[] types;

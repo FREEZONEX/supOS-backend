@@ -9,11 +9,15 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.google.common.collect.Lists;
 import com.supos.common.dto.PageResultDTO;
 import com.supos.common.event.RemoveTopicsEvent;
+import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
+import com.supos.common.vo.LabelVo;
+import com.supos.uns.bo.UnsLabels;
 import com.supos.uns.dao.mapper.UnsLabelMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.UnsLabelPo;
@@ -21,8 +25,8 @@ import com.supos.uns.dao.po.UnsLabelRefPo;
 import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.util.PageUtil;
 import com.supos.uns.vo.FileVo;
-import com.supos.common.vo.LabelVo;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -35,6 +39,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
 
@@ -92,7 +97,16 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
 
     public ResultVO delete(Long id) {
         removeById(id);
-        this.baseMapper.deleteRefByLabelId(id);
+        List<Long> unsIds = unsLabelRefService.listObjs(new LambdaQueryWrapper<UnsLabelRefPo>()
+                        .eq(UnsLabelRefPo::getLabelId, id).select(UnsLabelRefPo::getUnsId)).stream()
+                .map(o -> ((Number) o).longValue()).toList();
+        Date updateTime = new Date();
+        if (CollectionUtils.isNotEmpty(unsIds)) {
+            this.baseMapper.deleteRefByLabelId(id);
+            for (List<Long> parUnsIds : Lists.partition(unsIds, 500)) {
+                unsMapper.unlinkLabelsByIds(id, parUnsIds, updateTime);
+            }
+        }
         return ResultVO.success("ok");
     }
 
@@ -117,6 +131,7 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
         lambdaUpdateWrapper.eq(UnsLabelPo::getId, labelId);
         lambdaUpdateWrapper.set(UnsLabelPo::getLabelName, labelVo.getLabelName());
         update(lambdaUpdateWrapper);
+        unsMapper.updateUnsLabelNames(labelId, labelVo.getLabelName());// 更新uns冗余的标签 id->name 键值对
         return ResultVO.success("ok");
     }
 
@@ -125,28 +140,53 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
         if (null == uns) {
             return ResultVO.success("ok");
         }
+        TreeMap<Long, String> labelIdNameMap = new TreeMap<>();
+        uns.setLabelIds(labelIdNameMap);
         this.baseMapper.deleteRefByUnsId(uns.getId());
+
         if (CollectionUtils.isNotEmpty(labelList)) {
+            Map<Long, LabelVo> noNames = labelList.stream().filter(v -> v.getId() != null && v.getLabelName() == null).collect(Collectors.toMap(k -> Long.parseLong(k.getId()), v -> v));
+            if (!noNames.isEmpty()) {
+                this.listByIds(noNames.keySet()).forEach(p -> {
+                    LabelVo vo = noNames.get(p.getId());
+                    if (vo != null) {
+                        vo.setLabelName(p.getLabelName());
+                    }
+                });
+            }
             for (LabelVo labelVo : labelList) {
-                UnsLabelRefPo ref = null;
-                if (null != labelVo.getId()) {
-                    ref = new UnsLabelRefPo(Long.valueOf(labelVo.getId()), uns.getId());
+                UnsLabelRefPo ref;
+                String lid = labelVo.getId();
+                if (lid != null) {
+                    ref = new UnsLabelRefPo(Long.parseLong(lid), uns.getId());
                 } else {
                     //不存在标签，先创建
                     Long labelId = create(labelVo.getLabelName()).getData().getId();
                     ref = new UnsLabelRefPo(labelId, uns.getId());
                 }
+                labelIdNameMap.put(ref.getLabelId(), labelVo.getLabelName());
                 this.baseMapper.saveRef(ref);
             }
         }
+        uns.setUpdateAt(new Date());
+        unsMapper.updateById(uns);
         return ResultVO.success("ok");
     }
 
     public ResultVO makeSingleLabel(Long unsId, Long labelId) {
+        UnsLabelPo labelPo = baseMapper.selectById(labelId);
+        if (labelPo == null) {
+            throw new BuzException("uns.label.not.exists");
+        }
         LambdaQueryWrapper<UnsLabelRefPo> qw = new LambdaQueryWrapper<>();
-        qw.eq(UnsLabelRefPo::getUnsId,unsId).eq(UnsLabelRefPo::getLabelId,labelId);
+        qw.eq(UnsLabelRefPo::getUnsId, unsId).eq(UnsLabelRefPo::getLabelId, labelId);
         UnsLabelRefPo refPo = unsLabelRefService.getOne(qw);
-        if (refPo == null){
+        if (refPo == null) {
+            unsMapper.linkLabelOnUns(unsId, labelId, labelPo.getLabelName(), new Date());
+            UnsPo uns = unsMapper.selectById(unsId);
+            if (uns == null) {
+                throw new BuzException("uns.file.not.exist");
+            }
             refPo = new UnsLabelRefPo(labelId, unsId);
             this.baseMapper.saveRef(refPo);
         }
@@ -157,54 +197,69 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
      * 批量新增标签绑定关系。
      * 标签不存在时，先新增标签
      *
-     * @param labelListMap
+     * @param unsLabels
      * @return
      */
     @Transactional(timeout = 300, rollbackFor = Throwable.class)
-    public ResultVO makeLabel(Map<Long, String[]> labelListMap) {
-        if (labelListMap != null) {
-            Set<String> labels = new HashSet<>();
-            Map<String, Set<Long>> labelUnsMap = new HashMap<>();//label绑定了哪些uns节点
-            for (Map.Entry<Long, String[]> e : labelListMap.entrySet()) {
-                if (ArrayUtils.isNotEmpty(e.getValue())) {
-                    for (String label : e.getValue()) {
-                        labels.add(label);
-                        labelUnsMap.computeIfAbsent(label, k -> new HashSet<>()).add(e.getKey());
-                    }
+    public <T extends UnsLabels> List<UnsLabelPo> makeLabel(Collection<T> unsLabels) {
+        if (CollectionUtils.isEmpty(unsLabels)) {
+            return Collections.emptyList();
+        }
+        List<Long> resetUnsIds = null;
+        Map<String, List<UnsLabels>> labelUnsMap = new HashMap<>();//label绑定了哪些uns节点
+        for (UnsLabels unsLabel : unsLabels) {
+            if (unsLabel.isResetLabels()) {
+                if (resetUnsIds == null) {
+                    resetUnsIds = new ArrayList<>(unsLabels.size());
                 }
+                resetUnsIds.add(unsLabel.unsId());
             }
-
-            ArrayList<UnsLabelPo> saveLabels = new ArrayList<>(labels.size());
-            List<UnsLabelRefPo> saveLabelRef = new ArrayList<>();
-            if (CollectionUtils.isNotEmpty(labels)) {
-                List<UnsLabelPo> existLabels = baseMapper.selectList(Wrappers.lambdaQuery(UnsLabelPo.class).in(UnsLabelPo::getLabelName, labels));
-                Map<String, UnsLabelPo> existLabelMap = existLabels.stream().collect(Collectors.toMap(UnsLabelPo::getLabelName, Function.identity(), (k1, k2) -> k2));
-                for (String label : labels) {
-                    Set<Long> unsIds = labelUnsMap.get(label);
-                    UnsLabelPo existLabel = existLabelMap.get(label);
-                    if (existLabel == null) {
-                        // 新增标签
-                        UnsLabelPo labelPo = new UnsLabelPo(label);
-                        labelPo.setId(nextId());
-                        saveLabels.add(labelPo);
-                        for (Long unsId : unsIds) {
-                            saveLabelRef.add(new UnsLabelRefPo(labelPo.getId(), unsId));
-                        }
-                    } else {
-                        saveLabelRef.addAll(unsIds.stream().map(unsId -> new UnsLabelRefPo(existLabel.getId(), unsId)).toList());
-                    }
+            String[] labelNames = unsLabel.labelNames();
+            if (ArrayUtils.isNotEmpty(labelNames)) {
+                for (String label : labelNames) {
+                    labelUnsMap.computeIfAbsent(label, k -> new LinkedList<>()).add(unsLabel);
                 }
-            }
-
-            if (!saveLabels.isEmpty()) {
-                this.saveBatch(saveLabels);
-            }
-
-            if (CollectionUtils.isNotEmpty(saveLabelRef)) {
-                unsLabelRefService.saveBatch(saveLabelRef);
             }
         }
-        return ResultVO.success("ok");
+        if (resetUnsIds != null && !resetUnsIds.isEmpty()) {
+            unsLabelRefService.remove(new LambdaQueryWrapper<UnsLabelRefPo>().in(UnsLabelRefPo::getUnsId, resetUnsIds));
+        }
+        Set<String> labels = labelUnsMap.keySet();
+        ArrayList<UnsLabelPo> allLabels = new ArrayList<>(labels.size());
+        ArrayList<UnsLabelPo> saveLabels = null;
+        List<UnsLabelRefPo> saveLabelRef = new ArrayList<>(labels.size());
+        if (CollectionUtils.isNotEmpty(labels)) {
+            List<UnsLabelPo> existLabels = baseMapper.selectList(Wrappers.lambdaQuery(UnsLabelPo.class).in(UnsLabelPo::getLabelName, labels));
+            Map<String, UnsLabelPo> existLabelMap = existLabels.stream().collect(Collectors.toMap(UnsLabelPo::getLabelName, Function.identity(), (k1, k2) -> k2));
+            for (String label : labels) {
+                UnsLabelPo existLabel = existLabelMap.get(label);
+                UnsLabelPo labelPo = existLabel != null ? existLabel : new UnsLabelPo(label);
+                if (existLabel == null) {
+                    // 新增标签
+                    labelPo.setId(nextId());
+                    if (saveLabels == null) {
+                        saveLabels = new ArrayList<>(labels.size());
+                    }
+                    saveLabels.add(labelPo);
+                    allLabels.add(labelPo);
+                }
+                final Long labelId = labelPo.getId();
+                List<UnsLabels> unsLabelsList = labelUnsMap.get(label);
+                for (UnsLabels ul : unsLabelsList) {
+                    ul.setLabelId(label, labelId);
+                }
+                saveLabelRef.addAll(unsLabelsList.stream().map(ul -> new UnsLabelRefPo(labelPo.getId(), ul.unsId())).toList());
+            }
+        }
+
+        if (saveLabels != null && !saveLabels.isEmpty()) {
+            this.saveBatch(saveLabels);
+        }
+
+        if (CollectionUtils.isNotEmpty(saveLabelRef)) {
+            unsLabelRefService.saveOrIgnoreBatch(saveLabelRef);
+        }
+        return allLabels;
     }
 
     public ResultVO cancelLabel(Long unsId, List<Long> labelIds) {
@@ -212,7 +267,7 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
         if (null == uns) {
             return ResultVO.success("ok");
         }
-        unsLabelRefService.remove(new LambdaQueryWrapper<UnsLabelRefPo>().eq(UnsLabelRefPo::getUnsId,uns.getId()).in(UnsLabelRefPo::getLabelId,labelIds));
+        unsLabelRefService.remove(new LambdaQueryWrapper<UnsLabelRefPo>().eq(UnsLabelRefPo::getUnsId, uns.getId()).in(UnsLabelRefPo::getLabelId, labelIds));
         return ResultVO.success("ok");
     }
 
@@ -239,9 +294,23 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
     @EventListener(classes = RemoveTopicsEvent.class)
     @Order(2000)
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
-        Set<Long> unsIds = event.topics.keySet();
-        LambdaQueryWrapper<UnsLabelRefPo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.in(CollectionUtils.isNotEmpty(unsIds), UnsLabelRefPo::getUnsId, unsIds);
-        unsLabelRefService.remove(queryWrapper);
+        long t0 = System.currentTimeMillis();
+        Set<Long> labelIds = event.topics.values().stream().filter(t -> !CollectionUtils.isEmpty(t.getLabelIds()))
+                .flatMap(t -> t.getLabelIds().stream()).collect(Collectors.toSet());
+        if (!labelIds.isEmpty()) {
+            if (labelIds.size() <= 1000) {
+                LambdaQueryWrapper<UnsLabelRefPo> queryWrapper = new LambdaQueryWrapper<>();
+                queryWrapper.in(UnsLabelRefPo::getLabelId, labelIds);
+                unsLabelRefService.remove(queryWrapper);
+            } else {
+                for (List<Long> list : Lists.partition(new ArrayList<>(labelIds), 1000)) {
+                    LambdaQueryWrapper<UnsLabelRefPo> queryWrapper = new LambdaQueryWrapper<>();
+                    queryWrapper.in(UnsLabelRefPo::getLabelId, list);
+                    unsLabelRefService.remove(queryWrapper);
+                }
+            }
+        }
+        long t1 = System.currentTimeMillis();
+        log.info("标签删除耗时: {}ms, size={}", t1 - t0, labelIds.size());
     }
 }

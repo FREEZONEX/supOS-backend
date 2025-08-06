@@ -15,7 +15,6 @@ import com.supos.common.dto.TopologyLog;
 import com.supos.common.enums.IOTProtocol;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.NamespaceChangeEvent;
-import com.supos.common.event.TopicMessageEvent;
 import com.supos.common.event.UnsTopologyChangeEvent;
 import com.supos.common.utils.JsonUtil;
 import com.supos.uns.bo.InstanceTopologyData;
@@ -182,6 +181,9 @@ public class UnsTopologyService {
     }
 
     public void removeFromGlobalTopologyData(String topic) {
+        if(globalTopologyData == null){
+            return;
+        }
         Set<ICMPStateVO> icmpStates = globalTopologyData.getIcmpStates();
         icmpStates.remove(new ICMPStateVO(topic, 0));
     }

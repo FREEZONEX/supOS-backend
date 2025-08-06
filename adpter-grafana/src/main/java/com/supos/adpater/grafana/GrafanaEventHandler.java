@@ -3,9 +3,7 @@ package com.supos.adpater.grafana;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.thread.ThreadUtil;
-import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.extra.spring.SpringUtil;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSONArray;
@@ -17,6 +15,7 @@ import com.supos.common.adpater.DataStorageAdapter;
 import com.supos.common.annotation.Description;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.CreateTopicDto;
+import com.supos.common.dto.SimpleUnsInstance;
 import com.supos.common.event.BatchCreateTableEvent;
 import com.supos.common.event.CreateDashboardEvent;
 import com.supos.common.event.EventBus;
@@ -34,6 +33,7 @@ import org.springframework.stereotype.Component;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -69,13 +69,13 @@ public class GrafanaEventHandler {
             log.debug(">>>>>>>>>当前系统未启用grafana服务，不执行批量删除grafana dashboard");
             return;
         }
-        if (CollectionUtil.isEmpty(event.topics)) {
+        if (CollectionUtil.isEmpty(event.topics) || event.jdbcType == null || event.jdbcType == SrcJdbcType.None) {
             return;
         }
         ThreadUtil.execute(() -> {
             try {
                 //table = alias
-                event.topics.values().stream().filter(even -> ObjectUtil.isNotNull(event.jdbcType)).map(in -> in.getTableName()).forEach(table -> {
+                event.topics.values().stream().filter(SimpleUnsInstance::isRemoveTableWhenDeleteInstance).map(SimpleUnsInstance::getTableName).collect(Collectors.toSet()).forEach(table -> {
                     String uid = GrafanaUtils.getDashboardUuidByAlias(table);
                     if (event.withDashboard) {
                         GrafanaUtils.deleteDashboard(uid);
@@ -91,6 +91,10 @@ public class GrafanaEventHandler {
 
     public void create(final SrcJdbcType jdbcType, final CreateTopicDto[] topics, String flowName, boolean fromImport) {
         DataStorageAdapter storageAdapter = dataStorageAdapterMap.get(jdbcType);
+        if (storageAdapter == null) {
+            log.warn("ignore jdbcType={}", jdbcType);
+            return;
+        }
         DataSourceProperties ds = storageAdapter.getDataSourceProperties();
         long t1 = System.currentTimeMillis();
         log.info("开始循环创建dashboard 预计数量：{},flowName:{},数据源类型:{}", topics.length, flowName, jdbcType.alias);
@@ -110,16 +114,16 @@ public class GrafanaEventHandler {
                 String table = dto.getTable();
                 String tbValue = dto.getTbFieldName();
                 String tagNameCondition = "";
-                if (StringUtils.isNotBlank(tbValue)){
-                    tagNameCondition = " and tag_name='" + dto.getAlias() + "' ";
+                if (StringUtils.isNotBlank(tbValue)) {
+                    tagNameCondition = " and " + Constants.SYSTEM_SEQ_TAG + "='" + dto.getId() + "' ";
                 }
-                log.debug(">>>>>> create grafana dashboard columns:{},title:{},schema:{},table:{},tagNameCondition:{}", columns, title, schema, table,tagNameCondition);
+                log.debug(">>>>>> create grafana dashboard columns:{},title:{},schema:{},table:{},tagNameCondition:{}", columns, title, schema, table, tagNameCondition);
                 int dot = table.indexOf('.');
                 if (dot > 0) {
                     schema = table.substring(0, dot);
                     table = table.substring(dot + 1);
                 }
-                String uuid = GrafanaUtils.createDashboard(table,tagNameCondition, jdbcType, schema, title, columns, Constants.SYS_FIELD_CREATE_TIME);
+                String uuid = GrafanaUtils.createDashboard(table, tagNameCondition, jdbcType, schema, title, columns, Constants.SYS_FIELD_CREATE_TIME);
                 //当创建类型为 非导入（手动创建），发送事件，创建数据看板
                 if (!fromImport) {
                     EventBus.publishEvent(new CreateDashboardEvent(this, uuid, title, title));

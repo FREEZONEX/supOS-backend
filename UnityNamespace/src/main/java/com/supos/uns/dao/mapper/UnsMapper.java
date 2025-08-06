@@ -197,6 +197,23 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
 
     List<UnsPo> selectByLayRecPrefixes(@Param("prefixes") Set<String> prefixes);
 
+    @Update("<script> UPDATE " + UnsPo.TABLE_NAME + " a SET label_ids = label_ids - '${labelId}' ,update_at=#{updateAt} " +
+            " WHERE a.id in " +
+            "  <foreach collection=\"ids\" item=\"id\" index=\"index\" open=\"(\" close=\")\" separator=\",\"> " +
+            "      #{id}" +
+            "  </foreach> AND label_ids IS NOT NULL" +
+            "</script>")
+    void unlinkLabelsByIds(@Param("labelId") Long labelId, @Param("ids") Collection<Long> unsIds, Date updateAt);
+
+    @Update("UPDATE " + UnsPo.TABLE_NAME + " SET label_ids = label_ids - '${labelId}' ,update_at=NOW WHERE label_ids ?? '${labelId}' ")
+    void unlinkLabels(@Param("labelId") Long labelId);
+
+    @Update("UPDATE " + UnsPo.TABLE_NAME + " SET label_ids = jsonb_set(case when label_ids is null then '{}' else label_ids end, '{\"${labelId}\"}', '\"${labelName}\"'),update_at=#{updateAt} WHERE id=#{id}")
+    void linkLabelOnUns(@Param("id") Long unsId, @Param("labelId") Long labelId, @Param("labelName") String labelName, Date updateAt);
+
+    @Update("UPDATE " + UnsPo.TABLE_NAME + " SET label_ids = jsonb_set(label_ids,  '{\"${labelId}\"}', '\"${labelName}\"') WHERE label_ids ?? '${labelId}' ")
+    void updateUnsLabelNames(@Param("labelId") Long labelId, @Param("labelName") String labelName);
+
     class UnsRefUpdateProvider {
         public static String updateRefUns(@Param("id") Long id, @Param("ids") Map<Long, Integer> idDataTypes) {
             StringBuilder sql = new StringBuilder(128 + idDataTypes.size());

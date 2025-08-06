@@ -63,7 +63,7 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
                 String tbf = def.getTbFieldName();
                 String extFilter = "";
                 if (tbf != null) {
-                    extFilter = " \"" + tbf + "\" = '" + alias + "' and ";
+                    extFilter = " \"" + tbf + "\" = " + def.getId() + " and ";
                     s.append(extFilter);
                 }
                 s.append(CT).append(select).append(CT).append(") FROM ").append(dbTable)
@@ -162,7 +162,7 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
         String tbf = def.getTbFieldName();
         String tableName = alias, extFilter = null;
         if (tbf != null) {
-            extFilter = " \"" + tbf + "\" = '" + alias + "' ";
+            extFilter = " \"" + tbf + "\" = " + def.getId() + " ";
             tableName = def.getTable();
         }
         sql.append(" FROM ").append('"').append(tableName).append('"').append(' ');
@@ -201,7 +201,7 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
         if (!CollectionUtils.isEmpty(event.getStandard())) {
             for (SimpleUnsInstance simpleUns : event.getStandard()) {
                 StringBuilder sql = new StringBuilder("delete from ");
-                sql.append(simpleUns.getTableName()).append(" where tag_name='").append(simpleUns.getAlias()).append("'");
+                sql.append(simpleUns.getTableName()).append(" where ").append(Constants.SYSTEM_SEQ_TAG).append("=").append(simpleUns.getId());
                 sqls.add(sql.toString());
             }
         }
@@ -269,6 +269,7 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
     private List<String> buildRetrySqlArray(List<Pair<SaveDataDto, String>> sqlPairList) {
         List<String> sqlList = new ArrayList<>();
         for (Pair<SaveDataDto, String> pair : sqlPairList) {
+            String table = DbTableNameUtils.getFullTableName(pair.getKey().getCreateTopicDto().getTableName());
             String[] pks = pair.getKey().getCreateTopicDto().getPrimaryField();
             StringBuilder builder = new StringBuilder(pair.getValue());
             FieldDefine[] columns = pair.getKey().getCreateTopicDto().getFields();
@@ -282,7 +283,8 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
                 for (FieldDefine define : columns) {
                     if (!define.isUnique()) {
                         String f = define.getName();
-                        builder.append('"').append(f).append("\"=EXCLUDED.\"").append(f).append("\",");
+                        builder.append('"').append(f).append("\"=COALESCE(EXCLUDED.\"").append(f).append("\",")
+                                .append(table).append('.').append('"').append(f).append("\"),");
                     }
                 }
                 builder.setCharAt(builder.length() - 1, ' ');
@@ -426,7 +428,7 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
                 sts.append(" where ");
                 String tbValue = topic.getTbFieldName();
                 if (tbValue != null) {
-                    sts.append('"').append(tbValue).append("\" = '").append(topic.getAlias()).append("' AND ");
+                    sts.append('"').append(tbValue).append("\" = ").append(topic.getId()).append(" AND ");
                 }
                 for (int i = 0; i < event.getEqConditions().size(); i++) {
                     sts.append(event.getEqConditions().get(i).getFieldName()).append(" = ").append(event.getEqConditions().get(i).getValue()).append("");
@@ -453,7 +455,7 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
             sql.append("select *").append(" from ").append(currentSchema).append(".\"").append(tableName).append("\"");
             String tbValue = topic.getTbFieldName();
             if (tbValue != null) {
-                sql.append(" where \"").append(tbValue).append("\" = '").append(topic.getAlias()).append("' ");
+                sql.append(" where \"").append(tbValue).append("\" = ").append(topic.getId()).append(" ");
             }
             sql.append(" ORDER BY \"")
                     .append(ct)

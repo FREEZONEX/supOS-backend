@@ -13,6 +13,7 @@ import org.springframework.web.util.UriUtils;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
+
 import java.io.InputStream;
 import java.util.List;
 
@@ -38,7 +39,10 @@ public class UnsAttachmentController {
      */
     @PostMapping("/inter-api/supos/uns/attachment")
     public BaseResult attachmentUpload(@RequestParam("alias") String alias, @RequestParam("files") MultipartFile[] files) {
-        unsAttachmentService.upload(alias, files);
+        String err = unsAttachmentService.upload(alias, files);
+        if (err != null) {
+            return new BaseResult(400, err);
+        }
         return new BaseResult();
     }
 

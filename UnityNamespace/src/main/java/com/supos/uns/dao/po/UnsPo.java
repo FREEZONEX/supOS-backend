@@ -13,10 +13,7 @@ import com.supos.uns.config.JsonMapTypeHandler;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 @Data
 @NoArgsConstructor
@@ -90,8 +87,8 @@ public class UnsPo implements Cloneable {
     int countDirectChildren;
     @TableField(exist = false)
     String labels;
-    @TableField(exist = false)
-    Boolean fieldsChanged;
+    @TableField(typeHandler = JsonMapTypeHandler.class)
+    TreeMap<Long, String> labelIds;
 
     public UnsPo(String path) {
         this.path = path;

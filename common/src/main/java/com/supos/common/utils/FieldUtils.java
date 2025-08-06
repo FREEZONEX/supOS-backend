@@ -34,6 +34,9 @@ public class FieldUtils {
 
     public static FieldDefine getQualityField(FieldDefine[] fields, int dataType) {
         if (dataType == Constants.TIME_SEQUENCE_TYPE && fields != null && fields.length > 2) {
+            if (fields[fields.length - 1].getType() == FieldType.LONG) {
+                return fields[fields.length - 1];
+            }
             return fields[fields.length - 2];
         }
         return null;
@@ -110,7 +113,7 @@ public class FieldUtils {
             }
 
             if (jdbcType == SrcJdbcType.TimeScaleDB && countNormal == 1 && Constants.SYSTEM_SEQ_VALUE.equals(nf.getName())) {
-                FieldDefine tableValue = new FieldDefine(Constants.SYSTEM_SEQ_TAG, FieldType.STRING, true);
+                FieldDefine tableValue = new FieldDefine(Constants.SYSTEM_SEQ_TAG, FieldType.LONG, true);
                 tableValue.setTbValueName(nf.getName());
                 tableValue.setMaxLen(200);
                 fNews.get(1).setName(Constants.SYSTEM_SEQ_VALUE);
@@ -120,7 +123,6 @@ public class FieldUtils {
                 tableName = "";
             }
             fNews.add(new FieldDefine(Constants.QOS_FIELD, FieldType.LONG));
-            fNews.add(new FieldDefine(Constants.SYS_SAVE_TIME, FieldType.DATETIME));
             fields = fNews.toArray(new FieldDefine[0]);
         } else {
             FieldDefine idField = fieldMap.get(SYS_FIELD_ID);

@@ -7,11 +7,14 @@ springdoc:
 grpc:
   server:
     port: 19099
+    max-recv-message-size: 20971520 # 20MB
+    max-send-message-size: 20971520
   thread-pool:
     core-size: ${GRPC_POOL_CORE_SIZE:8}      # 核心线程数（建议为 CPU核数 × 2）
     max-size: ${GRPC_POOL_MAX_SIZE:32}       # 最大线程数（建议为 CPU核数 × 4）
     queue-capacity: 200 # 队列容量
     keep-alive-time: 60 # 线程空闲存活时间（秒）
+
 spring:
   application:
     name: backend-server

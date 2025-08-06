@@ -4,17 +4,25 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.net.URLDecoder;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.IdUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.google.common.collect.Lists;
 import com.supos.adpter.minio.MinioAdpterService;
 import com.supos.common.Constants;
 import com.supos.common.config.SystemConfig;
+import com.supos.common.dto.CreateTopicDto;
+import com.supos.common.dto.mqtt.TopicDefinition;
 import com.supos.common.exception.BuzException;
+import com.supos.common.service.IUnsDefinitionService;
 import com.supos.uns.bo.UnsAttachmentBo;
 import com.supos.uns.dao.mapper.UnsAttachmentMapper;
+import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.UnsAttachmentPo;
+import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.util.FileUtils;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -29,12 +37,15 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static com.supos.common.Constants.UNS_FLAG_WITH_ATTACHMENT;
+
 /**
  * @author sunlifang
  * @version 1.0
  * @description: TODO
  * @date 2025/1/8 14:55
  */
+@Slf4j
 @Service
 public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAttachmentPo> {
 
@@ -46,9 +57,18 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
 
     @Resource
     private SystemConfig systemConfig;
+    @Resource
+    UnsMapper unsMapper;
+    @Resource
+    IUnsDefinitionService unsDefinitionService;
 
     @Transactional(rollbackFor = Exception.class, timeout = 300)
-    public void upload(String alias, MultipartFile[] files){
+    public String upload(String alias, MultipartFile[] files) {
+        UnsPo unsPo = unsMapper.selectOne(new LambdaQueryWrapper<UnsPo>().eq(UnsPo::getAlias, alias).select(UnsPo::getId, UnsPo::getWithFlags));
+        if (unsPo == null) {
+            log.warn("upload: 找不到 UNS: {}", alias);
+            return "找不到 UNS:" + alias;
+        }
         for (MultipartFile file : files) {
             if (file.getSize() > Constants.ATTACHMENT_MAX_SIZE) {
                 throw new BuzException("uns.attachment.max.size");
@@ -59,11 +79,19 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
             if (StringUtils.isNotBlank(extensionName)) {
                 attachmentName += "." + extensionName;
             }
+            boolean saveLocal = true;
             String attachmentPath = null;
-            if (null != systemConfig.getContainerMap().get("minio")){
-                attachmentPath = alias + "/" + attachmentName;
-                minioAdpterService.upload(attachmentPath, file);
-            } else {
+            if (null != systemConfig.getContainerMap().get("minio")) {
+                saveLocal = false;
+                try {
+                    attachmentPath = alias + "/" + attachmentName;
+                    minioAdpterService.upload(attachmentPath, file);
+                } catch (Exception ex) {
+                    log.warn("上传Minio失败：uns={}, file={} | {}", alias, originalFilename, ex.getMessage());
+                    saveLocal = true;
+                }
+            }
+            if (saveLocal) {
                 File uploadFile = destFile(attachmentName);
                 //本地上传
                 FileUtil.touch(uploadFile);
@@ -73,6 +101,7 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
                 }
                 attachmentPath = FileUtils.getRelativePath(uploadFile.getAbsolutePath());
             }
+
             UnsAttachmentPo attachmentPo = new UnsAttachmentPo();
             attachmentPo.setId(IdUtil.getSnowflakeNextId());
             attachmentPo.setOriginalName(originalFilename);
@@ -84,6 +113,19 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
             }
             unsAttachmentMapper.insert(attachmentPo);
         }
+
+        Integer flags = unsPo.getWithFlags();
+        if (flags == null) {
+            flags = 0;
+        }
+        flags |= UNS_FLAG_WITH_ATTACHMENT;
+        unsPo.setWithFlags(flags);
+        unsMapper.updateById(unsPo);
+        TopicDefinition definition = unsDefinitionService.getTopicDefinitionMap().get(unsPo.getId());
+        if (definition != null) {
+            definition.getCreateTopicDto().setFlags(flags);
+        }
+        return null;
     }
 
     public Pair<String, InputStream> download(String objectName) throws FileNotFoundException {
@@ -93,13 +135,13 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
         }
         String originalName = attachmentPos.get(0).getOriginalName();
 
-        if (null != systemConfig.getContainerMap().get("minio")){
+        if (null != systemConfig.getContainerMap().get("minio")) {
             return Pair.of(originalName, minioAdpterService.download(objectName));
         } else {
             objectName = URLDecoder.decode(objectName, StandardCharsets.UTF_8);
             File file = new File(FileUtils.getFileRootPath(), objectName);
             FileInputStream fs = new FileInputStream(file);
-            return  Pair.of(originalName, fs);
+            return Pair.of(originalName, fs);
         }
     }
 
@@ -107,14 +149,44 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
     public void delete(String objectName) {
         List<UnsAttachmentPo> attachmentPos = unsAttachmentMapper.attachmentListByAttachmentPath(objectName);
         if (CollectionUtils.isNotEmpty(attachmentPos)) {
-            if (null != systemConfig.getContainerMap().get("minio")){
-                minioAdpterService.delete(objectName);
-            } else{
+            if (null != systemConfig.getContainerMap().get("minio")) {
+                try {
+                    minioAdpterService.delete(objectName);
+                } catch (Exception ex) {
+                    log.warn("Minio删除失败: {} {}", objectName, ex.getMessage());
+                }
                 File file = new File(FileUtils.getFileRootPath(), objectName);
                 FileUtil.del(file);
+
+                unsAttachmentMapper.deleteById(attachmentPos.get(0).getId());
+                String unsAlias = attachmentPos.get(0).getUnsAlias();
+                Long countUnsAttachments = unsAttachmentMapper.selectCount(new LambdaQueryWrapper<UnsAttachmentPo>().eq(UnsAttachmentPo::getUnsAlias, unsAlias));
+                if (countUnsAttachments == null || countUnsAttachments.intValue() == 0) {
+                    UnsPo unsPo = unsMapper.selectOne(new LambdaQueryWrapper<UnsPo>().eq(UnsPo::getAlias, unsAlias).select(UnsPo::getId, UnsPo::getWithFlags));
+                    if (unsPo != null) {
+                        Integer flags = unsPo.getWithFlags();
+                        if (flags == null) {
+                            flags = 0;
+                        }
+                        flags = flags & ~UNS_FLAG_WITH_ATTACHMENT;
+                        unsPo.setWithFlags(flags);
+                        unsMapper.updateById(unsPo);
+                        TopicDefinition definition = unsDefinitionService.getTopicDefinitionMap().get(unsPo.getId());
+                        if (definition != null) {
+                            definition.getCreateTopicDto().setFlags(flags);
+                        }
+                    } else {
+                        log.warn("delete Attachment: 找不到 UNS: {}", unsAlias);
+                    }
+                }
             }
-            unsAttachmentMapper.deleteById(attachmentPos.get(0).getId());
         }
+    }
+
+    public void deleteByUns(List<CreateTopicDto> unsPos) {
+        List<String> aliases = unsPos.stream().filter(t -> Constants.withAttachment(t.getFlags())).map(CreateTopicDto::getAlias).toList();
+        log.info("deleteByUns: size = {}", aliases);
+        delete(aliases);
     }
 
     public void delete(List<String> aliases) {
@@ -122,16 +194,18 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
             return;
         }
         ThreadUtil.execute(() -> {
-            List<UnsAttachmentPo> attachmentPos = unsAttachmentMapper.selectList(Wrappers.lambdaQuery(UnsAttachmentPo.class).in(UnsAttachmentPo::getUnsAlias, aliases));
-            if (CollectionUtils.isNotEmpty(attachmentPos)) {
-                List<Long> deleteIds = new ArrayList<>(attachmentPos.size());
-                List<String> objectNames = new ArrayList<>(attachmentPos.size());
-                attachmentPos.forEach(attachment -> {
-                    deleteIds.add(attachment.getId());
-                    objectNames.add(attachment.getAttachmentPath());
-                });
-                minioAdpterService.delete(objectNames);
-                unsAttachmentMapper.deleteBatchIds(deleteIds);
+            for (List<String> seg : Lists.partition(aliases, 1000)) {
+                List<UnsAttachmentPo> attachmentPos = unsAttachmentMapper.selectList(Wrappers.lambdaQuery(UnsAttachmentPo.class).in(UnsAttachmentPo::getUnsAlias, seg));
+                if (CollectionUtils.isNotEmpty(attachmentPos)) {
+                    List<Long> deleteIds = new ArrayList<>(attachmentPos.size());
+                    List<String> objectNames = new ArrayList<>(attachmentPos.size());
+                    attachmentPos.forEach(attachment -> {
+                        deleteIds.add(attachment.getId());
+                        objectNames.add(attachment.getAttachmentPath());
+                    });
+                    minioAdpterService.delete(objectNames);
+                    unsAttachmentMapper.deleteBatchIds(deleteIds);
+                }
             }
         });
     }

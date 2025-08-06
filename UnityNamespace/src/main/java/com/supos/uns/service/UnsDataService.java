@@ -78,11 +78,25 @@ public class UnsDataService {
             for (UpdateFileDTO dto : list) {
                 String alias = dto.getAlias();
                 CreateTopicDto def = iUnsDefinitionService.getDefinitionByAlias(alias);
-                if (def == null) {
+                if (def == null || def.getDataType() == null) {
                     continue;
                 }
                 Map<String, FieldDefine> fMap = def.getFieldDefines().getFieldsMap();
                 Map<String, Object> body = dto.getData();
+                if (def.getDataType() == Constants.RELATION_TYPE) {
+                    for (String k : def.getFieldDefines().getUniqueKeys()) {
+                        if (!k.startsWith(Constants.SYSTEM_FIELD_PREV) && !body.containsKey(k)) {
+                            ResultVO<UnsDataResponseVo> resultVO = new ResultVO<>();
+                            resultVO.setCode(400);
+                            UnsDataResponseVo responseVo = new UnsDataResponseVo();
+                            responseVo.setNotExists(notExists);
+                            errorFields.put(k, "null");
+                            responseVo.setErrorFields(errorFields);
+                            resultVO.setData(responseVo);
+                            return resultVO;
+                        }
+                    }
+                }
                 JSONObject newBody = new JSONObject();
                 String qosField = def.getQualityField();
                 for (Map.Entry<String, Object> entry : body.entrySet()) {

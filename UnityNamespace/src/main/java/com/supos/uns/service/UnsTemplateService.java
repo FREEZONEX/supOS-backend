@@ -154,10 +154,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
         }
         QueryWrapper<UnsPo> queryWrapper = new QueryWrapper<UnsPo>().eq("model_id", id)
                 .eq("path_type", Constants.PATH_TYPE_FILE);
-        QueryWrapper<UnsPo> removeQuery = queryWrapper.or().eq("id", id);
-        List<UnsPo> unsPos = this.list(
-                queryWrapper.select("id", "name", "path", "fields", "path_type", "data_src_id", "alias", "ref_uns", "refers",
-                        "data_type", "table_name", "with_flags"));
+        List<UnsPo> unsPos = this.list(queryWrapper);
         unsPos.add(template);
 
         List<WebhookDataDTO> webhookData = WebhookUtils.transfer(unsPos);
@@ -165,8 +162,8 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
             EventBus.publishEvent(new SysEvent(this, ServiceEnum.UNS_SERVICE, EventMetaEnum.UNS_FILED_CHANGE,
                     ActionEnum.DELETE, webhookData));
         }
-
-        return unsRemoveService.getRemoveResult(true, true, true, removeQuery, unsPos);
+        List<CreateTopicDto> dtoList = unsPos.stream().map(p -> unsConverter.po2dto(p, false)).toList();
+        return unsRemoveService.getRemoveResult(true, true, true, dtoList);
     }
 
     public ResultVO updateTemplate(Long id, String name, String description) {
@@ -363,7 +360,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
             HashMap<SrcJdbcType, Map<Long, SimpleUnsInstance>> typeListMap = new HashMap<>();
             for (UnsPo po : delCalcInst) {
                 SimpleUnsInstance sui = new SimpleUnsInstance(po.getId(), po.getPath(), po.getAlias(),
-                        po.getTableName(), po.getDataType(), po.getParentId(), false, po.getFields(), po.getName());
+                        po.getTableName(), po.getDataType(), po.getParentId(), false,false, po.getFields(), po.getName());
                 SrcJdbcType srcJdbcType = SrcJdbcType.getById(po.getDataSrcId());
                 Map<Long, SimpleUnsInstance> calcInstances = typeListMap.computeIfAbsent(srcJdbcType, k -> new HashMap<>());
                 calcInstances.put(po.getId(), sui);

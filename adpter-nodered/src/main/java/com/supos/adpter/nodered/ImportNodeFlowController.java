@@ -111,7 +111,7 @@ public class ImportNodeFlowController {
     @Order(1000)
     void onBatchDeleteFlow(RemoveTopicsEvent event) {
         log.info("==>trigger delete flow event 开始批量删除流程...");
-        if (!event.withFlow) {
+        if (!event.withFlow || event.jdbcType == null || event.jdbcType == SrcJdbcType.None) {
             log.info("<==skip delete flows, because withFlow is false");
             return;
         }
@@ -119,8 +119,9 @@ public class ImportNodeFlowController {
             log.info("<==skip delete flows, because topics is empty");
             return;
         }
-        importNodeRedFlowService.deleteFlows(event.topics.values().stream().map(SimpleUnsInstance::getAlias).collect(Collectors.toSet()));
-        log.info("<== 批量删除成功");
+        List<String> alias = event.topics.values().stream().filter(SimpleUnsInstance::isRemoveTableWhenDeleteInstance).map(SimpleUnsInstance::getAlias).collect(Collectors.toList());
+        importNodeRedFlowService.deleteFlows(alias);
+        log.info("<== 批量删除成功 {}", alias.size());
 
     }
 

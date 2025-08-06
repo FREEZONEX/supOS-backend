@@ -54,7 +54,8 @@ public class TopicDefinition {
     }
 
     public int getDataType() {
-        return createTopicDto.getDataType();
+        Integer dataType = createTopicDto.getDataType();
+        return dataType != null ? dataType : 0;
     }
 
     public AlarmRuleDefine getAlarmRuleDefine() {
@@ -74,6 +75,9 @@ public class TopicDefinition {
     }
 
     private void initByCreateTopicDto(CreateTopicDto dto, boolean init) {
+        if (dto == null) {
+            return;
+        }
         FieldDefine[] fields = dto.getFields();
         if (fields != null && fields.length > 0) {
             Map<String, FieldDefine> fieldDefineMap = dto.getFieldDefines().getFieldsMap();

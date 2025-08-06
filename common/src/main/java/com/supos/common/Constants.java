@@ -5,14 +5,17 @@ import cn.hutool.system.SystemUtil;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Constants {
+
+    public static final AtomicBoolean readOnlyMode = new AtomicBoolean(true);
 
     public static final boolean useAliasAsTopic; // 是否使用别名alias作为 mqtt topic,false 则使用文件路径作为 mqtt topic
     public static final String MQTT_PLUGIN;
 
     public static final String SYSTEM_FIELD_PREV = "_";
-    public static final String SYSTEM_SEQ_TAG = "tag_name";
+    public static final String SYSTEM_SEQ_TAG = "tag";
     public static final String SYSTEM_SEQ_VALUE = "value";
     public static final String SYS_FIELD_CREATE_TIME;
     public static final String QOS_FIELD;
@@ -25,6 +28,7 @@ public class Constants {
     public static final String FIRST_MSG_FLAG = "#1#";//启动时首条消息的标志
     public static final int WS_SESSION_LIMIT; // ws会话限制
     public static final int UNS_OVERDUE_DELETE;
+    public static final String OS_VERSION;
 
     static {
         final String k = "SYS_OS_USE_ALIAS_PATH_AS_TOPIC";
@@ -34,13 +38,14 @@ public class Constants {
         }
         useAliasAsTopic = Boolean.parseBoolean(v);
 
+        OS_VERSION = SystemUtil.get("SYS_OS_VERSION", "1.0");
         SYS_FIELD_CREATE_TIME = SystemUtil.get("SYS_OS_TIMESTAMP_NAME", "timeStamp");
         QOS_FIELD = SystemUtil.get("SYS_OS_QUALITY_NAME", "status");
         UNS_ADD_BATCH_SIZE = SystemUtil.getInt("UNS_ADD_BATCH_SIZE", 1000);
 
-        MQTT_PLUGIN =  SystemUtil.get("MQTT_PLUGIN", "emqx");
-        WS_SESSION_LIMIT =  SystemUtil.getInt("WS_SESSION_LIMIT", 50);
-        UNS_OVERDUE_DELETE =  SystemUtil.getInt("UNS_HISTORY_OVER_DUE", 7);
+        MQTT_PLUGIN = SystemUtil.get("MQTT_PLUGIN", "emqx");
+        WS_SESSION_LIMIT = SystemUtil.getInt("WS_SESSION_LIMIT", 50);
+        UNS_OVERDUE_DELETE = SystemUtil.getInt("UNS_HISTORY_OVER_DUE", 7);
 
         systemFields = new HashSet<>(Arrays.asList(SYSTEM_SEQ_TAG, SYS_FIELD_ID, SYS_FIELD_CREATE_TIME, Constants.QOS_FIELD, Constants.SYS_SAVE_TIME, "_ct"));
 
@@ -64,6 +69,9 @@ public class Constants {
     public static final int UNS_FLAG_ALARM_ACCEPT_WORKFLOW = 1 << 5;// 报警规则接收方式 32工作流
     public static final int UNS_FLAG_ACCESS_LEVEL_READ_ONLY = 1 << 6; // 北向访问级别:READ_ONLY-只读
     public static final int UNS_FLAG_ACCESS_LEVEL_READ_WRITE = 1 << 7;// 北向访问级别:READ_WRITE-读写
+    public static final int UNS_FLAG_WITH_ATTACHMENT = 1 << 9;// UNS带附件的标志
+    public static final int UNS_FLAG_HAS_DATA = 1 << 10;// UNS有存过数据的标志,帮助决定删除时是否要存 uns_history_delete_job
+
 
     public static boolean withFlow(int unsFlag) {
         return (unsFlag & UNS_FLAG_WITH_FLOW) == UNS_FLAG_WITH_FLOW;
@@ -89,6 +97,20 @@ public class Constants {
             return ACCESS_LEVEL_READ_WRITE;
         }
         return null;
+    }
+
+    public static boolean withAttachment(Integer flags) {
+        if (flags == null) {
+            return false;
+        }
+        return (flags & UNS_FLAG_WITH_ATTACHMENT) == UNS_FLAG_WITH_ATTACHMENT;
+    }
+
+    public static boolean withHasData(Integer flags) {
+        if (flags == null) {
+            return false;
+        }
+        return (flags & UNS_FLAG_HAS_DATA) == UNS_FLAG_HAS_DATA;
     }
 
     /**

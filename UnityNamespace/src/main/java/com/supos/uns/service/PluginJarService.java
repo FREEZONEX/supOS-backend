@@ -15,13 +15,20 @@ import com.supos.uns.util.BootJarToLibJar;
 import com.supos.uns.util.LongestCommonPrefix;
 import com.supos.uns.util.YamlToProperties;
 import io.swagger.v3.oas.models.OpenAPI;
+import jakarta.servlet.Filter;
+import jakarta.servlet.ServletContext;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.LifecycleState;
+import org.apache.catalina.core.ApplicationContextFacade;
+import org.apache.catalina.core.StandardContext;
+import org.apache.catalina.util.LifecycleBase;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.executor.ErrorContext;
 import org.apache.ibatis.io.Resources;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.defaults.DefaultSqlSessionFactory;
+import org.apache.tomcat.util.descriptor.web.FilterDef;
 import org.jetbrains.annotations.NotNull;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.mybatis.spring.mapper.ClassPathMapperScanner;
@@ -48,6 +55,7 @@ import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.beans.factory.parsing.PassThroughSourceExtractor;
 import org.springframework.beans.factory.support.*;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.*;
 import org.springframework.context.annotation.*;
 import org.springframework.context.event.EventListener;
@@ -131,6 +139,10 @@ public class PluginJarService {
     @Autowired
     MybatisPlusAutoConfiguration mybatisPlusAutoConfiguration;
     Method getMergedLocalBeanDefinition;
+    @Autowired
+    private ServletContext servletContext;
+    private org.apache.catalina.core.ApplicationContext origAppContext;
+    private StandardContext origServletContext;
 
     @Order(1001)
     @EventListener(classes = ContextRefreshedEvent.class)
@@ -158,6 +170,20 @@ public class PluginJarService {
         CONFIGURATION_CLASS_ATTRIBUTE = (String) attr.get(null);
         getMergedLocalBeanDefinition = AbstractBeanFactory.class.getDeclaredMethod("getMergedLocalBeanDefinition", String.class);//
         getMergedLocalBeanDefinition.setAccessible(true);
+        if (servletContext instanceof ApplicationContextFacade) {
+            Field ctxTarget = ApplicationContextFacade.class.getDeclaredField("context");
+            ctxTarget.setAccessible(true);
+            Object tar = ctxTarget.get(servletContext);
+            if (tar instanceof org.apache.catalina.core.ApplicationContext appCtx) {
+                origAppContext = appCtx;
+                ctxTarget = org.apache.catalina.core.ApplicationContext.class.getDeclaredField("context");
+                ctxTarget.setAccessible(true);
+                Object directCtx = ctxTarget.get(appCtx);
+                if (directCtx instanceof StandardContext tomcatCtx) {
+                    origServletContext = tomcatCtx;
+                }
+            }
+        }
     }
 
     public void setPlugName(File pluginJar, PlugInfo plugInfo) throws IOException {
@@ -305,7 +331,7 @@ public class PluginJarService {
                             }
                         }
                     }
-                } else if (entryName.endsWith(".yml")) {
+                } else if (entryName.endsWith(".yml") || entryName.endsWith(".yaml")) {
                     try (InputStream stream = jarFile.getInputStream(jarEntry)) {
                         properties.putAll(YamlToProperties.convert(stream));
                     }
@@ -329,8 +355,7 @@ public class PluginJarService {
         } else {
             jarUrls = new URL[]{jarUrl};
         }
-        PluginClassLoader classLoader = new PluginClassLoader(plugInfo.getName(), jarUrls, basePackage,
-                depends != null ? depends.toArray(new PackageClassLoaderInfo[0]) : null);
+        PluginClassLoader classLoader = new PluginClassLoader(plugInfo.getName(), jarUrls, basePackage, depends != null ? depends.toArray(new PackageClassLoaderInfo[0]) : null);
         plugInfo.setClassLoader(classLoader);
 
         if (!properties.isEmpty()) {
@@ -342,8 +367,7 @@ public class PluginJarService {
     private void injectInnerEnvYaml(PlugInfo plugInfo, Properties properties) {
         // 创建 PropertySource 并添加到 Environment 中
         String propertySourceName = envPropertyInnerName(plugInfo);
-        PropertiesPropertySource propertySource =
-                new PropertiesPropertySource(propertySourceName, properties);
+        PropertiesPropertySource propertySource = new PropertiesPropertySource(propertySourceName, properties);
         MutablePropertySources propertySources = environment.getPropertySources();
         if (propertySources.contains(propertySourceName)) {
             propertySources.replace(propertySourceName, propertySource);
@@ -364,6 +388,7 @@ public class PluginJarService {
     }
 
     public synchronized boolean tryInstallPlugin(PlugInfo plugInfo, File pluginJar, Function<String, PlugInfo> dependencySupplier) throws Exception {
+        log.info("tryInstallPlugin： {} {}", plugInfo.getName(), plugInfo.getId());
         PluginClassLoader classLoader = loadBaseInfo(plugInfo, pluginJar, dependencySupplier);
 
         String basePackage = plugInfo.getBasePackage();
@@ -386,6 +411,7 @@ public class PluginJarService {
         processCandidateBean.setAccessible(true);
 
         plugInfo.setBaseInfo(pluginJar.getAbsolutePath(), classLoader, basePackage, pkgBeanNames, mapperNames);
+        log.info("setBaseInfo: {}", plugInfo);
 
         AbstractBeanFactory abstractBeanFactory = (AbstractBeanFactory) beanFactory.getAutowireCapableBeanFactory();
         // 替换 classloader
@@ -422,15 +448,48 @@ public class PluginJarService {
                     normalBeans.add(beanName);
                 }
 
-                if (processBean(PLUG_ID, beanName, klass, bean,
-                        onStarts::add,
-                        onCloses::add)) {
+                if (processBean(PLUG_ID, beanName, klass, bean, onStarts::add, onCloses::add)) {
                     eventListenerCount++;
                 }
                 Field[] allFields = ReflectUtil.getFieldsDirectly(klass, true);
                 Object tarBean = AopProxyUtils.getSingletonTarget(bean);
                 if (tarBean == null) {
                     tarBean = bean;
+                }
+                if (tarBean instanceof Filter filter) {
+                    if (origServletContext != null) {
+                        FilterRegistrationBean<Filter> registrationBean = new FilterRegistrationBean<>(filter);
+                        registrationBean.setName(beanName);
+                        final LifecycleState state = origServletContext.getState();
+                        Field stateF = LifecycleBase.class.getDeclaredField("state");
+                        stateF.setAccessible(true);
+                        stateF.set(origServletContext, LifecycleState.STARTING_PREP);
+                        registrationBean.onStartup(servletContext);
+                        stateF.set(origServletContext, state);
+                        {
+                            FilterDef filterDef = origServletContext.findFilterDef(beanName);
+                            if (filterDef == null) {
+                                filterDef = new FilterDef();
+                                filterDef.setFilterName(beanName);
+                                filterDef.setFilterClass(filter.getClass().getName());
+                                filterDef.setFilter(filter);
+                                origServletContext.addFilterDef(filterDef);
+                                log.info("注册ServletFilter: {}", beanName);
+                            } else {
+                                log.info("已有 ServletFilter: {}", filterDef);
+                            }
+                            origServletContext.filterStart();// 新增后, 刷新 Filter 缓存
+                        }
+                        FilterDef filterDef = origServletContext.findFilterDef(beanName);
+                        if (filterDef != null) {
+                            closeCallbacks.add(new NamedRunnable("Filter-" + beanName, () -> {
+                                log.info("ServletFilter 卸载回调: {}", beanName);
+                                origServletContext.removeFilterDef(filterDef);
+                                filter.destroy();
+                                origServletContext.filterStart();// 卸载后, 刷新 Filter 缓存
+                            }));
+                        }
+                    }
                 }
                 for (Field field : allFields) {
                     addUninstallCallbacksByField(field, tarBean, closeCallbacks);
@@ -446,13 +505,11 @@ public class PluginJarService {
         if (!closeCallbacks.isEmpty() || !onCloses.isEmpty() || !lifecycles.isEmpty()) {
             if (!onCloses.isEmpty()) {
                 Collections.sort(onCloses, PluginJarService::compareBean);
-                closeCallbacks.addAll(0, onCloses.stream().map(cl ->
-                        new NamedRunnable("contextClosed", () -> cl.onApplicationEvent(contextClosedEvent))).toList());
+                closeCallbacks.addAll(0, onCloses.stream().map(cl -> new NamedRunnable("contextClosed", () -> cl.onApplicationEvent(contextClosedEvent))).toList());
             }
             if (!lifecycles.isEmpty()) {
                 Collections.sort(lifecycles, PluginJarService::compareBean);
-                closeCallbacks.addAll(0, lifecycles.stream().map(lifecycle ->
-                        new NamedRunnable(lifecycle.toString(), lifecycle::stop)).toList());
+                closeCallbacks.addAll(0, lifecycles.stream().map(lifecycle -> new NamedRunnable(lifecycle.toString(), lifecycle::stop)).toList());
             }
             plugInfo.setUninstallCallbacks(closeCallbacks.toArray(new Runnable[0]));
         }
@@ -501,6 +558,7 @@ public class PluginJarService {
                 }
             }
         }
+        log.info("InstalledPlugin： {} {} {}", plugInfo.getName(), plugInfo.getId(), plugInfo.getInstallStatus());
         return true;
     }
 
@@ -593,11 +651,12 @@ public class PluginJarService {
         int size = beanFactory.getBeanDefinitionCount();
         log.info("扫描数量：{}", count);
         String[] beanNames = beanFactory.getBeanDefinitionNames();
-        String[] pkgBeanNames = new String[count];
+        LinkedHashSet<String> pkgBeanNames = new LinkedHashSet<>(count);
+        LinkedHashSet<String> ctlPkgBeanNames = new LinkedHashSet<>(16);
+
         final ConfigurableBeanFactory configurableBeanFactory = (ConfigurableBeanFactory) beanFactory.getAutowireCapableBeanFactory();
         for (int i = size - count, j = 0; i < size; i++) {
             final String beanName = beanNames[i];
-            pkgBeanNames[j++] = beanName;
             BeanDefinition definition = listableBeanFactory.getBeanDefinition(beanName);
             log.debug("扫描：{}, def={}", beanName, definition);
             Class klass = classLoader.loadClass(definition.getBeanClassName());
@@ -612,7 +671,14 @@ public class PluginJarService {
             if (rootBeanDefinition != null) {
                 rootBeanDefinition.setTargetType(klass);
             }
+            // Controller 接口
+            if (AnnotatedElementUtils.hasAnnotation(klass, Controller.class)) {
+                ctlPkgBeanNames.add(beanName);
+            } else {
+                pkgBeanNames.add(beanName);
+            }
         }
+        pkgBeanNames.addAll(ctlPkgBeanNames);
         log.info("{} 扫描组件：{}", basePackage, pkgBeanNames);
 
 
@@ -624,15 +690,13 @@ public class PluginJarService {
         String[] beanNamesBeforeCfg = beanFactory.getBeanDefinitionNames();
         MetadataReaderFactory metadataReaderFactory = new SimpleMetadataReaderFactory(resourceLoader);
 
-        PlugBeanPostProcessor.post(metadataReaderFactory, listableBeanFactory, new PassThroughSourceExtractor(), resourceLoader,
-                this.environment,
-                AnnotationBeanNameGenerator.INSTANCE);
+        PlugBeanPostProcessor.post(metadataReaderFactory, listableBeanFactory, new PassThroughSourceExtractor(), resourceLoader, this.environment, AnnotationBeanNameGenerator.INSTANCE);
         String[] beanNamesAfterCfg = beanFactory.getBeanDefinitionNames();
 
         final int scanCfgCount = beanNamesAfterCfg.length - beanNamesBeforeCfg.length;
-        List<String> cfgBeans = Collections.emptyList();
+        Set<String> cfgBeans = Collections.emptySet();
         if (scanCfgCount > 0) {
-            cfgBeans = new ArrayList<>(scanCfgCount);
+            cfgBeans = new LinkedHashSet<>(scanCfgCount);
             log.info("{} 扫描配置类数量：{}", basePackage, scanCfgCount);
             try {
                 for (int i = scanCfgCount; i > 0; i--) {
@@ -640,11 +704,9 @@ public class PluginJarService {
                     cfgBeans.add(beanName);
                     BeanDefinition definition = listableBeanFactory.getBeanDefinition(beanName);
                     log.debug("扫描配置：{}, def={}:{}", beanName, definition.getClass().getSimpleName(), definition);
-                    if (definition.getBeanClassName() != null) {
+                    if (definition.getBeanClassName() != null && definition instanceof AbstractBeanDefinition rv && !rv.hasBeanClass()) {
                         Class klass = classLoader.loadClass(definition.getBeanClassName());
-                        if (definition instanceof AbstractBeanDefinition rv) {
-                            rv.setBeanClass(klass);
-                        }
+                        rv.setBeanClass(klass);
                     }
                 }
             } finally {
@@ -653,10 +715,11 @@ public class PluginJarService {
             }
         }
         if (!cfgBeans.isEmpty()) {
-            cfgBeans.addAll(Arrays.asList(pkgBeanNames));
-            pkgBeanNames = cfgBeans.toArray(new String[0]);
+            cfgBeans.addAll(pkgBeanNames);
+            return cfgBeans.toArray(new String[0]);
+        } else {
+            return pkgBeanNames.toArray(new String[0]);
         }
-        return pkgBeanNames;
     }
 
     private @NotNull String[] scanPluginMappers(BeanDefinitionRegistry beanDefinitionRegistry, ResourceLoader resourceLoader, ClassLoader classLoader, String basePackage) {
@@ -776,9 +839,7 @@ public class PluginJarService {
         }
     }
 
-    private boolean processBean(final int pluginId, final String beanName, final Class<?> targetType, Object bean,
-                                Consumer<ApplicationListener> onStarts,
-                                Consumer<ApplicationListener> onCloses) {
+    private boolean processBean(final int pluginId, final String beanName, final Class<?> targetType, Object bean, Consumer<ApplicationListener> onStarts, Consumer<ApplicationListener> onCloses) {
         if (AnnotationUtils.isCandidateClass(targetType, EventListener.class)) {
 
             Map<Method, EventListener> annotatedMethods = null;
@@ -1090,7 +1151,7 @@ public class PluginJarService {
 
         @Override
         public String toString() {
-            return getName() + ":" + basePackage + ":@" + Integer.toHexString(hashCode());
+            return getName() + ":@" + Integer.toHexString(hashCode()) + " " + Arrays.toString(depends);
         }
     }
 

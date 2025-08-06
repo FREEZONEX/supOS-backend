@@ -181,6 +181,7 @@ public class WebsocketService implements WebsocketSender {
     @EventListener(classes = RemoveTopicsEvent.class)
     @Order(100)
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
+        long t0 = System.currentTimeMillis();
         for (SimpleUnsInstance file : event.topics.values()) {
             Long unsId = file.getId();
             String topic = file.getTopic();
@@ -195,6 +196,8 @@ public class WebsocketService implements WebsocketSender {
                 }
             }
         }
+        long t1 = System.currentTimeMillis();
+        log.info("删除耗时 : {} ms", t1-t0);
     }
 
     private Set<String> tryGetCitingSubscribe(Long unsId, Set<String> connectionIds) {

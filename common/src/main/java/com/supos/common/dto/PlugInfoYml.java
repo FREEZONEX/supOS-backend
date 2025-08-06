@@ -1,5 +1,8 @@
 package com.supos.common.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -14,6 +17,7 @@ import java.util.List;
  * @date 2025/5/20 18:46
  */
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class PlugInfoYml implements Serializable {
 
     @Schema(description = "插件名称,唯一")
@@ -22,8 +26,16 @@ public class PlugInfoYml implements Serializable {
     @Schema(description = "插件显示名称")
     private String showName;
 
+    @Hidden
+    @JsonIgnore
+    private String showNameI18nCode;
+
     @Schema(description = "插件描述")
     private String description;
+
+    @Hidden
+    @JsonIgnore
+    private String descriptionI18nCode;
 
     @Schema(description = "插件版本")
     private String version;
@@ -33,6 +45,9 @@ public class PlugInfoYml implements Serializable {
 
     @Schema(description = "是否自动安装")
     private Boolean autoInstall;
+
+    @Schema(description = "是否可卸载")
+    private Boolean removable = true;
 
     @Schema(description = "插件路由")
     private PlugRoute route;

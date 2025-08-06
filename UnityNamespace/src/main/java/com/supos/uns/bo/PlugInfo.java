@@ -9,11 +9,15 @@ import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.URLClassLoader;
 import java.util.HashSet;
 import java.util.Set;
 
+@Slf4j
 @Getter
 @Setter
 public class PlugInfo {
@@ -33,6 +37,17 @@ public class PlugInfo {
      */
     @Schema(description = "插件状态，installed--已安装，notInstall--未安装，installFail--安装失败")
     private String installStatus;
+
+    public void setInstallStatus(String installStatus) {
+        this.installStatus = installStatus;
+        StackTraceElement[] traceElements = new Exception().getStackTrace();
+        StringWriter ap = new StringWriter(128);
+        PrintWriter out = new PrintWriter(ap);
+        for (int i = 1; i < 6; i++) {
+            out.println(traceElements[i]);
+        }
+        log.warn("更新插件状态:  {} {} {} {}", getName(), getId(), installStatus, ap);
+    }
 
     /**
      * 插件所在路径

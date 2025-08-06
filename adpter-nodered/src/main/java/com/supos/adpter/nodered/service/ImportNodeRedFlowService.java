@@ -2,18 +2,16 @@ package com.supos.adpter.nodered.service;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
+import com.google.common.collect.Lists;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowMapper;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowModelMapper;
-import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
 import com.supos.adpter.nodered.dao.po.NodeFlowPO;
-import com.supos.adpter.nodered.service.parse.*;
+import com.supos.adpter.nodered.service.parse.ParserApi;
+import com.supos.adpter.nodered.service.parse.RelationalParser;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
 import com.supos.adpter.nodered.vo.NodeFlowVO;
 import com.supos.common.dto.ResultDTO;
-import com.supos.common.dto.protocol.ProtocolTagEnums;
-import com.supos.common.event.BatchCreateTableEvent;
 import com.supos.common.event.FlowInstallEvent;
-import com.supos.common.exception.NodeRedException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
@@ -26,8 +24,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -141,15 +137,22 @@ public class ImportNodeRedFlowService {
      * @param aliases
      */
     @Transactional(isolation = Isolation.READ_COMMITTED, timeout = 300)
-    public void deleteFlows(Collection<String> aliases) {
-        List<Long> parentIds = nodeFlowModelMapper.selectByAliases(aliases);
-        if (parentIds.isEmpty()) {
-            log.info("skip delete flows, because flow-model refs is empty");
+    public void deleteFlows(List<String> aliases) {
+        if (aliases == null || aliases.isEmpty()) {
             return;
         }
-        for (Long id : parentIds) {
-            nodeRedAdapterService.deleteFlow(id, false);
+        List<List<String>> listList = Lists.partition(aliases, 500);
+        for (List<String> sublist : listList) {
+            List<Long> parentIds = nodeFlowModelMapper.selectByAliases(sublist);
+            if (parentIds.isEmpty()) {
+                log.info("skip delete flows, because flow-model refs is empty");
+                return;
+            }
+            for (Long id : parentIds) {
+                nodeRedAdapterService.deleteFlow(id, false);
+            }
         }
+
     }
 
     @EventListener(classes = FlowInstallEvent.class)
@@ -163,6 +166,7 @@ public class ImportNodeRedFlowService {
 
     /**
      * 导入demo流程
+     *
      * @param demoFileName demo-it-flows / demo-ot-flows
      * @return
      */
@@ -182,6 +186,7 @@ public class ImportNodeRedFlowService {
 
     /**
      * 删除demo流程
+     *
      * @param demoFileName demo-it-flows / demo-ot-flows
      */
     public void deleteDemo(String demoFileName) {
