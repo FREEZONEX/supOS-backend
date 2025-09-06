@@ -57,7 +57,7 @@ mybatis:
   configuration:
     map-underscore-to-camel-case: true
 kong:
-  host: kong
+  host: 192.168.235.58
   port: 8001
 node-red:
   host: 100.100.100.20

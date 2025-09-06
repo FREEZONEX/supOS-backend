@@ -10,12 +10,13 @@ import cn.hutool.system.SystemUtil;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
-import com.bluejeans.common.bigqueue.BigArray;
-import com.bluejeans.common.bigqueue.BigQueue;
+import com.bluejeans.bigqueue.BigArray;
+import com.bluejeans.bigqueue.BigQueue;
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Snapshot;
+import com.google.common.collect.Lists;
 import com.supos.adapter.mqtt.dto.FieldErrMsg;
 import com.supos.adapter.mqtt.dto.LastMessage;
 import com.supos.adapter.mqtt.dto.TopicMessage;
@@ -157,8 +158,8 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         }));
     }
 
-    public static int FETCH_SIZE = Integer.parseInt(System.getProperty("fetch", "20000"));
-    public static int MAX_WAIT_MILLS = Integer.parseInt(System.getProperty("maxWait", "1000"));
+    public static int FETCH_SIZE = Integer.parseInt(System.getProperty("fetch", "1000"));
+    public static int MAX_WAIT_MILLS = Integer.parseInt(System.getProperty("maxWait", "200"));
 
     private boolean subscribeALL;
 
@@ -261,21 +262,24 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             dequeuedSize.getAndAdd(dataList.size());
             for (byte[] dataBs : dataList) {
                 String json = new String(dataBs, StandardCharsets.UTF_8);
-                TopicMessage msg = JSON.parseObject(json, TopicMessage.class);
-                Long id = msg.getId();
-                TopicDefinition definition = uds.getTopicDefinitionMap().get(id);
-                if (definition != null) {
-                    List<Map<String, Object>> list = msg.getMsg();
-                    HashMap<Long, SaveDataDto> topicData = typedDataMap.computeIfAbsent(definition.getJdbcType(), k -> new HashMap<>());
-                    SaveDataDto dataDto = topicData.computeIfAbsent(id, k -> new SaveDataDto(id, definition.getTable(), definition.getFieldDefines(), new LinkedList<>()));
-                    CreateTopicDto def = definition.getCreateTopicDto();
-                    dataDto.setCreateTopicDto(def);
-                    dataDto.getList().addAll(list);
-                    String fieldValue = def.getTbFieldName();
-                    if (fieldValue != null) {
-                        final Long curUns = def.getId();
-                        for (Map<String, Object> data : list) {
-                            data.put(fieldValue, curUns);
+                List<TopicMessage> topicMessages = JSON.parseArray(json, TopicMessage.class);
+//                TopicMessage msg = JSON.parseObject(json, TopicMessage.class);
+                for (TopicMessage msg : topicMessages) {
+                    Long id = msg.getId();
+                    TopicDefinition definition = uds.getTopicDefinitionMap().get(id);
+                    if (definition != null) {
+                        Map<String, Object>[] list = msg.getMsg();
+                        HashMap<Long, SaveDataDto> topicData = typedDataMap.computeIfAbsent(definition.getJdbcType(), k -> new HashMap<>());
+                        SaveDataDto dataDto = topicData.computeIfAbsent(id, k -> new SaveDataDto(id, definition.getTable(), definition.getFieldDefines(), new LinkedList<>()));
+                        CreateTopicDto def = definition.getCreateTopicDto();
+                        dataDto.setCreateTopicDto(def);
+                        dataDto.getList().addAll(Arrays.asList(list));
+                        String fieldValue = def.getTbFieldName();
+                        if (fieldValue != null) {
+                            final Long curUns = def.getId();
+                            for (Map<String, Object> data : list) {
+                                data.put(fieldValue, curUns);
+                            }
                         }
                     }
                 }
@@ -752,14 +756,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         if (definition.getDataType() == Constants.ALARM_RULE_TYPE) {
             return;
         }
-        queueLocker.readLock().lock();
-        try {
-            queue.enqueue(JsonUtil.toJsonBytes(new TopicMessage(definition.getCreateTopicDto().getId(), list)));
-            enqueuedSize.incrementAndGet();
-            semaphore.release();
-        } finally {
-            queueLocker.readLock().unlock();
-        }
+        flushToDiskQueue(new TopicMessage(unsId, new Map[]{definition.getLastMsg()}));
     }
 
     private void sendErrMsg(Long unsId, String topic, String payload, long nowInMills, TopicDefinition definition, String src) {
@@ -1363,6 +1360,24 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         }
     }
 
+    public void onBatchMessage(Map<String, Map<String, Object>> payloads) {
+        List<TopicMessage> tms = new LinkedList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : payloads.entrySet()) {
+            Long unsId = uds.getAliasMap().get(entry.getKey());
+            if (unsId == null) {
+                continue;
+            }
+            TopicDefinition definition = initTopicDefinitionData(entry.getValue(), unsId);
+            // 刷新位号内存最近的数据
+            sendToRefreshLatestMsg(unsId, definition.getDataType(),"", "", definition.getLastDt(), definition.getLastMsg(), "");
+            // 通知前端websocket显示
+            sendToWebsocket(unsId, "");
+            tms.add(new TopicMessage(unsId, new Map[]{definition.getLastMsg()}));
+        }
+        // 写入磁盘队列
+        batchFlushToDiskQueue(tms);
+    }
+
     @Override
     public void onMessageByAlias(String alias, String payload) {
         Long unsId = uds.getAliasMap().get(alias);
@@ -1379,10 +1394,8 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         if (definition.getDataType() == Constants.ALARM_RULE_TYPE) {
             return;
         }
-        List<Map<String, Object>> singlePayloadList = Collections.singletonList(definition.getLastMsg());
         // 写入磁盘队列
-        flushToDiskQueue(unsId, singlePayloadList);
-
+        flushToDiskQueue(new TopicMessage(unsId, new Map[]{definition.getLastMsg()}));
     }
 
     /**
@@ -1469,7 +1482,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             }
         }
         definition.setLastMsg(dataMap);
-        Map<String, Long> dtMap = new HashMap<>();
+        Map<String, Long> dtMap = new HashMap<>(8);
         long current = new Date().getTime();
         // 设置每个字段最近更新时间
         for (String key : dataMap.keySet()) {
@@ -1526,10 +1539,15 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         return null;
     }
 
-    private void flushToDiskQueue(Long unsId, List<Map<String, Object>> dataList) {
+    private void flushToDiskQueue(TopicMessage tm) {
+        batchFlushToDiskQueue(List.of(tm));
+    }
+
+    private void batchFlushToDiskQueue(List<TopicMessage> tms) {
         queueLocker.readLock().lock();
         try {
-            queue.enqueue(JsonUtil.toJsonBytes(new TopicMessage(unsId, dataList)));
+            byte[] jsonBytes = JsonUtil.toJsonBytes(tms);
+            queue.enqueue(jsonBytes);
             enqueuedSize.incrementAndGet();
             semaphore.release();
         } finally {

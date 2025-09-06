@@ -15,8 +15,8 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <smart-doc-maven-plugin.version>2.6.6</smart-doc-maven-plugin.version>
     </properties>
 
@@ -50,14 +50,19 @@
             <artifactId>adpter-minio</artifactId>
             <version>${project.version}</version>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>com.supos</groupId>-->
-<!--            <artifactId>adpter-camunda</artifactId>-->
-<!--            <version>${project.version}</version>-->
-<!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>com.supos</groupId>-->
+        <!--            <artifactId>adpter-camunda</artifactId>-->
+        <!--            <version>${project.version}</version>-->
+        <!--        </dependency>-->
         <dependency>
             <groupId>com.supos</groupId>
             <artifactId>adpter-nodered</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.supos</groupId>
+            <artifactId>supos-websocket</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -74,6 +79,7 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -118,7 +124,6 @@
             <artifactId>httpclient5</artifactId>
             <version>5.2.1</version>
         </dependency>
-
 
 
         <dependency>
@@ -182,6 +187,10 @@
             <groupId>com.alibaba</groupId>
             <artifactId>easyexcel</artifactId>
             <version>4.0.3</version>
+        </dependency>
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
         </dependency>
     </dependencies>
 

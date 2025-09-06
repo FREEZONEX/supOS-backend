@@ -3,12 +3,9 @@ springdoc:
     path: /swagger-ui
   api-docs:
     path: /swagger-ui/v3/api-docs
-
 grpc:
   server:
     port: 19099
-    max-recv-message-size: 20971520 # 20MB
-    max-send-message-size: 20971520
   thread-pool:
     core-size: ${GRPC_POOL_CORE_SIZE:8}      # 核心线程数（建议为 CPU核数 × 2）
     max-size: ${GRPC_POOL_MAX_SIZE:32}       # 最大线程数（建议为 CPU核数 × 4）

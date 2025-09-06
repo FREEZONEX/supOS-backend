@@ -20,6 +20,7 @@ public class PlugUtils {
 
     /**
      * 解压缩插件包
+     *
      * @param plugPackage
      * @param plugPackagePath
      */
@@ -60,11 +61,12 @@ public class PlugUtils {
 
     /**
      * 获取plug.yml内容
+     *
      * @param plugPackagePath
      * @return
      */
     public static PlugInfoYml getPlugInfoYml(String plugPackagePath) {
-        return MyYamlUtils.loadYaml(plugPackagePath + "/plug.yml", PlugInfoYml.class);
+        return MyYamlUtils.loadYaml(plugPackagePath + File.separator + "plug.yml", PlugInfoYml.class);
     }
 
 }

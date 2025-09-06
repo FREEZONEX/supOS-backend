@@ -1,19 +1,22 @@
 package com.supos.uns.service.exportimport.core.parser;
 
-import cn.hutool.core.bean.BeanUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.supos.common.Constants;
 import com.supos.common.dto.FieldDefine;
-import com.supos.common.dto.excel.ExcelTemplateDto;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.utils.I18nUtils;
+import com.supos.common.utils.PathUtil;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
-import com.supos.uns.service.exportimport.core.data.ExportImportData;
-import com.supos.uns.service.exportimport.core.parser.AbstractParser;
+import com.supos.uns.service.exportimport.core.parser.data.ValidateTemplate;
 import com.supos.uns.vo.CreateTemplateVo;
 import jakarta.validation.ConstraintViolation;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Triple;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * @author sunlifang
@@ -24,119 +27,106 @@ import java.util.*;
 @Slf4j
 public class TemplateParser extends AbstractParser {
 
+    private CreateTemplateVo check(ValidateTemplate templateDto, ExcelImportContext context) {
+        String flagNo = templateDto.getFlagNo();
+        // 基础校验
+        StringBuilder er = null;
+        Set<ConstraintViolation<Object>> violations = validator.validate(templateDto);
+        if (!violations.isEmpty()) {
+            if (er == null) {
+                er = new StringBuilder(128);
+            }
+            addValidErrMsg(er, violations);
+        }
+        if (er != null) {
+            context.addError(flagNo, er.toString());
+            return null;
+        }
+
+        CreateTemplateVo templateVo = new CreateTemplateVo();
+        templateVo.setFlagNo(flagNo);
+        templateVo.setName(templateDto.getName());
+        templateVo.setAlias(StringUtils.isNotBlank(templateDto.getAlias()) ? templateDto.getAlias() : PathUtil.generateAlias(templateDto.getName(),1));
+        templateVo.setDescription(templateDto.getDescription());
+
+        if (templateVo.getAlias().length() > 63) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.import.length.limit", "alias", 63));
+            return null;
+        }
+        if (!Constants.ALIAS_PATTERN.matcher(templateVo.getAlias()).matches()) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.import.formate.invalid", "alias", I18nUtils.getMessage("uns.import.formate2")));
+            return null;
+        }
+
+        if (templateVo.getName().length() > 63) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.import.length.limit", "name", 63));
+            return null;
+        }
+        if (!Constants.NAME_PATTERN.matcher(templateVo.getName()).matches()) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.import.formate.invalid", "name", I18nUtils.getMessage("uns.import.formate1")));
+            return null;
+        }
+
+        if (context.containTemplateAliasInImportFile(templateVo.getAlias())) {
+            // excel 中存在重复的topic
+            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", ExcelTypeEnum.Template.getCode(), templateDto.getName())));
+            return null;
+        }
+
+        Triple<Boolean, Integer, FieldDefine[]> checkFieldResult = checkFields(true, flagNo, templateDto.getFields(), context);
+        if (checkFieldResult.getLeft()) {
+            if (checkFieldResult.getRight() != null) {
+                templateVo.setFields(checkFieldResult.getRight());
+            } else {
+                context.addError(flagNo, I18nUtils.getMessage("uns.field.empty"));
+                return null;
+            }
+        } else {
+            return null;
+        }
+
+        return templateVo;
+    }
+
     @Override
-    public void parseExcel(int batch, int index, Map<String, Object> dataMap, ExcelImportContext context) {
+    public void parseExcel(String flagNo, Map<String, Object> dataMap, ExcelImportContext context) {
         Map<String, CreateTemplateVo> templateMap = new HashMap<>();
 
         if (isEmptyRow(dataMap)) {
             return;
         }
 
-        ExcelTemplateDto excelTemplateDto = BeanUtil.copyProperties(dataMap, ExcelTemplateDto.class);
-        excelTemplateDto.setBatch(batch);
-        excelTemplateDto.setIndex(index);
-        String batchIndex = excelTemplateDto.gainBatchIndex();
+        ValidateTemplate templateDto = new ValidateTemplate();
+        templateDto.setFlagNo(flagNo);
+        templateDto.setName(getValueFromDataMap(dataMap, "name"));
+        templateDto.setAlias(getValueFromDataMap(dataMap, "alias"));
+        templateDto.setFields(getValueFromDataMap(dataMap, "fields"));
+        templateDto.setDescription(getValueFromDataMap(dataMap, "description"));
 
-        {
-            StringBuilder er = null;
-            Set<ConstraintViolation<Object>> violations = validator.validate(excelTemplateDto);
-            if (!violations.isEmpty()) {
-                if (er == null) {
-                    er = new StringBuilder(128);
-                }
-                addValidErrMsg(er, violations);
-            }
-            if (er != null) {
-                context.addError(batchIndex, er.toString());
-                return;
-            }
+        CreateTemplateVo templateVo = check(templateDto, context);
+        if (templateVo != null) {
+            context.addTemplateVo(templateVo);
         }
-
-        CreateTemplateVo templateVo = new CreateTemplateVo();
-        templateVo.setName(excelTemplateDto.getName());
-        templateVo.setAlias(excelTemplateDto.getAlias());
-        templateVo.setDescription(excelTemplateDto.getDescription());
-        templateVo.setBatch(excelTemplateDto.getBatch());
-        templateVo.setIndex(excelTemplateDto.getIndex());
-
-        CreateTemplateVo templateInExcel = templateMap.get(templateVo.getName());
-        if (templateInExcel != null) {
-            // excel 中存在重复的topic
-            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", ExcelTypeEnum.Template.getCode(), templateInExcel.getName())));
-            return;
-        }
-
-        Pair<Boolean, FieldDefine[]> checkFieldResult = checkFields(batchIndex, excelTemplateDto.getFields(), context);
-        if (checkFieldResult.getLeft()) {
-            if (checkFieldResult.getRight() != null) {
-                templateVo.setFields(checkFieldResult.getRight());
-            } else {
-                context.addError(batchIndex, I18nUtils.getMessage("uns.field.empty"));
-                return;
-            }
-        } else {
-            return;
-        }
-
-        templateMap.put(templateVo.getName(), templateVo);
-        context.addTemplateVo(templateVo);
     }
 
     @Override
-    public void parseJson(int batch, int index, ExportImportData data, ExcelImportContext context) {
+    public void parseComplexJson(String flagNo, JsonNode data, ExcelImportContext context, Object parent) {
         Map<String, CreateTemplateVo> templateMap = new HashMap<>();
 
         if (data == null) {
             return;
         }
 
-        ExcelTemplateDto excelTemplateDto = BeanUtil.copyProperties(data, ExcelTemplateDto.class);
-        excelTemplateDto.setBatch(batch);
-        excelTemplateDto.setIndex(index);
-        String batchIndex = excelTemplateDto.gainBatchIndex();
+        ValidateTemplate templateDto = new ValidateTemplate();
+        templateDto.setFlagNo(flagNo);
+        templateDto.setName(getValueFromJsonNode(data, "name"));
+        templateDto.setAlias(getValueFromJsonNode(data, "alias"));
+        templateDto.setFields(getValueFromJsonNode(data, "fields"));
+        templateDto.setDescription(getValueFromJsonNode(data, "description"));
 
-        {
-            StringBuilder er = null;
-            Set<ConstraintViolation<Object>> violations = validator.validate(excelTemplateDto);
-            if (!violations.isEmpty()) {
-                if (er == null) {
-                    er = new StringBuilder(128);
-                }
-                addValidErrMsg(er, violations);
-            }
-            if (er != null) {
-                context.addError(batchIndex, er.toString());
-                return;
-            }
+        CreateTemplateVo templateVo = check(templateDto, context);
+        if (templateVo != null) {
+            context.addTemplateVo(templateVo);
         }
-
-        CreateTemplateVo templateVo = new CreateTemplateVo();
-        templateVo.setName(excelTemplateDto.getName());
-        templateVo.setAlias(excelTemplateDto.getAlias());
-        templateVo.setDescription(excelTemplateDto.getDescription());
-        templateVo.setBatch(excelTemplateDto.getBatch());
-        templateVo.setIndex(excelTemplateDto.getIndex());
-
-        CreateTemplateVo templateInExcel = templateMap.get(templateVo.getName());
-        if (templateInExcel != null) {
-            // excel 中存在重复的topic
-            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", ExcelTypeEnum.Template.getCode(), templateInExcel.getName())));
-            return;
-        }
-
-        Pair<Boolean, FieldDefine[]> checkFieldResult = checkFields(batchIndex, excelTemplateDto.getFields(), context);
-        if (checkFieldResult.getLeft()) {
-            if (checkFieldResult.getRight() != null) {
-                templateVo.setFields(checkFieldResult.getRight());
-            } else {
-                context.addError(batchIndex, I18nUtils.getMessage("uns.field.empty"));
-                return;
-            }
-        } else {
-            return;
-        }
-
-        templateMap.put(templateVo.getName(), templateVo);
-        context.addTemplateVo(templateVo);
     }
 }

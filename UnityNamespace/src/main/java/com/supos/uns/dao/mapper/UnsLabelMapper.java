@@ -48,4 +48,6 @@ public interface UnsLabelMapper extends BaseMapper<UnsLabelPo> {
             "(label_id, uns_id) values " +
             "(#{ref.labelId}, #{ref.unsId})")
     int saveRef(@Param("ref") UnsLabelRefPo ref);
+
+    void deleteRefByUnsIdLabelNames(@Param("unsId") Long unsId, List<String> labelNames);
 }

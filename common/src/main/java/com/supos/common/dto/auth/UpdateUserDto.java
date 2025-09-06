@@ -81,4 +81,6 @@ public class UpdateUserDto {
      * 是否操作角色
      */
     private Boolean operateRole;
+
+    private String source;
 }

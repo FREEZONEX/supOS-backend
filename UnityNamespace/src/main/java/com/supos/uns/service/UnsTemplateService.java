@@ -8,19 +8,19 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
-import com.supos.common.dto.*;
+import com.supos.common.dto.CreateTopicDto;
+import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.PageResultDTO;
+import com.supos.common.dto.SimpleUnsInstance;
 import com.supos.common.enums.ActionEnum;
 import com.supos.common.enums.EventMetaEnum;
 import com.supos.common.enums.ServiceEnum;
-import com.supos.common.event.BatchCreateTableEvent;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.event.SysEvent;
+import com.supos.common.event.UpdateInstanceEvent;
 import com.supos.common.exception.vo.ResultVO;
-import com.supos.common.utils.FieldUtils;
-import com.supos.common.utils.I18nUtils;
-import com.supos.common.utils.JsonUtil;
-import com.supos.common.utils.PathUtil;
+import com.supos.common.utils.*;
 import com.supos.uns.dao.mapper.AlarmMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.UnsPo;
@@ -44,7 +44,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.supos.common.utils.FieldUtils.countNumericFields;
-import static com.supos.uns.service.UnsAddService.nextId;
 
 @Service
 @Slf4j
@@ -82,7 +81,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
         }
 
         UnsPo unsPo = new UnsPo();
-        unsPo.setId(nextId());
+        unsPo.setId(SuposIdUtil.nextId());
         unsPo.setName(name);
         setTemplateParent(unsPo);
         unsPo.setDataType(0);
@@ -108,7 +107,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
     }
 
     @Transactional(timeout = 300, rollbackFor = Throwable.class)
-    public Map<String, String> createTemplates(List<CreateTemplateVo> createTemplateVos) {
+    public Map<String, String> createTemplates(Collection<CreateTemplateVo> createTemplateVos) {
         Set<String> aliasSet = createTemplateVos.stream().map(CreateTemplateVo::getAlias)
                 .collect(Collectors.toSet());
         List<UnsPo> existTemplates = list(
@@ -126,7 +125,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
                 continue;
             }
             UnsPo unsPo = new UnsPo(createTemplateVo.getName());
-            unsPo.setId(nextId());
+            unsPo.setId(SuposIdUtil.nextId());
             unsPo.setName(createTemplateVo.getName());
 
             setTemplateParent(unsPo);
@@ -152,17 +151,38 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
             result.setMsg(I18nUtils.getMessage("uns.template.not.exists"));
             return result;
         }
-        QueryWrapper<UnsPo> queryWrapper = new QueryWrapper<UnsPo>().eq("model_id", id)
-                .eq("path_type", Constants.PATH_TYPE_FILE);
+        QueryWrapper<UnsPo> queryWrapper = new QueryWrapper<UnsPo>().eq("model_id", id);
         List<UnsPo> unsPos = this.list(queryWrapper);
-        unsPos.add(template);
-
+        List<Long> folderIds = new ArrayList<>(32);
+        List<UnsPo> files = new ArrayList<>(unsPos.size());
+        for (UnsPo po : unsPos) {
+            int pathType = po.getPathType();
+            switch (pathType) {
+                case Constants.PATH_TYPE_FILE: {
+                    files.add(po);
+                    break;
+                }
+                case Constants.PATH_TYPE_DIR: {
+                    folderIds.add(po.getId());
+                    break;
+                }
+            }
+        }
+        files.add(template);
         List<WebhookDataDTO> webhookData = WebhookUtils.transfer(unsPos);
         if (!webhookData.isEmpty()) {
             EventBus.publishEvent(new SysEvent(this, ServiceEnum.UNS_SERVICE, EventMetaEnum.UNS_FILED_CHANGE,
                     ActionEnum.DELETE, webhookData));
         }
-        List<CreateTopicDto> dtoList = unsPos.stream().map(p -> unsConverter.po2dto(p, false)).toList();
+
+        if (!CollectionUtils.isEmpty(folderIds)) {
+            LambdaUpdateWrapper<UnsPo> updateWrapper = new LambdaUpdateWrapper<>();
+            updateWrapper.in(UnsPo::getId, folderIds);
+            updateWrapper.set(UnsPo::getModelId, null);
+            update(updateWrapper);
+        }
+        List<CreateTopicDto> dtoList = files.stream().map(p -> unsConverter.po2dto(p, false)).toList();
+
         return unsRemoveService.getRemoveResult(true, true, true, dtoList);
     }
 
@@ -248,33 +268,33 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
      */
     @Transactional(isolation = Isolation.READ_COMMITTED, timeout = 300)
     public ResultVO updateFields(String alias, FieldDefine[] fields) {
-        String[] err = new String[1];
-        FieldUtils.processFieldDefines(alias, null, fields, err, true, false);
-        if (err[0] != null) {
-            return ResultVO.fail(err[0]);
-        }
         UnsPo uns = baseMapper.getByAlias(alias);
         if (uns == null || uns.getPathType() == null) {
             return ResultVO.fail(I18nUtils.getMessage("uns.template.not.exists"));
-        } else if (Constants.PATH_TYPE_FILE == uns.getPathType()) {
-            return ResultVO.fail(I18nUtils.getMessage("uns.template.not"));
+        }
+        FieldUtils.TableFieldDefine rs;
+        {
+            String[] err = new String[1];
+            SrcJdbcType jdbcType = SrcJdbcType.getById(uns.getDataSrcId());
+            rs = FieldUtils.processFieldDefines(alias, jdbcType, fields, err, true, jdbcType != null);
+            if (err[0] != null) {
+                return ResultVO.fail(err[0]);
+            }
         }
 
         // 统计数字类型的字段个数，不包含系统字段
         int totalNumberField = countNumericFields(fields);
-
-        // 自动添加系统字段 _ct _qos _id
-//        String[] errors = new String[1];
-//        FieldDefine[] autoFilledFields = processFieldDefines(uns.getPath(), uns.getDataType(), uns.getDataSrcId(), fields, errors, true);
-//        if (StringUtils.hasText(errors[0])) {
-//            throw new BuzException(errors[0]);
-//        }
+        if (uns.getPathType() == Constants.PATH_TYPE_FILE) {
+            fields = rs.fields;
+            uns.setTableName(rs.tableName);
+        }
+        Date updateTime = new Date();
         // 如果修改虚拟路径，走创建模型流程
         if (uns.getPathType() == Constants.PATH_TYPE_DIR && uns.getModelId() == null) {
-            baseMapper.updateModelFieldsById(uns.getId(), fields, totalNumberField);
+            baseMapper.updateModelFieldsById(uns.getId(), null, fields, totalNumberField, updateTime);
             return ResultVO.successWithData(uns.getId());
         }
-        Set<String> inputFields = Arrays.stream(fields).map(FieldDefine::getName)
+        Set<String> inputFields = Arrays.stream(fields).filter(i -> !i.isSystemField()).map(FieldDefine::getName)
                 .collect(Collectors.toSet());
         //过滤掉_开头的系统字段
         List<FieldDefine> oldFields = Arrays.stream(uns.getFields())
@@ -284,12 +304,13 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
                 .collect(Collectors.toList());
 
         // 查询模型下的实例, 以便后续修改实例的表结构
-        List<UnsPo> instances = baseMapper.listInstancesByModel(uns.getId());
+        List<UnsPo> instances = uns.getPathType() == Constants.PATH_TYPE_TEMPLATE ? baseMapper.listInstancesByModel(uns.getId()) :
+                (uns.getPathType() == Constants.PATH_TYPE_FILE ? List.of(uns) : Collections.emptyList());
 
         // 如果有字段删除，需要同时删除关联的计算实例
         List<UnsPo> delInstList = null; // 包含计算和告警实例
         List<Long> delAlarmIds = null; // 告警实例
-        if (!delFields.isEmpty()) {
+        if (!delFields.isEmpty() && !instances.isEmpty()) {
             delInstList = unsCalcService.detectReferencedCalcInstance(instances, uns.getPath(), delFields,
                     true);
             delAlarmIds = delInstList.stream().filter(i -> i.getDataType() == 5).map(UnsPo::getId)
@@ -302,39 +323,17 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
         }
 
         // 更新模型字段到数据库
-        baseMapper.updateModelFieldsById(uns.getId(), fields, totalNumberField);
-        if (!instances.isEmpty()) {
+        baseMapper.updateModelFieldsById(uns.getId(), uns.getTableName(), fields, totalNumberField, updateTime);
+        if (uns.getPathType() == Constants.PATH_TYPE_FILE) {
+            uns.setFields(fields);
+            uns.setUpdateAt(updateTime);
+            uns.setNumberFields(totalNumberField);
+        } else if (!instances.isEmpty()) {
             for (UnsPo inst : instances) {
-                FieldDefine[] fsArr = inst.getFields();
-                LinkedList<FieldDefine> fs = new LinkedList<>(Arrays.asList(fsArr));
-                FieldDefines tmplDefines = new FieldDefines(fields);
-                SrcJdbcType jdbcType = SrcJdbcType.getById(inst.getDataSrcId());
-                FieldDefine ct = FieldUtils.getTimestampField(fsArr), qos = FieldUtils.getQualityField(fsArr, jdbcType.typeCode);
-                fs.removeIf(fd -> !(fd == ct || fd == qos || fd.getName().startsWith(Constants.SYSTEM_FIELD_PREV)) && !tmplDefines.getFieldsMap().containsKey(fd.getName()));
-
-                ListIterator<FieldDefine> iterator = fs.listIterator(fs.size());
-                int i = fs.size();
-                while (iterator.hasPrevious()) {
-                    FieldDefine fd = iterator.previous();
-                    if (!(fd == ct || fd == qos || fd.getName().startsWith(Constants.SYSTEM_FIELD_PREV))) {
-                        iterator.next();
-                        break;
-                    }
-                    i--;
-                }
-                FieldDefines defines = new FieldDefines(fsArr);
-                LinkedList<FieldDefine> adds = new LinkedList<>();
-                for (FieldDefine in : fields) {
-                    if (!defines.getFieldsMap().containsKey(in.getName())) {
-                        adds.add(in);
-                    }
-                }
-                fs.addAll(i, adds);
-                fields = fs.toArray(new FieldDefine[0]);
-                FieldUtils.TableFieldDefine tfd = FieldUtils.processFieldDefines(inst.getAlias(), jdbcType, fields, new String[1], true, true);
-                fields = tfd.fields;
+                inst.setUpdateAt(updateTime);
+                FieldUtils.TableFieldDefine tfd = FieldUtils.processFieldDefines(inst.getAlias(), SrcJdbcType.getById(inst.getDataSrcId()), fields, new String[1], true, true);
                 inst.setTableName(tfd.tableName);
-                inst.setFields(fields);
+                inst.setFields(tfd.fields);
                 inst.setNumberFields(totalNumberField);
             }
             // 更新实例的fields字段
@@ -342,7 +341,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
         }
 
         // 更新td或者pg的实例表字段(同create事件)
-        sendEvent(instances, delInstList);
+        sendEvent(updateTime, uns, instances, delInstList);
         // webhook send
         List<WebhookDataDTO> webhookData = WebhookUtils.transfer(instances,
                 JsonUtil.jackToJson(fields));
@@ -354,13 +353,14 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
         return ResultVO.success("ok");
     }
 
-    private void sendEvent(List<UnsPo> instances, List<UnsPo> delCalcInst) {
+    private void sendEvent(Date updateTime, UnsPo local, List<UnsPo> instances, List<UnsPo> delCalcInst) {
         // 发送 delete计算实例事件
         if (delCalcInst != null && delCalcInst.size() > 0) {
             HashMap<SrcJdbcType, Map<Long, SimpleUnsInstance>> typeListMap = new HashMap<>();
             for (UnsPo po : delCalcInst) {
                 SimpleUnsInstance sui = new SimpleUnsInstance(po.getId(), po.getPath(), po.getAlias(),
-                        po.getTableName(), po.getDataType(), po.getParentId(), false,false, po.getFields(), po.getName());
+                        po.getTableName(), po.getDataType(), po.getParentId(), false, false, po.getFields(), po.getName());
+//                sui.setMountType(po.getMountType());
                 SrcJdbcType srcJdbcType = SrcJdbcType.getById(po.getDataSrcId());
                 Map<Long, SimpleUnsInstance> calcInstances = typeListMap.computeIfAbsent(srcJdbcType, k -> new HashMap<>());
                 calcInstances.put(po.getId(), sui);
@@ -374,23 +374,32 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
             }
         }
         // 发送create事件，修改pg或者td的table schema
+        List<CreateTopicDto> topics = Collections.emptyList();
         if (!instances.isEmpty()) {
-            HashMap<SrcJdbcType, ArrayList<CreateTopicDto>> jdbcFiles = new HashMap<>(2);
-            instances.forEach(p -> {
-                CreateTopicDto dto = unsConverter.po2dto(p);
-                // 更新时，跳过创建流程和dashboard
-                dto.setAddFlow(false);
-                dto.setAddDashBoard(false);
-                jdbcFiles.computeIfAbsent(dto.getDataSrcId(), k -> new ArrayList<>(instances.size())).add(dto);
-            });
-            Map tmp = jdbcFiles;
-            for (Map.Entry<SrcJdbcType, ArrayList<CreateTopicDto>> entry : jdbcFiles.entrySet()) {
-                tmp.replace(entry.getKey(), entry.getValue().toArray(new CreateTopicDto[0]));
-            }
-            Map<SrcJdbcType, CreateTopicDto[]> topics = tmp;
-            BatchCreateTableEvent event = new BatchCreateTableEvent(this, false, topics);
-            EventBus.publishEvent(event);
+            topics = instances.stream().map(p -> {
+                        CreateTopicDto dto = unsConverter.po2dto(p);
+                        // 更新时，跳过创建流程和dashboard
+                        dto.setAddFlow(false);
+                        dto.setAddDashBoard(false);
+                        dto.setFieldsChanged(true);
+                        return dto;
+                    }
+            ).toList();
         }
+        local.setUpdateAt(updateTime);
+        CreateTopicDto[] folders = null, templates = null;
+        CreateTopicDto localDto = unsConverter.po2dto(local);
+        localDto.setFieldsChanged(true);
+        switch (local.getPathType()) {
+            case Constants.PATH_TYPE_DIR:
+                folders = new CreateTopicDto[]{localDto};
+                break;
+            case Constants.PATH_TYPE_TEMPLATE:
+                templates = new CreateTopicDto[]{localDto};
+                break;
+        }
+        UpdateInstanceEvent event = new UpdateInstanceEvent(this, topics, folders, templates);
+        EventBus.publishEvent(event);
     }
 
     /**
@@ -420,7 +429,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
             String alias = createTemplateVo.getAlias();
             if (!existsAlias.contains(alias)) {
                 UnsPo uns = new UnsPo();
-                uns.setId(nextId());
+                uns.setId(SuposIdUtil.nextId());
                 uns.setName(createTemplateVo.getName());
                 uns.setAlias(alias);
 
@@ -446,7 +455,7 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
             return tempList.get(0);
         }
         UnsPo unsPo = new UnsPo();
-        unsPo.setId(nextId());
+        unsPo.setId(SuposIdUtil.nextId());
         unsPo.setName(name);
         setTemplateParent(unsPo);
         unsPo.setDataType(0);

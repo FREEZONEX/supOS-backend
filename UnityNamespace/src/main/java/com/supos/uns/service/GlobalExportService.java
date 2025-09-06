@@ -202,7 +202,7 @@ public class GlobalExportService {
             List<Future<JsonResult<String>>> futures = new ArrayList<>();
             Map<Future<JsonResult<String>>, GlobalExportModuleEnum> moduleEnumMap = new HashMap<>();
             if (globalExportParam.getUnsExportParam() != null) {
-                Future<JsonResult<String>> future = globalExportSlaveEs.submit(() -> unsExcelService.dataExport(globalExportParam.getUnsExportParam()));
+                Future<JsonResult<String>> future = globalExportSlaveEs.submit(() -> unsExcelService.dataExport(globalExportParam.getUnsExportParam(), false));
                 futures.add(future);
                 moduleEnumMap.put(future, GlobalExportModuleEnum.UNS);
             }
@@ -243,7 +243,7 @@ public class GlobalExportService {
 
     private void addExportRecord(String userId,String zipFilePath) {
         GlobalExportRecordPo globalExportRecordPo = new GlobalExportRecordPo();
-        globalExportRecordPo.setId(IdUtil.getSnowflakeNextId());
+        globalExportRecordPo.setId(SuposIdUtil.nextId());
         globalExportRecordPo.setFilePath(zipFilePath);
         globalExportRecordPo.setUserId(userId);
         globalExportRecordPo.setConfirm(false);
@@ -296,7 +296,7 @@ public class GlobalExportService {
                         unsExcelService.asyncImport(unsExcelFile, runningStatus -> {
                             runningStatus.setModule(GlobalExportModuleEnum.UNS.getCode());
                             globalRunningStatus.getRunningStatusList().add(runningStatus);
-                        }, true);
+                        }, false, null);
                     }));
                 }
             }

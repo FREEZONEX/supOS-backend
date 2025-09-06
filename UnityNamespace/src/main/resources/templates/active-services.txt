@@ -1,2 +1,2 @@
-emqx,nodered,hasura,keycloak,kong,postgresql,fuxa,grafana,minio,tsdb
+emqx,nodered,hasura,keycloak,kong,postgresql,fuxa,grafana,tsdb
 --profile fuxa --profile grafana --profile minio --profile tdengine

@@ -19,22 +19,23 @@ import java.util.stream.Collectors;
 @AllArgsConstructor
 public enum ExcelTypeEnum {
 
-    Explanation("Explanation", null, 0),
-    Template("Template", null, 1),
-    Label("Label", null, 2),
-    Folder("Folder", null, 3),
+    Explanation("Explanation", 0),
+    Template("Template", 1),
+    Label("Label", 2),
+    Folder("Path", 3),
 
-    FILE_TIMESERIES("File-timeseries", Constants.TIME_SEQUENCE_TYPE, 4),
-    FILE_RELATION("File-relation", Constants.RELATION_TYPE, 5),
-    FILE_CALCULATE("File-calculate", Constants.CALCULATION_REAL_TYPE, 6),
-    FILE_AGGREGATION("File-aggregation", Constants.MERGE_TYPE, 7),
-    FILE_REFERENCE("File-reference", Constants.CITING_TYPE, 8),
+    FILE_TIMESERIES("Topic-timeseries", 4),
+    FILE_RELATION("Topic-relation", 5),
+    FILE_CALCULATE("Topic-calculate", 6),
+    FILE_AGGREGATION("Topic-aggregation", 7),
+    FILE_REFERENCE("Topic-reference", 8),
 
-    ERROR("error", 0, -1);
+    UNS("UNS", 3),
+    File("File", 4),
+
+    ERROR("error", -1);
 
     private final String code;
-
-    private final Integer dataType;// 1--时序库 2--关系库
 
     /**
      * 批次序号
@@ -69,6 +70,21 @@ public enum ExcelTypeEnum {
 
     public static List<ExcelTypeEnum> listFile() {
         return Lists.newArrayList(ExcelTypeEnum.FILE_TIMESERIES, ExcelTypeEnum.FILE_RELATION, ExcelTypeEnum.FILE_CALCULATE, ExcelTypeEnum.FILE_AGGREGATION, ExcelTypeEnum.FILE_REFERENCE);
+    }
+
+    public static ExcelTypeEnum getByDataType(int dataType) {
+        if (dataType == Constants.TIME_SEQUENCE_TYPE) {
+            return FILE_TIMESERIES;
+        } else if (dataType == Constants.RELATION_TYPE) {
+            return FILE_RELATION;
+        } else if (dataType == Constants.CALCULATION_REAL_TYPE) {
+            return FILE_CALCULATE;
+        } else if (dataType == Constants.MERGE_TYPE) {
+            return FILE_AGGREGATION;
+        } else if (dataType == Constants.CITING_TYPE) {
+            return FILE_REFERENCE;
+        }
+        return ERROR;
     }
 
     public static void main(String[] args) {

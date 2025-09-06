@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 public class Constants {
 
@@ -162,6 +163,7 @@ public class Constants {
     public static final int SQL_BATCH_SIZE = 200;
 
     public static final String ROOT_PATH = "/data";
+//    public static final String ROOT_PATH = "C:\\uns";
 
     public static final String PLUGIN_PATH = ROOT_PATH + "/plugins";
     public static final String PLUGIN_TEMP_PATH = PLUGIN_PATH + "/temp";
@@ -186,6 +188,7 @@ public class Constants {
     public static final String SYSTEM_ROOT = "/system/";
 
     public final static String EXCEL_TEMPLATE_PATH = "/templates/all-namespace.xlsx";
+    public final static String EXCEL_TEMPLATE_ZH_PATH = "/templates/all-namespace-zh-CN.xlsx";
     public final static String JSON_TEMPLATE_PATH = "/templates/all-namespace.json";
     public final static String EXCEL_OUT_PATH = "/export/all-namespace.xlsx";
     public final static String JSON_OUT_PATH = "/export/all-namespace.json";
@@ -198,7 +201,10 @@ public class Constants {
     public final static int COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
     public static final String ALIAS_REG = "[a-zA-Z_\\$][a-zA-Z0-9_\\$]*$";
+    public static final Pattern ALIAS_PATTERN = Pattern.compile(ALIAS_REG);
     public static final String TOPIC_REG = "^[\\u4e00-\\u9fa5a-zA-Z0-9/_-]+$";
+    public static final String NAME_REG = "^[\\u4e00-\\u9fa5a-zA-Z0-9_-]+$";
+    public static final Pattern NAME_PATTERN = Pattern.compile(NAME_REG);
 
     public static final String VAR_PREV = "a";
 

@@ -16,8 +16,6 @@ import java.util.Set;
 @Data
 public class ExcelUnsWrapDto {
 
-    private String batchIndex;
-
     private boolean checkSuccess = true;
 
     private CreateTopicDto uns;
@@ -37,9 +35,28 @@ public class ExcelUnsWrapDto {
      */
     private InstanceField[] refers;
 
-    public ExcelUnsWrapDto(String batchIndex, CreateTopicDto uns) {
-        this.batchIndex = batchIndex;
+    public ExcelUnsWrapDto(CreateTopicDto uns) {
         this.uns = uns;
+    }
+
+    public String getFlagNo() {
+        return uns.gainBatchIndex();
+    }
+
+    public String getPath() {
+        return uns.getPath();
+    }
+
+    public String getAlias() {
+        return uns.getAlias();
+    }
+
+    public Integer getPathType() {
+        return uns.getPathType();
+    }
+
+    public Integer getDataType() {
+        return uns.getDataType();
     }
 
     public void addLabel(String label) {

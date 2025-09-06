@@ -8,11 +8,14 @@ import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.dto.AlarmRuleDefine;
 import com.supos.common.dto.CreateTopicDto;
+import com.supos.common.dto.FieldDefine;
 import com.supos.common.enums.TimeUnits;
 import com.supos.common.utils.ExpressionFunctions;
 import com.supos.common.utils.JsonUtil;
+import com.supos.common.utils.PathUtil;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.vo.TopicTreeResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -31,12 +34,18 @@ public class UnsConverter {
         CreateTopicDto dto = new CreateTopicDto();
         BeanUtil.copyProperties(p, dto, copyOptions);
         Integer withFlags = p.getWithFlags();
-        dto.setFlags(withFlags);
         int flags = withFlags != null ? withFlags : 0;
+        dto.setFlags(withFlags);
         dto.setAddFlow(Constants.withFlow(flags));
         dto.setAddDashBoard(Constants.withDashBoard(flags));
         dto.setSave2db(Constants.withSave2db(flags));
         dto.setRetainTableWhenDeleteInstance(Constants.withRetainTableWhenDeleteInstance(flags));
+        dto.setParentAlias(p.getParentAlias());
+        dto.setParentId(p.getParentId());
+        dto.setName(p.getName());
+        dto.setLayRec(p.getLayRec());
+        dto.setModelId(p.getModelId());
+        dto.setProtocolType(p.getProtocolType());
         String protocolStr = p.getProtocol();
         if (protocolStr != null && protocolStr.length() > 0 && protocolStr.charAt(0) == '{') {
             JSONObject protocol = JSON.parseObject(protocolStr);
@@ -54,6 +63,8 @@ public class UnsConverter {
         if (calculationExpr != null && !calculationExpr.isEmpty() && compileExpression) {
             dto.setCompileExpression(ExpressionFunctions.compileExpression(calculationExpr));
         }
+        FieldDefine[] fields = p.getFields();
+        dto.setFields(fields);
         if (dto.getDataType() != null && dto.getDataType() == Constants.ALARM_RULE_TYPE && p.getPathType() == 2) {
             AlarmRuleDefine ruleDefine = JsonUtil.fromJson(p.getProtocol(), AlarmRuleDefine.class);
             dto.setAlarmRuleDefine(ruleDefine);
@@ -83,4 +94,24 @@ public class UnsConverter {
         }
         return null;
     }
+
+    public TopicTreeResult dto2TreeResult(CreateTopicDto dto){
+        TopicTreeResult result = new TopicTreeResult();
+        result.setId(dto.getId().toString());
+        result.setAlias(dto.getAlias());
+        if (dto.getParentId() != null) {
+            result.setParentId(String.valueOf(dto.getParentId()));
+        }
+        result.setParentAlias(dto.getParentAlias());
+        result.setPathType(dto.getPathType());
+        String name = PathUtil.getName(dto.getPath());
+        result.setName(name);
+        result.setPath(dto.getPath());
+        result.setPathName(PathUtil.getName(dto.getPath()));
+        result.setDataType(dto.getDataType());
+//        result.setCountChildren(count.getCountChildren());
+//        result.setHasChildren(count.getCountDirectChildren() > 0);
+        return result;
+    }
+
 }

@@ -5,6 +5,10 @@
         <include resource="logback-local.xml"/>
     </springProfile>
 
+    <springProfile name="53">
+        <include resource="logback-53.xml"/>
+    </springProfile>
+
     <springProfile name="33893">
         <include resource="logback-33893.xml"/>
     </springProfile>

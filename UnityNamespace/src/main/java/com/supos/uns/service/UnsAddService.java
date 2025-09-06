@@ -18,10 +18,7 @@ import com.supos.common.event.multicaster.EventStatusAware;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.service.IUnsManagerService;
-import com.supos.common.utils.FieldUtils;
-import com.supos.common.utils.I18nUtils;
-import com.supos.common.utils.JsonUtil;
-import com.supos.common.utils.PathUtil;
+import com.supos.common.utils.*;
 import com.supos.uns.bo.CreateModelInstancesArgs;
 import com.supos.uns.bo.RunningStatus;
 import com.supos.uns.bo.UnsPoLabels;
@@ -674,7 +671,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             bo.setId(dbPo.getId());
         } else {
             Long oldId = histAliasIdMap.get(bo.getAlias());
-            bo.setId(oldId != null ? oldId : nextId());
+            bo.setId(oldId != null ? oldId : SuposIdUtil.nextId());
         }
 
         UnsPo newUns = newUnsFile(args, bo);
@@ -884,7 +881,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             }
         }
         instance.setExtend(bo.getExtend());
-        if (ArrayUtil.isNotEmpty(bo.getRefers())) {
+        if (bo.getRefers() != null) {
             instance.setRefers(bo.getRefers());
         }
         instance.setExpression(bo.getExpression());
@@ -896,6 +893,9 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             }
             Object protocolBean = bo.getProtocolBean();
             instance.setProtocol(JsonUtil.toJson(Objects.requireNonNullElse(protocolBean, protocol)));
+        }
+        if (bo.getExtendFieldUsed() != null) {
+            instance.setExtendFieldFlags(FieldUtils.generateFlag(bo.getExtendFieldUsed()));
         }
         return instance;
     }
@@ -1189,11 +1189,11 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         return null;
     }
 
-    private static final Snowflake UNS_SNOW = new Snowflake();
+    /*private static final Snowflake UNS_SNOW = new Snowflake();
 
     public static long nextId() {
         return UNS_SNOW.nextId();
-    }
+    }*/
 
     @EventListener(classes = ContextRefreshedEvent.class)
     @Order(100)
@@ -1299,7 +1299,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             for (int n = 1; n <= 1000; n++) {
                 UnsPo po = new UnsPo();
                 list.add(po);
-                po.setId(UnsAddService.nextId());
+                po.setId(SuposIdUtil.nextId());
                 po.setParentId(pid);
                 po.setParentAlias("bench4del");
                 po.setAlias("mock4d_" + (++k));

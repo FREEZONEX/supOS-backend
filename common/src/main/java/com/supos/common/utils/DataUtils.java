@@ -34,7 +34,7 @@ public class DataUtils {
     }
 
     public static String getBlobTag(String fileName, String fieldName, FieldType fieldType) {
-        return String.format("%s---%s-%s-%d", fieldType.name, fileName, fieldName, IdUtil.getSnowflakeNextId());
+        return String.format("%s---%s-%s-%d", fieldType.name, fileName, fieldName, SuposIdUtil.nextId());
     }
 
     public static String saveBlobData(String fileAlias, FieldDefine fieldDefine, Object blobData) {

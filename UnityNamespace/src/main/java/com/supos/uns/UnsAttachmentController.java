@@ -2,6 +2,7 @@ package com.supos.uns;
 
 import com.supos.common.dto.BaseResult;
 import com.supos.common.dto.JsonResult;
+import com.supos.common.exception.vo.ResultVO;
 import com.supos.uns.bo.UnsAttachmentBo;
 import com.supos.uns.service.UnsAttachmentService;
 import lombok.extern.slf4j.Slf4j;
@@ -38,12 +39,8 @@ public class UnsAttachmentController {
      * @return
      */
     @PostMapping("/inter-api/supos/uns/attachment")
-    public BaseResult attachmentUpload(@RequestParam("alias") String alias, @RequestParam("files") MultipartFile[] files) {
-        String err = unsAttachmentService.upload(alias, files);
-        if (err != null) {
-            return new BaseResult(400, err);
-        }
-        return new BaseResult();
+    public ResultVO<List<UnsAttachmentBo>> attachmentUpload(@RequestParam("alias") String alias, @RequestParam("files") MultipartFile[] files) {
+        return unsAttachmentService.upload(alias, files);
     }
 
     /**

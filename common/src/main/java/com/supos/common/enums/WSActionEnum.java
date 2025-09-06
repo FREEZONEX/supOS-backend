@@ -11,7 +11,9 @@ public enum WSActionEnum {
 
   CMD_PUBLISH_EVENT(6),
 
-  CMD_RESPONSE(2);
+  CMD_RESPONSE(2),
+
+  CMD_EXTERN_TOPIC(20); // 显示外部topic列表
 
   private int cmdNo;
 

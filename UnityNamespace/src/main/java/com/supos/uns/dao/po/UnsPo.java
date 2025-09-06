@@ -60,6 +60,8 @@ public class UnsPo implements Cloneable {
     @TableField(typeHandler = FieldsTypeHandler.class)
     FieldDefine[] fields;
 
+    Integer extendFieldFlags;
+
     String description;
 
     String protocol;

@@ -1,28 +1,23 @@
 package com.supos.uns.service.exportimport.core.parser;
 
-import cn.hutool.core.bean.BeanUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.supos.common.Constants;
 import com.supos.common.dto.CreateTopicDto;
-import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.InstanceField;
-import com.supos.common.dto.excel.ExcelNameSpaceDto;
 import com.supos.common.dto.excel.ExcelUnsWrapDto;
-import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
-import com.supos.uns.service.exportimport.core.data.ExportImportData;
-import com.supos.uns.service.exportimport.json.data.FileAggregation;
+import com.supos.uns.service.exportimport.core.parser.data.ValidateFile;
 import jakarta.validation.ConstraintViolation;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.springframework.beans.BeanUtils;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * @author sunlifang
@@ -33,271 +28,177 @@ import java.util.stream.Collectors;
 @Slf4j
 public class FileAggregationParser extends AbstractParser {
 
-    static final List<String> createTopicFieldNames;
+    private ExcelUnsWrapDto check(ValidateFile fileDto, ExcelImportContext context, Object parent) {
+        String flagNo = fileDto.getFlagNo();
 
-    static {
-        createTopicFieldNames = Arrays.stream(BeanUtils.getPropertyDescriptors(ExcelNameSpaceDto.class))
-                .map(f -> f.getName()).filter(f -> !"class".equals(f)).collect(Collectors.toList());
+        // 基础校验
+        StringBuilder er = null;
+        Set<ConstraintViolation<Object>> violations = validator.validate(fileDto);
+        if (!violations.isEmpty()) {
+            if (er == null) {
+                er = new StringBuilder(128);
+            }
+            addValidErrMsg(er, violations);
+        }
+        if (er != null) {
+            context.addError(flagNo, er.toString());
+            return null;
+        }
+
+        fileDto.setAlias(StringUtils.isNotBlank(fileDto.getAlias()) ? fileDto.getAlias() : PathUtil.generateAlias(fileDto.getPath(),2));
+        CreateTopicDto createTopicDto = fileDto.createTopic();
+        createTopicDto.setPathType(Constants.PATH_TYPE_FILE);
+        createTopicDto.setDataType(Constants.MERGE_TYPE);
+        ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(createTopicDto);
+
+        // 校验path是否重复
+        if (context.containPathInImportFile(fileDto.getPath())) {
+            // excel 中存在重复的topic
+            context.addError(flagNo, I18nUtils.getMessage("uns.import.exist", "namespace", fileDto.getPath()));
+            return null;
+        }
+
+        // 校验别名是否重复
+        if (context.containAliasInImportFile(fileDto.getAlias())) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.alias.has.exist"));
+            return null;
+        }
+
+        Boolean autoDashboard = parseBoolean(fileDto.getAutoDashboard(), false);
+        if (autoDashboard == null) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.excel.autoDashboard.invalid"));
+            return null;
+        }
+        createTopicDto.setAddDashBoard(autoDashboard);
+
+        Boolean persistence = parseBoolean(fileDto.getPersistence(), false);
+        if (persistence == null) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.excel.persistence.invalid"));
+            return null;
+        }
+        createTopicDto.setSave2db(persistence);
+
+        Boolean mockData = parseBoolean(fileDto.getMockData(), false);
+        if (mockData == null) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.excel.mockData.invalid"));
+            return null;
+        }
+        createTopicDto.setAddFlow(mockData);
+
+        createTopicDto.setFields(null);
+
+        // 收集模板
+        if (StringUtils.isNotBlank(fileDto.getTemplateAlias())) {
+            wrapDto.setTemplateAlias(fileDto.getTemplateAlias());
+            context.addCheckTemplateAlias(fileDto.getTemplateAlias());
+        }
+
+        // 收集标签
+        String labelStr = fileDto.getLabel();
+        if (StringUtils.isNotBlank(labelStr)) {
+            String[] labels = StringUtils.split(labelStr, ',');
+            if (labels.length > 0) {
+                for (String label : labels) {
+                    if (StringUtils.isNotBlank(label)) {
+                        context.addCheckLabel(label);
+                        wrapDto.addLabel(label);
+                    }
+                }
+            }
+        }
+
+        // refers收集
+        String refersStr = fileDto.getRefers();
+        InstanceField[] checkRefer = null;
+        if (StringUtils.isNotBlank(refersStr)) {
+            Pair<Boolean, InstanceField[]> checkReferResult = checkRefers(flagNo, refersStr, context);
+            if (checkReferResult.getLeft()) {
+                if (checkReferResult.getRight() != null) {
+                    checkRefer = checkReferResult.getRight();
+                    wrapDto.setRefers(checkReferResult.getRight());
+                    for (InstanceField instanceField : checkReferResult.getRight()) {
+                        if (StringUtils.isNotBlank(instanceField.getAlias())) {
+                            context.addCheckReferAlias(instanceField.getAlias());
+                        }
+                        if (StringUtils.isNotBlank(instanceField.getPath())) {
+                            context.addCheckReferPath(instanceField.getPath());
+                        }
+                    }
+                }
+            } else {
+                return null;
+            }
+        }
+
+        if (ArrayUtils.isEmpty(checkRefer)) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.import.not.empty", "refers"));
+            return null;
+        }
+
+        String frequencyStr = fileDto.getFrequency();
+        if (StringUtils.isBlank(frequencyStr)) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.field.frequency.empty"));
+            return null;
+        } else {
+            frequencyStr = frequencyStr.trim();
+            frequencyStr = frequencyStr.toLowerCase();
+            String timePattern = "\\b([1-9]\\d*[msh])\\b";
+            if (!frequencyStr.matches(timePattern)) {
+                context.addError(flagNo, I18nUtils.getMessage("uns.field.frequency.invalid"));
+                return null;
+            }
+            createTopicDto.setFrequency(frequencyStr);
+        }
+
+        return wrapDto;
     }
 
     @Override
-    public void parseExcel(int batch, int index, Map<String, Object> dataMap, ExcelImportContext context) {
-        ExcelTypeEnum excelType = ExcelTypeEnum.FILE_AGGREGATION;
+    public void parseExcel(String flagNo, Map<String, Object> dataMap, ExcelImportContext context) {
         if (isEmptyRow(dataMap)) {
             return;
         }
-        ExcelNameSpaceDto excelNameSpaceDto = BeanUtil.copyProperties(dataMap, ExcelNameSpaceDto.class);
-        excelNameSpaceDto.setBatch(batch);
-        excelNameSpaceDto.setIndex(index);
-        String batchIndex = excelNameSpaceDto.gainBatchIndex();
-        {
-            StringBuilder er = null;
-            Set<ConstraintViolation<Object>> violations = validator.validate(excelNameSpaceDto);
-            if (!violations.isEmpty()) {
-                if (er == null) {
-                    er = new StringBuilder(128);
-                }
-                addValidErrMsg(er, violations);
-            }
-            if (er != null) {
-                context.addError(batchIndex, er.toString());
-                return;
-            }
+        ValidateFile fileDto = new ValidateFile();
+        fileDto.setFlagNo(flagNo);
+        fileDto.setPath(getValueFromDataMap(dataMap, "namespace"));
+        fileDto.setAlias(getValueFromDataMap(dataMap, "alias"));
+        fileDto.setDisplayName(getValueFromDataMap(dataMap, "displayName"));
+        fileDto.setRefers(getValueFromDataMap(dataMap, "refers"));
+        fileDto.setFrequency(getValueFromDataMap(dataMap, "frequency"));
+        fileDto.setDescription(getValueFromDataMap(dataMap, "description"));
+        fileDto.setPersistence(getValueFromDataMap(dataMap, "enableHistory"));
+        fileDto.setAutoDashboard(getValueFromDataMap(dataMap, "generateDashboard"));
+        fileDto.setLabel(getValueFromDataMap(dataMap, "label"));
+
+        ExcelUnsWrapDto wrapDto = check(fileDto, context, null);
+        if (wrapDto != null) {
+            context.addUns(wrapDto);
         }
-        excelNameSpaceDto.setAlias(StringUtils.isNotBlank(excelNameSpaceDto.getAlias()) ? excelNameSpaceDto.getAlias() : PathUtil.generateAlias(excelNameSpaceDto.getPath(),2));
-        CreateTopicDto createTopicDto = excelNameSpaceDto.createTopic();
-        ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(batchIndex, createTopicDto);
-
-        if (context.getPathInExcel().contains(excelNameSpaceDto.getPath())) {
-            // excel 中存在重复的topic
-            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", excelType.getCode(), excelNameSpaceDto.getPath())));
-            return;
-        }
-
-        if (StringUtils.isNotBlank(excelNameSpaceDto.getAlias()) && !context.addAlias(excelNameSpaceDto.getAlias())) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.alias.has.exist"));
-            return;
-        }
-
-        Boolean autoDashboard = getBoolean(dataMap, "autoDashboard", false);
-        if (autoDashboard == null) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.excel.autoDashboard.invalid"));
-            return;
-        }
-        createTopicDto.setAddDashBoard(autoDashboard);
-
-        Boolean persistence = getBoolean(dataMap, "persistence", false);
-        if (persistence == null) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.excel.persistence.invalid"));
-            return;
-        }
-        createTopicDto.setSave2db(persistence);
-
-        // fields
-        Pair<Boolean, FieldDefine[]> checkFieldResult = checkFields(batchIndex, excelNameSpaceDto.getFields(), context);
-        if (checkFieldResult.getLeft()) {
-            if (checkFieldResult.getRight() != null) {
-                createTopicDto.setFields(checkFieldResult.getRight());
-            }
-        } else {
-            return;
-        }
-
-        // 收集模板
-        if (StringUtils.isNotBlank(excelNameSpaceDto.getTemplateAlias())) {
-            wrapDto.setTemplateAlias(excelNameSpaceDto.getTemplateAlias());
-            context.addCheckTemplateAlias(excelNameSpaceDto.getTemplateAlias());
-        }
-
-        // 收集标签
-        String labelStr = getString(dataMap, "label", "");
-        if (StringUtils.isNotBlank(labelStr)) {
-            String[] labels = StringUtils.split(labelStr, ',');
-            if (labels.length > 0) {
-                for (String label : labels) {
-                    if (StringUtils.isNotBlank(label)) {
-                        context.addCheckLabel(label);
-                        wrapDto.addLabel(label);
-                    }
-                }
-            }
-        }
-
-        // refers收集
-        String refersStr = getString(dataMap, "refers", "");
-        if (StringUtils.isNotBlank(refersStr)) {
-            Pair<Boolean, InstanceField[]> checkReferResult = checkRefers(batchIndex, refersStr, context);
-            if (checkReferResult.getLeft()) {
-                if (checkReferResult.getRight() != null) {
-                    wrapDto.setRefers(checkReferResult.getRight());
-                    for (InstanceField instanceField : checkReferResult.getRight()) {
-                        if (StringUtils.isNotBlank(instanceField.getAlias())) {
-                            context.addCheckReferAlias(instanceField.getAlias());
-                        }
-                        if (StringUtils.isNotBlank(instanceField.getPath())) {
-                            context.addCheckReferPath(instanceField.getPath());
-                        }
-                        instanceField.setField(null);
-                    }
-                }
-            } else {
-                return;
-            }
-        }
-
-        // frequency
-        String frequencyStr = getString(dataMap, "frequency", "");
-        if (StringUtils.isBlank(frequencyStr)) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.field.frequency.empty"));
-            return;
-        } else {
-            frequencyStr = frequencyStr.trim();
-            frequencyStr = frequencyStr.toLowerCase();
-            String timePattern = "\\b([1-9]\\d*[msh])\\b";
-            if (!frequencyStr.matches(timePattern)) {
-                context.addError(batchIndex, I18nUtils.getMessage("uns.field.frequency.invalid"));
-                return;
-            }
-            createTopicDto.setFrequency(frequencyStr);
-        }
-
-        createTopicDto.setPathType(2);
-        createTopicDto.setDataType(excelType.getDataType());
-
-        context.getUnsList().add(wrapDto);
-        context.getUnsMap().put(excelNameSpaceDto.getPath(), wrapDto);
-        context.addPath(excelNameSpaceDto.getPath());
-        context.addAlias(createTopicDto.getAlias());
     }
 
     @Override
-    public void parseJson(int batch, int index, ExportImportData data, ExcelImportContext context) {
-        ExcelTypeEnum excelType = ExcelTypeEnum.FILE_AGGREGATION;
+    public void parseComplexJson(String flagNo, JsonNode data, ExcelImportContext context, Object parent) {
         if (data == null) {
             return;
         }
-        FileAggregation fileAggregation = (FileAggregation) data;
-        ExcelNameSpaceDto excelNameSpaceDto = BeanUtil.copyProperties(fileAggregation, ExcelNameSpaceDto.class);
-        excelNameSpaceDto.setBatch(batch);
-        excelNameSpaceDto.setIndex(index);
-        String batchIndex = excelNameSpaceDto.gainBatchIndex();
-        {
-            StringBuilder er = null;
-            Set<ConstraintViolation<Object>> violations = validator.validate(excelNameSpaceDto);
-            if (!violations.isEmpty()) {
-                if (er == null) {
-                    er = new StringBuilder(128);
-                }
-                addValidErrMsg(er, violations);
-            }
-            if (er != null) {
-                context.addError(batchIndex, er.toString());
-                return;
-            }
+
+        ((ObjectNode) data).remove("error");
+
+        ValidateFile fileDto = new ValidateFile();
+        fileDto.setFlagNo(flagNo);
+        fileDto.setPath(getValueFromJsonNode(data, "namespace"));
+        fileDto.setAlias(getValueFromJsonNode(data, "alias"));
+        fileDto.setDisplayName(getValueFromJsonNode(data, "displayName"));
+        fileDto.setRefers(getValueFromJsonNode(data, "refers"));
+        fileDto.setFrequency(getValueFromJsonNode(data, "frequency"));
+        fileDto.setDescription(getValueFromJsonNode(data, "description"));
+        fileDto.setPersistence(getValueFromJsonNode(data, "enableHistory"));
+        fileDto.setAutoDashboard(getValueFromJsonNode(data, "generateDashboard"));
+        fileDto.setLabel(getValueFromJsonNode(data, "label"));
+
+        ExcelUnsWrapDto wrapDto = check(fileDto, context, parent);
+        if (wrapDto != null) {
+            context.addUns(wrapDto);
         }
-        excelNameSpaceDto.setAlias(StringUtils.isNotBlank(excelNameSpaceDto.getAlias()) ? excelNameSpaceDto.getAlias() : PathUtil.generateAlias(excelNameSpaceDto.getPath(),2));
-        CreateTopicDto createTopicDto = excelNameSpaceDto.createTopic();
-        ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(batchIndex, createTopicDto);
-
-        if (context.getPathInExcel().contains(excelNameSpaceDto.getPath())) {
-            // excel 中存在重复的topic
-            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", excelType.getCode(), excelNameSpaceDto.getPath())));
-            return;
-        }
-
-        if (StringUtils.isNotBlank(excelNameSpaceDto.getAlias()) && !context.addAlias(excelNameSpaceDto.getAlias())) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.alias.has.exist"));
-            return;
-        }
-
-        Boolean autoDashboard = parseBoolean(fileAggregation.getAutoDashboard(), false);
-        if (autoDashboard == null) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.excel.autoDashboard.invalid"));
-            return;
-        }
-        createTopicDto.setAddDashBoard(autoDashboard);
-
-        Boolean persistence = parseBoolean(fileAggregation.getPersistence(), false);
-        if (persistence == null) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.excel.persistence.invalid"));
-            return;
-        }
-        createTopicDto.setSave2db(persistence);
-
-        // fields
-        Pair<Boolean, FieldDefine[]> checkFieldResult = checkFields(batchIndex, excelNameSpaceDto.getFields(), context);
-        if (checkFieldResult.getLeft()) {
-            if (checkFieldResult.getRight() != null) {
-                createTopicDto.setFields(checkFieldResult.getRight());
-            }
-        } else {
-            return;
-        }
-
-        // 收集模板
-        if (StringUtils.isNotBlank(excelNameSpaceDto.getTemplateAlias())) {
-            wrapDto.setTemplateAlias(excelNameSpaceDto.getTemplateAlias());
-            context.addCheckTemplateAlias(excelNameSpaceDto.getTemplateAlias());
-        }
-
-        // 收集标签
-        String labelStr = fileAggregation.getLabel();
-        if (StringUtils.isNotBlank(labelStr)) {
-            String[] labels = StringUtils.split(labelStr, ',');
-            if (labels.length > 0) {
-                for (String label : labels) {
-                    if (StringUtils.isNotBlank(label)) {
-                        context.addCheckLabel(label);
-                        wrapDto.addLabel(label);
-                    }
-                }
-            }
-        }
-
-        // refers收集
-        String refersStr = fileAggregation.getRefers();
-        if (StringUtils.isNotBlank(refersStr)) {
-            Pair<Boolean, InstanceField[]> checkReferResult = checkRefers(batchIndex, refersStr, context);
-            if (checkReferResult.getLeft()) {
-                if (checkReferResult.getRight() != null) {
-                    wrapDto.setRefers(checkReferResult.getRight());
-                    for (InstanceField instanceField : checkReferResult.getRight()) {
-                        if (StringUtils.isNotBlank(instanceField.getAlias())) {
-                            context.addCheckReferAlias(instanceField.getAlias());
-                        }
-                        if (StringUtils.isNotBlank(instanceField.getPath())) {
-                            context.addCheckReferPath(instanceField.getPath());
-                        }
-                        instanceField.setField(null);
-                    }
-                }
-            } else {
-                return;
-            }
-        }
-
-        // frequency
-        String frequencyStr = fileAggregation.getFrequency();
-        if (StringUtils.isBlank(frequencyStr)) {
-            context.addError(batchIndex, I18nUtils.getMessage("uns.field.frequency.empty"));
-            return;
-        } else {
-            frequencyStr = frequencyStr.trim();
-            frequencyStr = frequencyStr.toLowerCase();
-            String timePattern = "\\b([1-9]\\d*[msh])\\b";
-            if (!frequencyStr.matches(timePattern)) {
-                context.addError(batchIndex, I18nUtils.getMessage("uns.field.frequency.invalid"));
-                return;
-            }
-            createTopicDto.setFrequency(frequencyStr);
-        }
-
-        createTopicDto.setPathType(2);
-        createTopicDto.setDataType(excelType.getDataType());
-
-        context.getUnsList().add(wrapDto);
-        context.getUnsMap().put(excelNameSpaceDto.getPath(), wrapDto);
-        context.addPath(excelNameSpaceDto.getPath());
-        context.addAlias(createTopicDto.getAlias());
     }
 }

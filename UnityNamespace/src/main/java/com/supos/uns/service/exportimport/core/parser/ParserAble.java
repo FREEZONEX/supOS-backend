@@ -1,7 +1,7 @@
 package com.supos.uns.service.exportimport.core.parser;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
-import com.supos.uns.service.exportimport.core.data.ExportImportData;
 
 import java.util.Map;
 
@@ -13,7 +13,7 @@ import java.util.Map;
  */
 public interface ParserAble {
 
-    default void parseExcel(int batch, int index, Map<String, Object> dataMap, ExcelImportContext context){}
+    default void parseExcel(String flagNo, Map<String, Object> dataMap, ExcelImportContext context){}
 
-    default void parseJson(int batch, int index, ExportImportData data, ExcelImportContext context){}
+    default void parseComplexJson(String flagNo, JsonNode data, ExcelImportContext context, Object parent){}
 }

@@ -8,7 +8,7 @@ import lombok.Data;
 public class TemplateQueryVo extends PaginationDTO {
 
 
-    @Schema(description = "搜索关键字")
+    @Schema(description = "关键字查询，模版名称模糊匹配")
     String key;
 
 }

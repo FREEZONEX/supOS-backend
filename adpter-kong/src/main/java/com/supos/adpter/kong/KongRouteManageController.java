@@ -111,4 +111,10 @@ public class KongRouteManageController {
 //    public ResponseEntity pluginsProxy(@PathVariable("id") String id, @RequestBody JSONObject params) {
 //        return KongAdapterService.pluginsProxy(id,params);
 //    }
+
+    @GetMapping("/inter-api/supos/kong/resource")
+    public ResultVO saveResourceByRoutes(){
+        userMenuService.saveResourceByRoutes();
+        return ResultVO.success("ok");
+    }
 }

@@ -3,6 +3,7 @@ package com.supos.uns.service;
 import cn.hutool.core.util.ObjectUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
@@ -26,6 +27,7 @@ import com.supos.uns.util.WebhookUtils;
 import com.supos.uns.vo.RemoveResult;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -117,6 +119,7 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
         if (CollectionUtils.isEmpty(unsPos)) {
             return rs;
         }
+        List<Long> unbindIds = new ArrayList<>();
         HashMap<SrcJdbcType, TopicBaseInfoList> typeListMap = new HashMap<>();
         HashMap<Long, CreateTopicDto> calcIds = new HashMap<>();
         HashSet<Long> allIds = new HashSet<>(unsPos.size());
@@ -154,7 +157,7 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                     }
                 }
             }
-        } else if (removeRefer) {
+        } else if (removeRefer) {//需要删除引用文件
             incQueryCalcTopics = new ArrayList<>(unsPos.size());
             for (CreateTopicDto po : unsPos) {
 
@@ -162,7 +165,11 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                 if (!CollectionUtils.isEmpty(referUns)) {
                     for (Long id : referUns.keySet()) {
                         if (!calcIds.containsKey(id)) {
-                            incQueryCalcTopics.add(id);
+                            if (referUns.get(id) != Constants.CITING_TYPE) {//排除引用类型，引用类型无需删除，解除引用关系
+                                incQueryCalcTopics.add(id);
+                            } else {
+                                unbindIds.add(id);
+                            }
                         }
                     }
                 }
@@ -219,6 +226,14 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
             }
         }
         unsAttachmentService.deleteByUns(unsPos);
+        //引用类型解除绑定关系
+        if (!CollectionUtils.isEmpty(unbindIds)) {
+            LambdaUpdateWrapper<UnsPo> unbindWrapper = new LambdaUpdateWrapper<>();
+            unbindWrapper.in(UnsPo::getId, unbindIds);
+            unbindWrapper.set(UnsPo::getRefers, null);
+            this.update(unbindWrapper);
+        }
+
         long t0 = System.currentTimeMillis();
         for (List<Long> segment : Lists.partition(unsPos.stream().map(CreateTopicDto::getId).toList(), 1000)) {
             this.removeBatchByIds(segment);
@@ -248,6 +263,44 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
 //            webhookDataPusher.push(WebhookSubscribeEvent.INSTANCE_DELETE, webhookData, false);
         }
         return removeResult;
+    }
+
+    public RemoveResult detectRefers(Long id) {
+        RemoveResult rs = new RemoveResult();
+        UnsPo tar = this.baseMapper.getById(id);
+        if (tar == null) {
+            rs.setCode(400);
+            rs.setMsg(I18nUtils.getMessage("uns.folder.or.file.not.found"));
+            return rs;
+        }
+
+        if (tar.getPathType() == 0) {//按目录
+            final String layRec = tar.getLayRec();
+            for (TopicDefinition def : unsDefinitionService.getTopicDefinitionMap().values()) {
+                CreateTopicDto dto = def.getCreateTopicDto();
+                Integer pathType = dto.getPathType();
+                if (pathType == Constants.PATH_TYPE_FILE || pathType == Constants.PATH_TYPE_DIR) {
+                    String curLayRec = dto.getLayRec();
+                    if (curLayRec.startsWith(layRec)) {
+                        if (!CollectionUtils.isEmpty(dto.getRefUns())) {
+                            RemoveResult.RemoveTip tip = new RemoveResult.RemoveTip();
+                            tip.setRefs(dto.getRefUns().size());
+                            rs.setData(tip);
+                            return rs;
+                        }
+                    }
+                }
+            }
+        }
+
+        Map<Long, Integer> referUns = tar.getRefUns();
+        if (!CollectionUtils.isEmpty(referUns)) {
+            RemoveResult.RemoveTip tip = new RemoveResult.RemoveTip();
+            tip.setRefs(referUns.size());
+            rs.setData(tip);
+            return rs;
+        }
+        return new RemoveResult(200, "ok");
     }
 
     public RemoveResult getRemoveResult(boolean withFlow, boolean withDashboard, Boolean removeRefer, QueryWrapper<UnsPo> removeQuery, List<UnsPo> unsPos) {
@@ -414,7 +467,7 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                 po.getTableName(),
                 po.getDataType(),
                 po.getParentId(),
-                po.getTableName() == null && !Constants.withRetainTableWhenDeleteInstance(flags),
+                StringUtils.isEmpty(po.getTableName()) && !Constants.withRetainTableWhenDeleteInstance(flags),
                 Constants.withDashBoard(flags),
                 po.getFields(),
                 po.getName());
@@ -436,7 +489,7 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                 po.getTableName(),
                 po.getDataType(),
                 po.getParentId(),
-                po.getTableName() == null && !Constants.withRetainTableWhenDeleteInstance(flags),
+                StringUtils.isEmpty(po.getTableName()) && !Constants.withRetainTableWhenDeleteInstance(flags),
                 Constants.withDashBoard(flags),
                 po.getFields(),
                 po.getName());

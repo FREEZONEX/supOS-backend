@@ -48,7 +48,7 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
     @Select("<script> select count(1) from " + UnsPo.TABLE_NAME + filterPaths + "</script>")
     int countPaths(@Param("modelId") String modelId, @Param("k") String key, @Param("pathType") int pathType, @Param("dataTypes") Collection<Integer> dataTypes);
 
-    @Select("<script> select id,alias,path from " + UnsPo.TABLE_NAME + filterPaths + " order by path asc, create_at desc limit #{size} offset #{offset} </script>")
+    @Select("<script> select id,alias,path,data_type as dataType from " + UnsPo.TABLE_NAME + filterPaths + " order by path asc, create_at desc limit #{size} offset #{offset} </script>")
     ArrayList<SimpleUns> listPaths(@Param("modelId") String modelId, @Param("k") String key, @Param("pathType") int pathType, @Param("dataTypes") Collection<Integer> dataTypes, @Param("offset") int offset, @Param("size") int size);
 
     @Select("<script> select * from " + UnsPo.TABLE_NAME + " where data_type=#{dataType} and path_type=2 <if test=\"k!=null\"> and path like #{k} </if> " +
@@ -91,8 +91,8 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
     @ResultMap("unsResultMap")
     UnsPo getByAlias(@Param("alias") String alias);
 
-    @Update("update " + UnsPo.TABLE_NAME + " set fields=#{fields,typeHandler=com.supos.uns.config.FieldsTypeHandler}, number_fields=#{numberCount}, update_at=now() where id=#{id}")
-    int updateModelFieldsById(@Param("id") Long id, @Param("fields") FieldDefine[] fields, @Param("numberCount") int numberCount);
+    @Update("update " + UnsPo.TABLE_NAME + " set table_name=#{tb}, fields=#{fields,typeHandler=com.supos.uns.config.FieldsTypeHandler}, number_fields=#{numberCount}, update_at=#{updateAt} where id=#{id}")
+    int updateModelFieldsById(@Param("id") Long id, @Param("tb")String tableName, @Param("fields") FieldDefine[] fields, @Param("numberCount") int numberCount, Date updateAt);
 
     @Update("<script> update " + UnsPo.TABLE_NAME + " set fields=#{fields,typeHandler=com.supos.uns.config.FieldsTypeHandler}, number_fields=#{numberCount}, update_at=now() where id in " +
             "  <foreach collection=\"ids\" item=\"id\" index=\"index\" open=\"(\" close=\")\" separator=\",\"> " +
@@ -194,8 +194,6 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
 
     @Select("SELECT COUNT(*) FROM uns_namespace WHERE parent_id = #{parentId}")
     int countDirectChildrenByParentId(@Param("parentId") Long parentId);
-
-    List<UnsPo> selectByLayRecPrefixes(@Param("prefixes") Set<String> prefixes);
 
     @Update("<script> UPDATE " + UnsPo.TABLE_NAME + " a SET label_ids = label_ids - '${labelId}' ,update_at=#{updateAt} " +
             " WHERE a.id in " +

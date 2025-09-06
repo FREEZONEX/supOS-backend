@@ -84,7 +84,6 @@
     {
         "id": "85bb67b2dbefe3ba",
         "type": "mqtt-broker",
-        "z": "",
         "name": "",
         "broker": "emqx",
         "port": "1883",

@@ -2,7 +2,7 @@ package com.supos.uns.vo;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.supos.common.dto.FieldDefine;
-import com.supos.uns.dao.po.UnsLabelPo;
+import com.supos.common.vo.LabelVo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -83,7 +83,7 @@ public class InstanceDetail {
      * 标签列表
      */
     @Schema(description = "标签列表")
-    List<UnsLabelPo> labelList;
+    List<LabelVo> labelList;
 
     @Schema(description = "文件名")
     String name;//文件名

@@ -4,32 +4,31 @@
 
 <mapper namespace="com.supos.uns.dao.mapper.UserManageMapper" >
 
-
     <select id="userManageList" resultType="com.supos.common.vo.UserManageVo">
 
         SELECT u.*,u.username AS preferredUsername,
-               STRING_AGG(r.name, ', ') AS roleList
+        STRING_AGG(r.name, ', ') AS roleList
         FROM user_entity u
-                 JOIN user_role_mapping urm ON urm.user_id = u.id
-                 JOIN keycloak_role r ON urm.role_id = r.id
+        JOIN user_role_mapping urm ON urm.user_id = u.id
+        JOIN keycloak_role r ON urm.role_id = r.id
         where
-            u.realm_id = (SELECT id FROM realm WHERE name = #{realm})
-            and u.service_account_client_link is null
-            <if test="preferredUsername != null and preferredUsername != ''">
-                and u.username LIKE CONCAT('%', #{preferredUsername}, '%')
-            </if>
-            <if test="firstName != null and firstName != ''">
-                and u.first_name LIKE CONCAT('%', #{firstName}, '%')
-            </if>
-            <if test="email != null and email != ''">
-                and u.email = #{email}
-            </if>
-            <if test="enabled != null">
-                and u.enabled = #{enabled}
-            </if>
-            <if test="roleName != null and roleName != ''">
-                and r.name = #{roleName}
-            </if>
+        u.realm_id = (SELECT id FROM realm WHERE name = #{realm})
+        and u.service_account_client_link is null
+        <if test="preferredUsername != null and preferredUsername != ''">
+            and u.username LIKE CONCAT('%', #{preferredUsername}, '%')
+        </if>
+        <if test="firstName != null and firstName != ''">
+            and u.first_name LIKE CONCAT('%', #{firstName}, '%')
+        </if>
+        <if test="email != null and email != ''">
+            and u.email = #{email}
+        </if>
+        <if test="enabled != null">
+            and u.enabled = #{enabled}
+        </if>
+        <if test="roleName != null and roleName != ''">
+            and r.name = #{roleName}
+        </if>
         GROUP BY u.id  ORDER BY created_timestamp ASC
 
     </select>
@@ -72,5 +71,37 @@
             WHERE urm.user_id = u.id
               AND ro.name = 'ldap-initialized'
         )
+    </select>
+
+    <select id="userOpenapiList" resultType="com.supos.uns.openapi.vo.UserDetailVo">
+
+        SELECT * from (
+        SELECT u.*,u.first_name as displayName,
+        STRING_AGG(r.name, ', ') AS roleList,
+        (SELECT attr.value as phone from user_attribute attr where attr.user_id = u.id and attr.name = 'phone')
+        FROM user_entity u
+        JOIN user_role_mapping urm ON urm.user_id = u.id
+        JOIN keycloak_role r ON urm.role_id = r.id
+        where
+        u.realm_id = (SELECT id FROM realm WHERE name ='supos')
+        and u.service_account_client_link is null
+        GROUP BY u.id  ORDER BY created_timestamp ASC
+        )  where 1 =1
+
+        <if test="params.username != null and params.username != ''">
+            and username = #{params.username}
+        </if>
+        <if test="params.displayName != null and params.displayName != ''">
+            and first_name LIKE CONCAT('%', #{params.displayName}, '%')
+        </if>
+        <if test="params.email != null and params.email != ''">
+            and email LIKE CONCAT('%', #{params.email}, '%')
+        </if>
+        <if test="params.phone != null and params.phone != ''">
+            and phone LIKE CONCAT('%', #{params.phone}, '%')
+        </if>
+        <if test="params.enabled != null">
+            and enabled = #{params.enabled}
+        </if>
     </select>
 </mapper>

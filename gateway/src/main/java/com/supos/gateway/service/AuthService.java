@@ -142,6 +142,7 @@ public class AuthService {
         userInfoVo.setFirstTimeLogin(NumberUtil.parseInt(userAttribute.get("firstTimeLogin"),1));
         userInfoVo.setTipsEnable(NumberUtil.parseInt(userAttribute.get("firstTimeLogin"),1));
         userInfoVo.setHomePage(StrUtil.blankToDefault(userAttribute.get("homePage"),"/home"));
+        userInfoVo.setSource(StrUtil.blankToDefault(userAttribute.get("source"),""));
 
         //首次登录
         if (1 == userInfoVo.getFirstTimeLogin()) {
@@ -150,6 +151,7 @@ public class AuthService {
             params.put("firstTimeLogin", 0);
             params.put("phone", phone);
             params.put("tipsEnable", userInfoVo.getTipsEnable());
+            params.put("source",userInfoVo.getSource());
             attributes.put("attributes", params);
             if (StrUtil.isNotBlank(userInfoVo.getEmail())) {
                 attributes.put("email", userInfoVo.getEmail());

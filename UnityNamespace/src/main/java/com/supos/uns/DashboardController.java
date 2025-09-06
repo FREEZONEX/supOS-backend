@@ -62,4 +62,9 @@ public class DashboardController {
     }
 
 
+    @GetMapping("/isExist")
+    public ResultVO isExist(@RequestParam String alias){
+        return dashboardService.isExist(alias);
+    }
+
 }

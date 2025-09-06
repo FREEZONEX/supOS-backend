@@ -16,6 +16,7 @@ import com.supos.common.event.*;
 import com.supos.common.utils.DbTableNameUtils;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PostgresqlTypeUtils;
+import com.supos.common.utils.SuposIdUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.context.event.EventListener;
@@ -329,7 +330,6 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
         fieldType2DBTypeMap = _fieldType2DBTypeMap;
     }
 
-
     static String getInsertSQL(Collection<Map<String, Object>> list, String table, SaveDataDto saveDataDto, Boolean ignore) {
         /**
          * INSERT INTO test (id, name, email)
@@ -462,7 +462,7 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
             if (x > 0) {
                 table = table.substring(x + 1);
             }
-            builder.append("CONSTRAINT \"pk_").append(table).append("_").append(IdUtil.getSnowflake().nextIdStr()).append("\" PRIMARY KEY (");
+            builder.append("CONSTRAINT \"pk_").append(table).append("_").append(SuposIdUtil.nextId()).append("\" PRIMARY KEY (");
             for (String pk : ids) {
                 builder.append("\"").append(pk).append("\",");
             }

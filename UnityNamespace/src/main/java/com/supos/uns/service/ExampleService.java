@@ -145,7 +145,7 @@ public class ExampleService extends ServiceImpl<ExampleMapper, ExamplePo> {
                 if (json.getIntValue("code") == 500 ){
                     throw new BuzException(400,"example install failed. message:" + json.getString("msg"));
                 }
-            },false);
+            },false, null);
 
             // flow 导入
             String flowName = String.format("demo-%s-flows", FileUtil.getPrefix(demoName));

@@ -12,9 +12,12 @@ import com.supos.adpter.kong.vo.RoutResponseVO;
 import com.supos.common.Constants;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.dto.PlugInfoYml;
+import com.supos.common.dto.SaveResourceDto;
+import com.supos.common.enums.ParentResourceEnum;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.PluginPreUnInstallEvent;
 import com.supos.common.exception.BuzException;
+import com.supos.common.service.IResourceService;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PlugUtils;
 import com.supos.common.utils.RuntimeUtil;
@@ -66,6 +69,8 @@ public class PluginManager implements EnvironmentAware {
 
     @Autowired
     private MenuService menuService;
+    @Autowired
+    private IResourceService iResourceService;
 
     @Autowired
     private KongAdapterService kongAdapterService;
@@ -111,7 +116,8 @@ public class PluginManager implements EnvironmentAware {
     }
 
     @EventListener(classes = ContextRefreshedEvent.class)
-    @Order// 优先级排到最后
+    @Order
+// 优先级排到最后
     void init(ContextRefreshedEvent event) {
         if (RuntimeUtil.isLocalProfile()) {
             return;
@@ -467,16 +473,17 @@ public class PluginManager implements EnvironmentAware {
         }
         PlugInfoYml plugInfoYml = plugInfo.getPlugInfoYml();
         if (plugInfoYml != null) {
-            if (plugInfoYml.getShowName() != null && plugInfoYml.getShowNameI18nCode() == null) {
+            if (plugInfoYml.getShowNameI18nCode() == null) {
                 plugInfoYml.setShowNameI18nCode(plugInfoYml.getShowName());
-                plugInfoYml.setShowName(I18nUtils.getMessage4Plugin(plugInfoYml.getName(), plugInfoYml.getShowNameI18nCode()));
-                log.info("plugin showName:{},i18n:{}", plugInfoYml.getShowName(), plugInfoYml.getShowNameI18nCode());
             }
-            if (plugInfoYml.getDescription() != null && plugInfoYml.getDescriptionI18nCode() == null) {
+            plugInfoYml.setShowName(I18nUtils.getMessage(plugInfoYml.getShowNameI18nCode()));
+            log.info("plugin showName:{},i18n:{}", plugInfoYml.getShowName(), plugInfoYml.getShowNameI18nCode());
+
+            if (plugInfoYml.getDescriptionI18nCode() == null) {
                 plugInfoYml.setDescriptionI18nCode(plugInfoYml.getDescription());
-                plugInfoYml.setDescription(I18nUtils.getMessage4Plugin(plugInfoYml.getName(), plugInfoYml.getDescriptionI18nCode()));
-                log.info("plugin description:{},i18n:{}", plugInfoYml.getDescription(), plugInfoYml.getDescriptionI18nCode());
             }
+            plugInfoYml.setDescription(I18nUtils.getMessage(plugInfoYml.getDescriptionI18nCode()));
+            log.info("plugin description:{},i18n:{}", plugInfoYml.getDescription(), plugInfoYml.getDescriptionI18nCode());
         }
         return plugInfo;
     }
@@ -510,7 +517,7 @@ public class PluginManager implements EnvironmentAware {
         // add i18n
         String plugPath = plugInfo.getPlugPath();
         if (plugPath != null) {
-            String protocol = "file:///";
+            String protocol = "file:/";
             if (plugPath.startsWith(File.separator)) {
                 plugPath = plugPath.substring(1);
             }
@@ -680,7 +687,7 @@ public class PluginManager implements EnvironmentAware {
             } else {
                 // add i18n
                 String plugPath = plugInfo.getPlugPath();
-                String protocol = "file:///";
+                String protocol = "file:/";
                 if (plugPath.startsWith(File.separator)) {
                     plugPath = plugPath.substring(1);
                 }
@@ -842,6 +849,30 @@ public class PluginManager implements EnvironmentAware {
         }
     }
 
+    private Long createResource(PlugInfoYml.PlugResource resource) {
+        SaveResourceDto resourceDto = new SaveResourceDto();
+        resourceDto.setCode(resource.getCode());
+        resourceDto.setType(resource.getType());//资源类型菜单
+        resourceDto.setUrl(resource.getUrl());
+        resourceDto.setUrlType(resource.getUrlType());
+        resourceDto.setOpenType(resource.getOpenType());
+        resourceDto.setDescription(resource.getDescription());
+
+        resourceDto.setGroupType(resource.getGroupType());// 菜单分组
+
+        if (resource.getIcon() != null) {
+            resourceDto.setIcon(resource.getIcon());
+        }
+        if (resource.getSort() != null) {
+            resourceDto.setSort(resource.getSort());
+        }
+
+        if (resource.getParentId() != null) {
+            resourceDto.setParentId(resource.getParentId());
+        }
+        return iResourceService.saveResource(resourceDto);
+    }
+
     /**
      * 注册路由
      *
@@ -858,36 +889,34 @@ public class PluginManager implements EnvironmentAware {
                 MenuDto menuDto = new MenuDto();
                 menuDto.setName(plugRoute.getName());
                 menuDto.setServiceName("frontend");
-
-                List<String> tags = new ArrayList<>();
-                tags.add("menu");
-                tags.add("remote");
-                if (StringUtils.isNotBlank(plugRoute.getDescription())) {
-                    tags.add(String.format("description:%s", plugRoute.getDescription()));
-                }
-
-                if (plugRoute.getSort() != null) {
-                    tags.add(String.format("sort:%d", plugRoute.getSort()));
-                }
-                if (StringUtils.isNotBlank(plugRoute.getParentName())) {
-                    tags.add(String.format("parentName:%s", plugRoute.getParentName()));
-                }
-                if (StringUtils.isNotBlank(plugRoute.getIcon())) {
-                    tags.add(String.format("iconUrl:%s", plugRoute.getIcon()));
-                }
-                if (StringUtils.isNotBlank(plugRoute.getModuleName())) {
-                    tags.add(String.format("moduleName:%s", plugRoute.getModuleName()));
-                }
-                if (StringUtils.isNotBlank(plugRoute.getHomeParentName())) {
-                    tags.add(String.format("homeParentName:%s", plugRoute.getHomeParentName()));
-                }
-                if (StringUtils.isNotBlank(plugRoute.getHomeIconUrl())) {
-                    tags.add(String.format("homeIconUrl:%s", plugRoute.getHomeIconUrl()));
-                }
-                menuDto.setTags(tags);
                 menuDto.setBaseUrl(plugRoute.getPath());
 
+                // 注册路由
                 menuService.createRoutewithNoService(menuDto, false, false);
+            }
+
+            if (CollectionUtils.isNotEmpty(plugInfoYml.getResources())) {
+                for (PlugInfoYml.PlugResource resource : plugInfoYml.getResources()) {
+                    Long resourceId = createResource(resource);
+
+                    if (CollectionUtils.isNotEmpty(resource.getChildren())) {
+                        for (PlugInfoYml.PlugResource childResource : resource.getChildren()) {
+                            childResource.setParentId(resourceId);
+                            createResource(childResource);
+                        }
+                    }
+
+                    if (CollectionUtils.isNotEmpty(resource.getOperations())) {
+                        resource.getOperations().forEach(operation -> {
+                            SaveResourceDto operationResource = new SaveResourceDto();
+                            operationResource.setGroupType(resource.getGroupType());
+                            operationResource.setCode(resource.getCode() + "." + operation.getCode());
+                            operationResource.setParentId(resourceId);
+                            operationResource.setType(3);//资源类型菜单
+                            iResourceService.saveResource(operationResource);
+                        });
+                    }
+                }
             }
         } catch (Exception e) {
             log.error("saveRoute error", e);
@@ -910,6 +939,24 @@ public class PluginManager implements EnvironmentAware {
 
                 PlugInfoYml.PlugRoute plugRoute = plugInfoYml.getRoute();
                 menuService.deleteMenu(plugRoute.getName());
+
+                if (CollectionUtils.isNotEmpty(plugInfoYml.getResources())) {
+                    for (PlugInfoYml.PlugResource resource : plugInfoYml.getResources()) {
+                        iResourceService.deleteByCode(resource.getCode());
+
+                        if (CollectionUtils.isNotEmpty(resource.getChildren())) {
+                            for (PlugInfoYml.PlugResource childResource : resource.getChildren()) {
+                                iResourceService.deleteByCode(childResource.getCode());
+                            }
+                        }
+
+                        if (CollectionUtils.isNotEmpty(resource.getOperations())) {
+                            resource.getOperations().forEach(operation -> {
+                                iResourceService.deleteByCode(resource.getCode() + "." + operation.getCode());
+                            });
+                        }
+                    }
+                }
             }
         } catch (Exception e) {
             log.error("deleteRoute error", e);

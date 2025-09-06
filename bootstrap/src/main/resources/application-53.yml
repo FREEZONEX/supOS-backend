@@ -26,7 +26,7 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
   datasource:
-    url: jdbc:postgresql://192.168.235.53:5432/postgres?currentSchema=supos
+    url: jdbc:postgresql://192.168.236.101:5432/postgres?currentSchema=supos
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
@@ -35,12 +35,12 @@ spring:
       strict: false
       datasource:
         supos:
-          url: jdbc:postgresql://192.168.235.53:5432/postgres?currentSchema=supos
+          url: jdbc:postgresql://192.168.236.101:5432/postgres?currentSchema=supos
           username: postgres
           password: postgres
           driver-class-name: org.postgresql.Driver
         keycloak:
-          url: jdbc:postgresql://192.168.235.53:5432/keycloak?currentSchema=public
+          url: jdbc:postgresql://192.168.236.101:5432/keycloak?currentSchema=public
           username: postgres
           password: postgres
           driver-class-name: org.postgresql.Driver
@@ -107,7 +107,7 @@ minio:
 #        enforceHistoryTimeToLive: false
 #        data-source-name: camundaDataSource
 #  datasource:
-#    url: jdbc:postgresql://192.168.235.53:5432/camunda?currentSchema=public
+#    url: jdbc:postgresql://192.168.236.101:5432/camunda?currentSchema=public
 #    driver-class-name: org.postgresql.Driver
 #    username: postgres
 #    password: postgres

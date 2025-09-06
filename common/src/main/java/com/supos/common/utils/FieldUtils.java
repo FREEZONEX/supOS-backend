@@ -6,9 +6,11 @@ import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.FieldDefines;
 import com.supos.common.enums.FieldType;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static com.supos.common.Constants.*;
 
@@ -22,6 +24,9 @@ import static com.supos.common.Constants.*;
 public class FieldUtils {
 
     private static final Pattern FIELD_NAME_PATTERN = Pattern.compile("^[A-Za-z][A-Za-z0-9_]*$");
+
+    private static final String[] extendField = new String[]{"unit", "upperLimit", "lowerLimit", "decimal"};
+    private static final int[] extendFlags = new int[]{1 << 0, 1 << 1, 1 << 2, 1 << 3};
 
     public static FieldDefine getTimestampField(FieldDefine[] fields) {
         for (FieldDefine define : fields) {
@@ -125,38 +130,22 @@ public class FieldUtils {
             fNews.add(new FieldDefine(Constants.QOS_FIELD, FieldType.LONG));
             fields = fNews.toArray(new FieldDefine[0]);
         } else {
-            FieldDefine idField = fieldMap.get(SYS_FIELD_ID);
-            boolean hasId = idField != null;
-            if (!hasId) {
-                for (FieldDefine f : fields) {
-                    if (f.isUnique()) {
+            boolean hasId = false;
+            ArrayList<FieldDefine> fNews = new ArrayList<>(Math.max(fields.length + 4, 16));
+            fNews.add(new FieldDefine(Constants.SYS_FIELD_CREATE_TIME, FieldType.DATETIME, true));
+            for (FieldDefine f : fields) {
+                String name = f.getName();
+                if (!Constants.systemFields.contains(name)) {
+                    if (!hasId && f.isUnique()) {
                         hasId = true;
-                        break;
                     }
+                    fNews.add(f);
                 }
-            } else if (FieldType.LONG != idField.getType()) {
-                err[0] = I18nUtils.getMessage("uns.field.type.must.be.long");
-                return null;
             }
-            if (!hasId || createTimeField == null) {
-                FieldDefine[] newFs;
-                if (!hasId && createTimeField == null) {
-                    newFs = new FieldDefine[2 + fields.length];
-                    newFs[0] = new FieldDefine(SYS_FIELD_CREATE_TIME, FieldType.DATETIME, false);
-                    newFs[newFs.length - 1] = new FieldDefine(SYS_FIELD_ID, FieldType.LONG, true);//自动加上 id字段并作为主键
-                    System.arraycopy(fields, 0, newFs, 1, fields.length);
-                    log.debug("关系库类型自动加Id+ct: {}.{}", ALIAS, newFs[0].getName());
-                } else if (!hasId) {
-                    newFs = new FieldDefine[fields.length + 1];
-                    newFs[newFs.length - 1] = new FieldDefine(SYS_FIELD_ID, FieldType.LONG, true);
-                    System.arraycopy(fields, 0, newFs, 0, fields.length);
-                } else {
-                    newFs = new FieldDefine[1 + fields.length];
-                    newFs[0] = new FieldDefine(SYS_FIELD_CREATE_TIME, FieldType.DATETIME, false);
-                    System.arraycopy(fields, 0, newFs, 1, fields.length);
-                }
-                fields = newFs;
+            if (!hasId) {
+                fNews.add(new FieldDefine(Constants.SYS_FIELD_ID, FieldType.LONG, true));
             }
+            fields = fNews.toArray(new FieldDefine[0]);
         }
         return new TableFieldDefine(tableName, fields);
     }
@@ -164,7 +153,13 @@ public class FieldUtils {
     public static String validateFields(FieldDefine[] fields, boolean checkSysField) {
         HashMap<String, FieldDefine> fieldMap = new HashMap<>();
         for (FieldDefine f : fields) {
-            final String name = f.getName();
+            String name = f.getName();
+            if (name == null || (name = name.trim()).isEmpty()) {
+                return I18nUtils.getMessage("uns.invalid.emptyFieldName", name);
+            }
+            if (name.length() > 63) {
+                return I18nUtils.getMessage("uns.field.tooLong", name);
+            }
             if (fieldMap.put(name, f) != null) {
                 return I18nUtils.getMessage("uns.field.duplicate", name);
             }
@@ -173,6 +168,8 @@ public class FieldUtils {
                     return I18nUtils.getMessage("uns.field.startWith.limit.underline", name);
                 }
                 continue;
+            } else if (Character.isDigit(name.charAt(0))) {
+                return I18nUtils.getMessage("uns.field.startWith.limit.number", name);
             }
 
             if (!FIELD_NAME_PATTERN.matcher(name).matches()) {
@@ -196,5 +193,42 @@ public class FieldUtils {
             }
         }
         return total;
+    }
+
+    public static int generateFlag(String[] extendFieldUsed) {
+        int flags = 0;
+        if (extendFieldUsed == null || extendFieldUsed.length == 0) {
+            return flags;
+        }
+
+        Set<String> used = Arrays.stream(extendFieldUsed).collect(Collectors.toSet());
+        for (int i = 0; i < extendField.length; i++) {
+            if (used.contains(extendField[i])) {
+                flags |= extendFlags[i];
+            }
+        }
+        return flags;
+    }
+
+    public static String[] parseFlag(Integer flag) {
+        if (flag == null || flag == 0) {
+            return null;
+        }
+
+        HashSet<String> used = new HashSet<>(8);
+        for (int i = 0; i < extendField.length; i++) {
+            int baseFlag = extendFlags[i];
+            if ((flag & baseFlag) == baseFlag) {
+                used.add(extendField[i]);
+            }
+        }
+        if (!CollectionUtils.isEmpty(used)) {
+            return used.toArray(new String[used.size()]);
+        }
+        return null;
+    }
+
+    public static String[] getExtendFieldUsed() {
+        return extendField;
     }
 }

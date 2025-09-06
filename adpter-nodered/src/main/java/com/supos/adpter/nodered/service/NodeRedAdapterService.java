@@ -1,6 +1,7 @@
 package com.supos.adpter.nodered.service;
 
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
@@ -14,12 +15,14 @@ import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
 import com.supos.adpter.nodered.dao.po.NodeFlowPO;
 import com.supos.adpter.nodered.enums.FlowStatus;
 import com.supos.adpter.nodered.util.IDGenerator;
+import com.supos.adpter.nodered.vo.DeployResponseVO;
 import com.supos.adpter.nodered.vo.NodeFlowVO;
 import com.supos.adpter.nodered.vo.UpdateFlowRequestVO;
 import com.supos.common.dto.NodeRedTagsDTO;
 import com.supos.common.dto.PageResultDTO;
 import com.supos.common.exception.NodeRedException;
 import com.supos.common.utils.RuntimeUtil;
+import com.supos.common.utils.SuposIdUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -57,8 +60,6 @@ public class NodeRedAdapterService {
     @Autowired
     private NodeFlowModelMapper nodeFlowModelMapper;
 
-
-
     /**
      * proxy nodered /flows api
      * @return json string
@@ -72,21 +73,23 @@ public class NodeRedAdapterService {
         if (nodeFlow == null) {
             throw new NodeRedException(400, "nodered.flow.not.exist");
         }
-        String flowJson = nodeFlow.getFlowData();
-        // 当flowId存在且flowData不存在， 需要调用node-red服务，检查是否在服务端运行
-        /*if (StringUtils.hasText(nodeFlow.getFlowId()) && !StringUtils.hasText(flowJson)) {
-            flowJson = getFlowDataFromNodeRed(nodeFlow.getFlowId());
-            // update to db
-            if (StringUtils.hasText(flowJson)) {
-                nodeFlowMapper.deployUpdate(id, nodeFlow.getFlowId(), FlowStatus.RUNNING.name(), flowJson);
-            }
-        }*/
-        JSONArray nodes = StringUtils.hasText(flowJson) ? JSON.parseArray(flowJson) : new JSONArray();
+        JSONArray nodes = null;
+        if (StringUtils.hasText(nodeFlow.getFlowData())) { // 草稿状态
+            nodes = JSON.parseArray(nodeFlow.getFlowData());
+        } else if (StringUtils.hasText(nodeFlow.getFlowId())) { // 发布状态
+            // 当flowId存在且flowData不存在， 需要调用node-red服务
+            nodes = getFlowDataFromNodeRed(nodeFlow.getFlowId());
+        }
+        if (nodes == null) {
+            nodes = new JSONArray();
+        }
+
         addLabelNode(nodes, nodeFlow.getFlowId(), nodeFlow.getFlowName(), nodeFlow.getDescription());
         // 添加全局节点
         addGlobalNode(nodes);
         JSONObject response = new JSONObject();
         response.put("flows", nodes);
+        response.put("rev", getVersion());
         return response;
     }
 
@@ -113,26 +116,15 @@ public class NodeRedAdapterService {
 
     // 不包含label节点
     private JSONArray retrieveGlobalNodeFromNodeRed() {
-        HttpRequest getClient = HttpUtil.createGet(String.format("http://%s:%s/flows", nodeRedHost, nodeRedPort));
+        HttpRequest getClient = HttpUtil.createGet(String.format("http://%s:%s/flow/global", nodeRedHost, nodeRedPort));
         HttpResponse response = getClient.execute();
         if (!isSuccess(response.getStatus())) {
             log.error("node-red获取全局节点失败： error = {}", response.body());
             return null;
         }
-        JSONArray nodes = JSON.parseArray(response.body());
-        JSONArray globalNodes = new JSONArray();
-        if (nodes != null && nodes.size() > 0) {
-            // 排除type=tab和z属性不为空的节点，只保留全局节点
-            for (int i = 0; i < nodes.size(); i++) {
-                String type = nodes.getJSONObject(i).getString("type");
-                String z = nodes.getJSONObject(i).getString("z");
-                if (!"tab".equals(type) && !StringUtils.hasText(z)) {
-                    globalNodes.add(nodes.getJSONObject(i));
-                }
-            }
-            return globalNodes;
-        }
-        return null;
+        JSONObject jsonObject = JSON.parseObject(response.body());
+        return jsonObject.getJSONArray("configs");
+
     }
 
     /**
@@ -148,8 +140,6 @@ public class NodeRedAdapterService {
         }
         return null;
     }
-
-
 
     /**
      * 直接走node-red服务
@@ -205,7 +195,7 @@ public class NodeRedAdapterService {
      * @return flowId
      */
     @Transactional(isolation = Isolation.READ_COMMITTED, timeout = 300)
-    public String proxyDeploy(long id, JSONArray nodes, List<String> aliases) {
+    public DeployResponseVO proxyDeploy(long id, JSONArray nodes, List<String> aliases) {
         NodeFlowPO nodeFlow = nodeFlowMapper.getById(id);
         if (nodeFlow == null) {
            throw new NodeRedException(400, "nodered.flow.not.exist");
@@ -239,15 +229,15 @@ public class NodeRedAdapterService {
             }
         }
         // update database
-        nodeFlowMapper.deployUpdate(id, flowId, FlowStatus.RUNNING.name(), nodes.toString());
-        nodeFlowModelMapper.deleteById(id);
+        nodeFlowMapper.deployUpdate(id, flowId, FlowStatus.RUNNING.name(), ""); // 清空草稿数据
         if (!flowModels.isEmpty()) {
+            nodeFlowModelMapper.deleteById(id);
             List<List<NodeFlowModelPO>> lists = cutList(flowModels);
             for (List<NodeFlowModelPO> list : lists) {
                 nodeFlowModelMapper.batchInsert(list);
             }
         }
-        return flowId;
+        return new DeployResponseVO(flowId, "");
     }
 
     // 从当前节点列表中过滤出全局节点，并返回全局节点列表
@@ -325,7 +315,7 @@ public class NodeRedAdapterService {
             throw new NodeRedException(400, "nodered.flowName.duplicate");
         }
         NodeFlowPO flowPO = new NodeFlowPO();
-        flowPO.setId(IdUtil.getSnowflakeNextId());
+        flowPO.setId(SuposIdUtil.nextId());
         flowPO.setFlowStatus(FlowStatus.DRAFT.name());
         flowPO.setFlowName(flowName);
         flowPO.setDescription(description);
@@ -349,20 +339,22 @@ public class NodeRedAdapterService {
             throw new NodeRedException(400, "nodered.flow.not.exist");
         }
         long id = createFlow(flowName, description, template);
+        JSONArray nodes = null;
         if (StringUtils.hasText(nodeFlow.getFlowData())) {
-            JSONArray nodes = JSON.parseArray(nodeFlow.getFlowData());
+            nodes = JSON.parseArray(nodeFlow.getFlowData());
+        } else if (StringUtils.hasText(nodeFlow.getFlowId())) {
+            nodes = getFlowDataFromNodeRed(nodeFlow.getFlowId());
+        }
+        if (nodes != null) {
             // 变更节点id
-            String nodesString = JSON.toJSONString(nodes);
             for (int i = 0; i < nodes.size(); i++) {
                 String z = nodes.getJSONObject(i).getString("z");
-                if (StringUtils.hasText(z)) { // 只修改流程范围内的节点ID，全局节点不修改
+                if (!StringUtils.hasText(z)) { // 只修改流程范围内的节点ID，全局节点不修改
                     String newId = IDGenerator.generate();
-                    String oldId = nodes.getJSONObject(i).getString("id");
-                    nodesString = nodesString.replaceAll(oldId, newId);
+                    nodes.getJSONObject(i).put("id", newId);
                 }
             }
-            JSONArray newNodes = JSON.parseArray(nodesString);
-            saveFlowData(id, newNodes);
+            saveFlowData(id, nodes);
         }
         return id;
     }
@@ -380,30 +372,11 @@ public class NodeRedAdapterService {
             throw new NodeRedException(400, "nodered.flow.not.exist");
         }
         String flowJson = "";
-        List<NodeFlowModelPO> flowModels = new ArrayList<>();
         if (nodes != null) {
             flowJson = nodes.toString();
-            /*for (int i = 0; i < nodes.size(); i++) {
-                String nodeType = nodes.getJSONObject(i).getString("type");
-                // 统计关联了哪些模型topic
-                if ("supmodel".equals(nodeType)) {
-                    JSONArray models = nodes.getJSONObject(i).getJSONArray("models");
-                    if (models != null && !models.isEmpty()) {
-                        for (int j = 0; j < models.size(); j++) {
-                            String topic = models.getJSONObject(j).getString("topic");
-                            String unsId = models.getJSONObject(j).getString("id");
-                            flowModels.add(new NodeFlowModelPO(id, topic, unsId));
-                        }
-                    }
-                }
-            }*/
         }
         String status = StringUtils.hasText(nodeFlow.getFlowId()) ? FlowStatus.PENDING.name() : FlowStatus.DRAFT.name();
         nodeFlowMapper.saveFlowData(id, status, flowJson);
-        /*nodeFlowModelMapper.deleteById(id);
-        if (!flowModels.isEmpty()) {
-            nodeFlowModelMapper.batchInsert(flowModels);
-        }*/
     }
 
     /**
@@ -423,11 +396,11 @@ public class NodeRedAdapterService {
                 throw new NodeRedException(400, "nodered.flowName.has.used");
             }
         }
-        if (StringUtils.hasText(nodeFlow.getFlowId())) {
+        /*if (StringUtils.hasText(nodeFlow.getFlowId())) {
             JSONArray flowNodes = StringUtils.hasText(nodeFlow.getFlowData()) ? JSON.parseArray(nodeFlow.getFlowData()) : new JSONArray();
             // update node-red
             deployToNodeRed(nodeFlow.getFlowId(), requestVO.getFlowName(), requestVO.getDescription(), flowNodes);
-        }
+        }*/
         // update db
         nodeFlowMapper.updateBasicInfoById(id, requestVO.getFlowName(), requestVO.getDescription());
     }
@@ -498,31 +471,33 @@ public class NodeRedAdapterService {
 
 
     // 不包含label节点
-    private String getFlowDataFromNodeRed(String flowId) {
+    private JSONArray getFlowDataFromNodeRed(String flowId) {
         HttpRequest getClient = HttpUtil.createGet(String.format("http://%s:%s/flow/%s", nodeRedHost, nodeRedPort, flowId));
         HttpResponse response = getClient.execute();
         if (!isSuccess(response.getStatus())) {
             log.error("node-red获取流程失败：id = {}, error = {}", flowId, response.body());
-            return "";
+            return null;
         }
-        /**
-         * {                                           [
-         *     id:"",                                    {   id: "",
-         *     nodes: [{}]            ----->                 type: ""
-         * }                                                 ...
-         *                                                }
-         *                                             ]
-         */
         JSONObject flowJson = JSON.parseObject(response.body());
-        JSONArray nodes = flowJson.getJSONArray("nodes");
-        if (nodes != null && nodes.size() > 0) {
-            return nodes.toString();
+        return flowJson.getJSONArray("nodes");
+    }
+
+    public String getVersion() {
+        HttpRequest getClient = HttpUtil.createGet(String.format("http://%s:%s/flows", nodeRedHost, nodeRedPort));
+        Map<String, String> headers = new HashMap<>();
+        headers.put("node-red-api-version", "v2");
+        getClient.addHeaders(headers);
+        HttpResponse response = getClient.execute();
+        if (!isSuccess(response.getStatus())) {
+            log.error("node-red获取流程版本失败： error = {}", response.body());
+            return null;
         }
-        return "";
+        JSONObject flowJson = JSON.parseObject(response.body());
+        return flowJson.getString("rev");
     }
 
     // 添加label节点
-    private JSONArray addLabelNode(JSONArray nodes, String flowId, String flowName, String description) {
+    private void addLabelNode(JSONArray nodes, String flowId, String flowName, String description) {
         JSONObject labelNode = new JSONObject();
         if (StringUtils.hasText(flowId)) {
             labelNode.put("id", flowId);
@@ -535,7 +510,6 @@ public class NodeRedAdapterService {
         labelNode.put("disabled", false);
         labelNode.put("info", description);
         nodes.add(labelNode);
-        return nodes;
     }
 
     private void deployGlobalNodesToNodeRed(JSONArray globalNodes) {

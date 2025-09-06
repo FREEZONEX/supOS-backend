@@ -172,18 +172,4 @@
         <include refid="commonWhereConditions"/>
     </select>
 
-    <select id="selectByLayRecPrefixes" parameterType="java.util.Set" resultMap="unsResultMap">
-        SELECT *
-        FROM uns_namespace a
-        WHERE a.status = 1 AND (a.data_type != 5 OR a.data_type IS NULL)
-          and a.path_type = 0
-        <if test="prefixes != null and prefixes.size() &gt; 0">
-            AND (
-            <foreach collection="prefixes" item="prefix" separator=" OR ">
-                a.lay_rec LIKE CONCAT(#{prefix}, '%')
-            </foreach>
-            )
-        </if>
-    </select>
-
 </mapper>

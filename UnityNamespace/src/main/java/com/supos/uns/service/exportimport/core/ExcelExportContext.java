@@ -1,12 +1,16 @@
 package com.supos.uns.service.exportimport.core;
 
+import com.supos.common.Constants;
 import com.supos.common.dto.InstanceField;
+import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsPo;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @author sunlifang
@@ -16,24 +20,23 @@ import java.util.*;
  */
 @Getter
 public class ExcelExportContext {
+    private String language;
+
     /**待导出的模板*/
-    private Map<Long, UnsPo> templateMap = new HashMap<>();
+    private Map<Long, UnsPo> templateMap = new LinkedHashMap<>();
     /**待导出的标签*/
-    private Map<Long, UnsLabelPo> labelMap = new HashMap<>();
+    private Map<Long, UnsLabelPo> labelMap = new LinkedHashMap<>();
     /**待导出的文件夹*/
-    private List<ExportNode> exportFolderList = new LinkedList<>();
+    private Map<String, UnsPo> exportFolderMap = new LinkedHashMap<>();
+    private Set<Long> exportFolderId = new HashSet<>();
+
     /**待导出的文件*/
-    private List<ExportNode> exportFileList = new LinkedList<>();
+    private Map<String, UnsPo> exportFileMap = new LinkedHashMap<>();
 
-
-    /**待导出的文件夹alias集合*/
-    private Set<String> folderAlias = new HashSet<>();
-    /**待导出的文件alias集合*/
-    private Map<String, ExportNode> fileAliasMap = new HashMap<>();
     /**待导出的文件id集合*/
-    private Map<Long, ExportNode> fileIdMap = new HashMap<>();
+    private Map<Long, String> fileIdToAliasMap = new HashMap<>();
     /**待导出的文件path集合*/
-    private Map<String, ExportNode> filePathMap = new HashMap<>();
+    private Map<String, String> filePathToAliasMap = new HashMap<>();
 
 
 
@@ -41,9 +44,14 @@ public class ExcelExportContext {
 
     Map<Long, Set<String>> unsLabelNamesMap = new HashMap<>();
 
+    /***************文件关联的引用文件****************/
     private Set<Long> checkReferIds = new HashSet<>();
     private Set<String> checkReferAliass = new HashSet<>();
     private Set<String> checkReferPaths = new HashSet<>();
+
+    public ExcelExportContext(String language) {
+        this.language = language;
+    }
 
     public void putAllTemplate(Map<Long, UnsPo> templateMap) {
         this.templateMap.putAll(templateMap);
@@ -57,20 +65,54 @@ public class ExcelExportContext {
         unsLabelNamesMap.computeIfAbsent(unsId, k -> new HashSet<>()).add(labelName);
     }
 
-    public void addExportFolder(ExportNode exportNode) {
-        if (folderAlias.add(exportNode.getUnsPo().getAlias())) {
-            exportFolderList.add(exportNode);
+    public void addExportFolder(UnsPo exportFolder) {
+        exportFolderMap.put(exportFolder.getAlias(), exportFolder);
+        exportFolderId.add(exportFolder.getId());
+    }
+
+    public boolean containExportFolder(Long folderId) {
+        return exportFolderId.contains(folderId);
+    }
+
+    public Collection<UnsPo> getAllExportFolder() {
+        return exportFolderMap.values();
+    }
+
+    public void addExportFile(UnsPo exportFile) {
+        if (exportFileMap.put(exportFile.getAlias(), exportFile) == null) {
+            fileIdToAliasMap.put(exportFile.getId(), exportFile.getAlias());
+            filePathToAliasMap.put(exportFile.getPath(), exportFile.getAlias());
         }
     }
 
-    public void addExportFile(ExportNode exportNode) {
-        if (fileAliasMap.put(exportNode.getUnsPo().getAlias(), exportNode) == null) {
-            exportFileList.add(exportNode);
-            fileIdMap.put(exportNode.getUnsPo().getId(), exportNode);
-            filePathMap.put(exportNode.getUnsPo().getPath(), exportNode);
-        }
+    public Collection<UnsPo> getAllExportFile() {
+        return exportFileMap.values();
     }
 
+    public UnsPo getExportFileById(Long id) {
+        String alias = fileIdToAliasMap.get(id);
+        if (alias != null) {
+            return exportFileMap.get(alias);
+        }
+        return null;
+    }
+
+    public UnsPo getExportFileByPath(String path) {
+        String alias = filePathToAliasMap.get(path);
+        if (alias != null) {
+            return exportFileMap.get(alias);
+        }
+        return null;
+    }
+
+    public UnsPo getExportFileByAlias(String alias) {
+        return exportFileMap.get(alias);
+    }
+
+    /**
+     * 导出时解析导出文件关联引用文件
+     * @param refers
+     */
     public void addCheckRefer(InstanceField[] refers) {
         if (refers != null && refers.length > 0) {
             for (InstanceField refer : refers) {

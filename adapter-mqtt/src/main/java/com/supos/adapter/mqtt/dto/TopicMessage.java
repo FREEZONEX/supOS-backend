@@ -8,12 +8,12 @@ import java.util.Map;
 @Data
 public class TopicMessage {
     Long id;
-    List<Map<String, Object>> msg;
+    Map<String, Object>[] msg;
 
     public TopicMessage() {
     }
 
-    public TopicMessage(Long id, List<Map<String, Object>> msg) {
+    public TopicMessage(Long id, Map<String, Object>[] msg) {
         this.id = id;
         this.msg = msg;
     }

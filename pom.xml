@@ -38,7 +38,7 @@
     <module>adapter-mqtt</module>
     <module>adpter-kong</module>
     <module>adpter-nodered</module>
-    <module>adpter-hasura</module>
+<!--    <module>adpter-hasura</module>-->
     <module>gateway</module>
     <module>adpter-elasticsearch</module>
     <module>adpter-minio</module>

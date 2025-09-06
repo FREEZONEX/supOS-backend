@@ -25,7 +25,7 @@ public class UserContext {
         String authEnable = SystemUtil.get("SYS_OS_AUTH_ENABLE", "false");
         //免登环境下  mock  guest用户
         if ("false".equals(authEnable) && userInfo == null){
-           return UserInfoVo.guest();
+            userInfo = new UserInfoVo("guest","guest");
         }
         return userInfo;
     }

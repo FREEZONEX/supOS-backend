@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class TemplateSearchResult {
 
+    @Schema(description = "ID")
     private String id;
 
     @Schema(description = "模板名称")

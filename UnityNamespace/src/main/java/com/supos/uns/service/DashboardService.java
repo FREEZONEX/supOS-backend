@@ -6,6 +6,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
+import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
@@ -76,6 +77,8 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
     private IUnsDefinitionService unsDefinitionService;
     @Autowired
     UnsMapper unsMapper;
+    @Autowired
+    UnsAddService unsAddService;
 
     public PageResultDTO<DashboardDto> pageList(String keyword, Integer type, PaginationDTO params) {
         Page<DashboardPo> page = new Page<>(params.getPageNo(), params.getPageSize());
@@ -189,6 +192,15 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
      * 获取grafana详情
      */
     public ResultVO<JSONObject> getByUuid(String uuid) {
+        JSONObject dbJson = GrafanaUtils.getDashboardByUuid(uuid);
+        if (null == dbJson) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.dashboard.not.exit"));
+        }
+        return ResultVO.successWithData(dbJson);
+    }
+
+    public ResultVO isExist(String alias) {
+        String uuid = GrafanaUtils.getDashboardUuidByAlias(alias);
         JSONObject dbJson = GrafanaUtils.getDashboardByUuid(uuid);
         if (null == dbJson) {
             return ResultVO.fail(I18nUtils.getMessage("uns.dashboard.not.exit"));
@@ -339,14 +351,11 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
             return ResultVO.fail(I18nUtils.getMessage("uns.file.not.exist"));
         }
 
-        if (uns.getAddDashBoard()) {
-            return ResultVO.fail(I18nUtils.getMessage("uns.dashboard.already.created"));
-        }
+//        if (uns.getAddDashBoard()) {
+//            return ResultVO.fail(I18nUtils.getMessage("uns.dashboard.already.created"));
+//        }
 
         int dataType = uns.getDataType();
-        if (dataType != Constants.TIME_SEQUENCE_TYPE && dataType != Constants.RELATION_TYPE) {
-            return ResultVO.fail(I18nUtils.getMessage("uns.file.dataType.invalid", dataType));
-        }
 
         SrcJdbcType jdbcType = null;
         if (dataType == Constants.RELATION_TYPE) {
@@ -383,12 +392,9 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
             po.setUpdateTime(now);
             dashboardMapper.insert(po);
         }
-
         int flag = UnsFlags.generateFlag(uns.getAddFlow(), uns.getSave2db(), true, uns.getRetainTableWhenDeleteInstance(), uns.getAccessLevel());
-        LambdaUpdateWrapper<UnsPo> updateWrapper = new LambdaUpdateWrapper<>();
-        updateWrapper.eq(UnsPo::getId, uns.getId());
-        updateWrapper.set(UnsPo::getWithFlags, flag);
-        unsMapper.update(updateWrapper);
+        uns.setFlags(flag);
+        unsAddService.createModelInstance(uns);
         return ResultVO.success("ok");
     }
 }

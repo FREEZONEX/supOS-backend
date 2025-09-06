@@ -1,17 +1,15 @@
 package com.supos.adpter.nodered;
 
 import com.supos.adpter.nodered.service.ImportNodeRedFlowService;
-import com.supos.common.dto.PageResultDTO;
-import com.supos.common.dto.ResultDTO;
 import com.supos.adpter.nodered.service.NodeRedAdapterService;
 import com.supos.adpter.nodered.vo.*;
+import com.supos.common.dto.PageResultDTO;
+import com.supos.common.dto.ResultDTO;
+import jakarta.annotation.Nullable;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-
-import jakarta.annotation.Nullable;
-import jakarta.validation.Valid;
-import java.util.List;
 
 @RestController
 @Slf4j
@@ -70,6 +68,12 @@ public class NodeRedAdapterController {
         return ResultDTO.successWithData(mockFlow);
     }
 
+    @GetMapping({"/inter-api/supos/flow/version"})
+    public ResultDTO<String> getRevVersion() {
+        String version = nodeRedAdapterService.getVersion();
+        return ResultDTO.successWithData(version);
+    }
+
     /**
      * 部署单个流程, 流程ID从当前cookie中获取
      * @param requestBody
@@ -78,8 +82,8 @@ public class NodeRedAdapterController {
     @PostMapping("/inter-api/supos/flow/deploy")
     public ResultDTO deploy(@Valid @RequestBody DeployFlowRequestVO requestBody) {
         long id = Long.parseLong(requestBody.getId());
-        String flowId = nodeRedAdapterService.proxyDeploy(id, requestBody.getFlows(), null);
-        return ResultDTO.successWithData(flowId);
+        DeployResponseVO deployResponse = nodeRedAdapterService.proxyDeploy(id, requestBody.getFlows(), null);
+        return ResultDTO.successWithData(deployResponse);
     }
 
     @PutMapping("/inter-api/supos/flow/save")

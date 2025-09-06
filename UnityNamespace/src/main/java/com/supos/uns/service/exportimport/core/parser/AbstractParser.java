@@ -1,7 +1,11 @@
 package com.supos.uns.service.exportimport.core.parser;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.google.common.collect.Sets;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.InstanceField;
+import com.supos.common.enums.FieldType;
 import com.supos.common.utils.FieldUtils;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.JsonUtil;
@@ -10,9 +14,14 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.tuple.Triple;
 
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
@@ -22,6 +31,7 @@ import java.util.Set;
  * @description: AbstractParser
  * @date 2025/4/22 15:27
  */
+@Slf4j
 public abstract class AbstractParser implements ParserAble {
 
     static final Validator validator;
@@ -53,14 +63,27 @@ public abstract class AbstractParser implements ParserAble {
         }
     }
 
-    protected Pair<Boolean, FieldDefine[]> checkFields(String batchIndex, String fields, ExcelImportContext context) {
+    protected Triple<Boolean, Integer, FieldDefine[]> checkFields(boolean checkBlob, String batchIndex, String fields, ExcelImportContext context) {
+        Integer flag = 0;
         if (StringUtils.isNotBlank(fields)) {
             FieldDefine[] defineList;
             try {
                 defineList = JsonUtil.fromJson(fields, FieldDefine[].class);
+
+                JsonNode jsonNode = new JsonMapper().readTree(fields.getBytes(StandardCharsets.UTF_8));
+                if (jsonNode.isArray()) {
+                    Set<String> keys = new HashSet<>();
+                    Iterator<JsonNode> fieldNodeIt = jsonNode.iterator();
+                    while (fieldNodeIt.hasNext()) {
+                        JsonNode fieldNode = fieldNodeIt.next();
+                        keys.addAll(Sets.newHashSet(fieldNode.fieldNames()));
+                    }
+                    flag = FieldUtils.generateFlag(keys.toArray(new String[keys.size()]));
+                }
             } catch (Exception ex) {
-                context.addError(batchIndex, "field json Err:" + ex.getMessage());
-                return Pair.of(false, null);
+                log.error("field json Err", ex);
+                context.addError(batchIndex, I18nUtils.getMessage("uns.import.formate.invalid1", "fields"));
+                return Triple.of(false, null, null);
             }
             StringBuilder er = null;
             for (FieldDefine define : defineList) {
@@ -71,19 +94,25 @@ public abstract class AbstractParser implements ParserAble {
                     }
                     addValidErrMsg(er, violations);
                 }
+                if (checkBlob) {
+                    if (define.getType() == FieldType.BLOB || define.getType() == FieldType.LBLOB) {
+                        context.addError(batchIndex, I18nUtils.getMessage("uns.import.field.blob"));
+                        return Triple.of(false, null, null);
+                    }
+                }
             }
             if (er != null) {
                 context.addError(batchIndex, er.toString());
-                return Pair.of(false, null);
+                return Triple.of(false, flag, null);
             }
             String validateMsg = FieldUtils.validateFields(defineList, true);
             if (validateMsg != null) {
                 context.addError(batchIndex, validateMsg);
-                return Pair.of(false, null);
+                return Triple.of(false, flag, null);
             }
-            return Pair.of(true, defineList);
+            return Triple.of(true, flag, defineList);
         }
-        return Pair.of(true, null);
+        return Triple.of(true, flag, null);
     }
 
     protected Pair<Boolean, InstanceField[]> checkRefers(String batchIndex, String refers, ExcelImportContext context) {
@@ -92,7 +121,8 @@ public abstract class AbstractParser implements ParserAble {
             try {
                 referList = JsonUtil.fromJson(refers, InstanceField[].class);
             } catch (Exception ex) {
-                context.addError(batchIndex, "refers json Err:" + ex.getMessage());
+                log.error("refers json Err", ex);
+                context.addError(batchIndex, I18nUtils.getMessage("uns.import.formate.invalid1", "refers"));
                 return Pair.of(false, null);
             }
 
@@ -157,5 +187,21 @@ public abstract class AbstractParser implements ParserAble {
         }
 
         return finalValue;
+    }
+
+    protected String getValueFromJsonNode(JsonNode jsonNode, String field) {
+        JsonNode valueNode = jsonNode.get(field);
+        if (valueNode != null && valueNode.isTextual()) {
+            return valueNode.textValue();
+        }
+        return null;
+    }
+
+    protected String getValueFromDataMap(Map<String, Object> dataMap, String field) {
+        Object value = dataMap.get(field);
+        if (value != null) {
+            return value.toString();
+        }
+        return null;
     }
 }

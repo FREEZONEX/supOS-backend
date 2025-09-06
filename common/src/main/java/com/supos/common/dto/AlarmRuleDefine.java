@@ -3,6 +3,7 @@ package com.supos.common.dto;
 
 import cn.hutool.core.lang.Snowflake;
 import cn.hutool.core.util.StrUtil;
+import com.supos.common.utils.SuposIdUtil;
 import lombok.Data;
 
 import jakarta.validation.constraints.NotNull;
@@ -60,9 +61,8 @@ public class AlarmRuleDefine {
         }
     }
 
-    private static final Snowflake snow = new Snowflake();
 
     public static long nextId() {
-        return snow.nextId();
+        return SuposIdUtil.nextId();
     }
 }

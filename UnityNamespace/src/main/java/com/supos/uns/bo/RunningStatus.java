@@ -30,6 +30,10 @@ public class RunningStatus {
     private int errorCount;
     private int successCount;
 
+    public RunningStatus() {
+
+    }
+
     public RunningStatus(int code, String msg) {
         this.code = code;
         this.msg = I18nUtils.getMessage(msg);
@@ -81,6 +85,11 @@ public class RunningStatus {
 
     public RunningStatus setEndTime(Long endTime) {
         this.endTime = endTime;
+        return this;
+    }
+
+    public RunningStatus setFinished(Boolean finished) {
+        this.finished = finished;
         return this;
     }
 }

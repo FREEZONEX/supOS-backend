@@ -6,8 +6,10 @@ import com.supos.common.dto.mqtt.TopicDefinition;
 import com.supos.common.service.IUnsDefinitionService;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 public class UnsDefinitionService implements IUnsDefinitionService {
@@ -71,5 +73,10 @@ public class UnsDefinitionService implements IUnsDefinitionService {
     @Override
     public ConcurrentHashMap<String, Long> getPathMap() {
         return pathMap;
+    }
+
+    @Override
+    public List<CreateTopicDto> allDefinitions() {
+        return topicDefinitionMap.values().stream().map(TopicDefinition::getCreateTopicDto).collect(Collectors.toList());
     }
 }

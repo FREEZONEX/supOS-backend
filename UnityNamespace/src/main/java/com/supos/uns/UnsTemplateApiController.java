@@ -28,13 +28,13 @@ public class UnsTemplateApiController {
     UnsQueryService unsQueryService;
 
     @Operation(summary = "查询模板列表", tags = {"openapi.tag.template.management"})
-    @PostMapping(path = {"/inter-api/supos/uns/template/pageList", "/open-api/supos/uns/template/pageList"})
+    @PostMapping(path = {"/inter-api/supos/uns/template/pageList"})
     public PageResultDTO<TemplateSearchResult> templatePageList(@Valid @RequestBody TemplateQueryVo params) {
         return unsQueryService.templatePageList(params);
     }
 
     @Operation(summary = "根据ID查询模板详情", tags = "openapi.tag.template.management")
-    @GetMapping(path = {"/inter-api/supos/uns/template", "/open-api/supos/uns/template"})
+    @GetMapping(path = {"/inter-api/supos/uns/template"})
     public ResultVO<TemplateVo> templateDetail(@RequestParam(name = "id") @Parameter(description = "模板ID") Long id) {
         TemplateVo vo = unsQueryService.getTemplateById(id);
         if (vo == null) {
@@ -44,7 +44,7 @@ public class UnsTemplateApiController {
     }
 
     @Operation(summary = "根据别名查询模板详情", tags = {"openapi.tag.template.management"})
-    @GetMapping(path = {"/inter-api/supos/uns/template/alias", "/open-api/supos/uns/template/alias"})
+    @GetMapping(path = {"/inter-api/supos/uns/template/alias"})
     public ResultVO<TemplateVo> templateDetailByAlias(@RequestParam(name = "alias") @Parameter(description = "模板别名") String alias) {
         TemplateVo vo = unsQueryService.getTemplateByAlias(alias);
         if (vo == null) {
@@ -54,13 +54,13 @@ public class UnsTemplateApiController {
     }
 
     @Operation(summary = "新增模板", tags = {"openapi.tag.template.management"})
-    @PostMapping(path = {"/inter-api/supos/uns/template", "/open-api/supos/uns/template"})
+    @PostMapping(path = {"/inter-api/supos/uns/template"})
     public ResultVO<String> createTemplate(@Valid @RequestBody CreateTemplateVo createTemplateVo) {
         return unsTemplateService.createTemplate(createTemplateVo);
     }
 
     @Operation(summary = "修改模板基本信息", tags = "openapi.tag.template.management")
-    @PutMapping(path = {"/inter-api/supos/uns/template", "/open-api/supos/uns/template"})
+    @PutMapping(path = {"/inter-api/supos/uns/template"})
     public ResultVO updateTemplate(@RequestParam(name = "id") @Parameter(description = "模板ID") Long id,
                                    @RequestParam(name = "name", required = false) @Parameter(description = "模板名称") String name,
                                    @RequestParam(name = "description", required = false) @Parameter(description = "模板描述") String description) {
@@ -68,7 +68,7 @@ public class UnsTemplateApiController {
     }
 
     @Operation(summary = "修改模板字段（只支持删除和新增）和描述", tags = "openapi.tag.folder.management")
-    @PutMapping(path = {"/inter-api/supos/uns/model", "/open-api/supos/uns/model"})
+    @PutMapping(path = {"/inter-api/supos/uns/model"})
     @Valid
     public ResultVO updateFieldAndDesc(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "模板字段定义") UpdateModeRequestVo dto) throws Exception {
         if (dto.getFields() != null && dto.getFields().length > 0) {
@@ -79,7 +79,7 @@ public class UnsTemplateApiController {
     }
 
     @Operation(summary = "删除模板", tags = "openapi.tag.template.management")
-    @DeleteMapping(path = {"/inter-api/supos/uns/template", "/open-api/supos/uns/template"})
+    @DeleteMapping(path = {"/inter-api/supos/uns/template"})
     public ResultVO deleteTemplate(@RequestParam(name = "id") @Parameter(description = "模板ID") Long id) {
         RemoveResult result = unsTemplateService.deleteTemplate(id);
         if (result.getCode() != 0) {

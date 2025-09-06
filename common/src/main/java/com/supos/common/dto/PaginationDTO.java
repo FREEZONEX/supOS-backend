@@ -39,12 +39,8 @@ public class PaginationDTO {
     return pageNo = pageNo == null ? Constants.DEFAULT_PAGE_NUM : pageNo;
   }
 
-//  public Long getPageSize() {
-//    return pageSize = pageSize > Constants.MAX_PAGE_SIZE ? Constants.MAX_PAGE_SIZE : pageSize;
-//  }
-
-
   public Long getPageSize() {
-    return pageSize;
+    return pageSize = pageSize == null ? Constants.DEFAULT_PAGE_SIZE : pageSize;
   }
+
 }

@@ -2,6 +2,7 @@ package com.supos.adpter.nodered;
 
 import com.supos.adpter.nodered.service.ImportNodeRedFlowService;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
+import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.annotation.Description;
 import com.supos.common.dto.CreateTopicDto;
@@ -60,9 +61,9 @@ public class ImportNodeFlowController {
             for (CreateTopicDto topic : entry.getValue()) {
                 boolean addFlow = topic.getAddFlow();
                 // 批量导入的只判断第一个值
-                if (!addFlow) {
+                if (!addFlow || topic.getDataType() == Constants.PATH_TYPE_DIR) {
                     log.info("{} skip create flows, because flag is {}", topic.getTopic(), topic.getFlags());
-                    return;
+                    continue;
                 }
                 if (!firstTopicNameMap.containsKey(entry.getKey())) {
                     firstTopicNameMap.put(entry.getKey(), topic.getTopic());

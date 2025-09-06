@@ -16,7 +16,7 @@ public class MariadbTypeUtils {
         dbType2FieldTypeMap.put("bigint", FieldType.LONG.name);
 
         dbType2FieldTypeMap.put("float", FieldType.FLOAT.name);
-        dbType2FieldTypeMap.put("double", FieldType.FLOAT.name);
+        dbType2FieldTypeMap.put("double", FieldType.DOUBLE.name);
         dbType2FieldTypeMap.put("decimal", FieldType.DOUBLE.name);
 
         dbType2FieldTypeMap.put("char", FieldType.STRING.name);

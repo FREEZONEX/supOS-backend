@@ -3,6 +3,7 @@ package com.supos.common.dto;
 import com.supos.common.Constants;
 import com.supos.common.utils.JsonUtil;
 import lombok.Data;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.Set;
 
@@ -36,7 +37,7 @@ public class SimpleUnsInstance {
         this.id = id;
         this.path = path;
         this.alias = alias;
-        this.tableName = tableName;
+        this.tableName = StringUtils.isEmpty(tableName) ? null : tableName;
         this.dataType = dataType;
         this.parentId = parentId;
         this.fields = fields;

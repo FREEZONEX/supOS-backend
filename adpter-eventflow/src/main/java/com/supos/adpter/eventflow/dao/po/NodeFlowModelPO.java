@@ -18,4 +18,9 @@ public class NodeFlowModelPO {
      * 关联模型 topic
      */
     private String topic;
+
+    /**
+     * 模型alias
+     */
+    private String alias;
 }

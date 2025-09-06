@@ -79,10 +79,10 @@
             "dataset": "{schema}",
             "editorMode": "builder",
             "format": "table",
-            "rawSql": "SELECT * FROM \"{schema}\".\"{tableName}\"  ORDER BY \"{sys_field_create_time}\" DESC LIMIT 10 ",
+            "rawSql": "SELECT {columns} FROM \"{schema}\".\"{tableName}\"  ORDER BY \"{sys_field_create_time}\" DESC LIMIT 10 ",
             "refId": "A",
             "sql": {
-              "columns": {columns},
+              "columns": [],
               "groupBy": [{
                 "property": {
                   "type": "string"

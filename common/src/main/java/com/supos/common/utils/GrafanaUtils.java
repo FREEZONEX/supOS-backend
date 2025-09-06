@@ -98,6 +98,32 @@ public class GrafanaUtils {
     }
 
     /**
+     * 创建数据源
+     * @param name 数据源名称
+     * @param body 数据源json
+     * @param reCreate 是否覆盖
+     * @return
+     */
+    public static String createDatasource(String name, String body,boolean reCreate){
+        JSONObject bodyJson = JSON.parseObject(body);
+        bodyJson.put("name", name);
+
+        if (reCreate){
+            //先删再新增
+            HttpUtil.createRequest(Method.DELETE, getGrafanaUrl() + "/api/datasources/name/" + name).execute();
+        }
+
+        String newBody = bodyJson.toJSONString();
+        log.info(">>>>>>>>>>>>>>>创建 datasource 请求 :{}", newBody);
+        HttpResponse dsResponse = HttpUtil.createPost(getGrafanaUrl() + "/api/datasources").body(newBody).execute();
+        log.info(">>>>>>>>>>>>>>>创建 datasource 返回结果:{}", dsResponse.body());
+        if (200 != dsResponse.getStatus() && 409 != dsResponse.getStatus()) {
+            return null;
+        }
+        return dsResponse.body();
+    }
+
+    /**
      * @param table 表名
      * @param tagNameCondition vqt模式  位号名称sql条件tag='{tbValue}'
      * @param jdbcType 数据源类型
@@ -120,7 +146,7 @@ public class GrafanaUtils {
             pgParams.setDataSourceUid(getDatasourceUuidByJdbc(jdbcType));
             pgParams.setSchema(schema);
             pgParams.setTableName(table);
-            pgParams.setColumns("[]");
+            pgParams.setColumns(columns);
             dbParams = BeanUtil.beanToMap(pgParams);
         } else if (SrcJdbcType.TdEngine == jdbcType){ //timescale 使用时序模板
             template = ResourceUtil.readUtf8Str("templates/td-dashboard.json");
@@ -155,6 +181,59 @@ public class GrafanaUtils {
         return uid;
     }
 
+    /**
+     * 创建仪表盘
+     * @param datasourceName 数据源名称
+     * @param body 仪表盘json
+     * @return
+     */
+    public static String createDashboard(String uidsTr, String datasourceName, String body) {
+        JSONObject newBodyJson = new JSONObject();
+
+        JSONObject bodyJson = JSON.parseObject(body);
+
+        Object uid = bodyJson.get("uid");
+        if (uid != null) {
+            deleteDashboard(uid.toString());
+        }
+
+        if (datasourceName != null) {
+            JSONArray panels = bodyJson.getJSONArray("panels");
+            if (panels != null && panels.size() > 0) {
+                for (int i = 0; i < panels.size(); i++) {
+                    JSONObject panel = panels.getJSONObject(i);
+                    if (panel.containsKey("datasource")) {
+                        panel.put("datasource", datasourceName);
+                    }
+                }
+            }
+
+            JSONObject templating = bodyJson.getJSONObject("templating");
+            if (templating != null && templating.containsKey("list")) {
+                JSONArray list = templating.getJSONArray("list");
+                if (list != null && list.size() > 0) {
+                    for (int i = 0; i < list.size(); i++) {
+                        JSONObject l = list.getJSONObject(i);
+                        if (l.containsKey("datasource")) {
+                            l.put("datasource", datasourceName);
+                        }
+                    }
+                }
+            }
+        }
+
+        newBodyJson.put("dashboard", bodyJson);
+        String newBody = newBodyJson.toJSONString();
+        log.info(">>>>>>>>>>>>>>>创建 dashboardJson 请求:{}", newBody);
+        HttpResponse dashboardResponse = HttpUtil.createPost(GrafanaUtils.getGrafanaUrl() + "/api/dashboards/db").body(newBody).executeAsync();
+        log.info(">>>>>>>>>>>>>>>创建 dashboardJson 返回结果:{}", dashboardResponse.body());
+        if (200 != dashboardResponse.getStatus()) {
+            return null;
+        }
+        return dashboardResponse.body();
+    }
+
+
     public static HttpResponse getDataSourceByName(String name){
         String url = getGrafanaUrl() + "/api/datasources/name/" + name;
         log.debug(">>>>>>>>>>>>>>>查询 datasource 请求 :{}", url);
@@ -172,7 +251,10 @@ public class GrafanaUtils {
         String flag = jdbcType.equals(SrcJdbcType.TdEngine) ? "`": "\\\"";
         List<String> fieldNames = Arrays.stream(fields).filter(field ->{
             boolean matchType = field.getType() != FieldType.BLOB && field.getType() != FieldType.LBLOB;//过滤blob
-            boolean matchName = !Constants.QOS_FIELD.equals(field.getName()) && !Constants.SYS_SAVE_TIME.equals(field.getName()) && !"tag".equals(field.getName());//过滤qos 和_st
+            boolean matchName = !Constants.QOS_FIELD.equals(field.getName())
+                    && !Constants.SYS_SAVE_TIME.equals(field.getName())
+                    && !"tag".equals(field.getName())
+                    && !Constants.SYS_FIELD_ID.equals(field.getName());
             return matchType && matchName;
         }).map(FieldDefine::getName).collect(Collectors.toList());
         return fieldNames.stream().map(field -> flag + field + flag).collect(Collectors.joining(", "));

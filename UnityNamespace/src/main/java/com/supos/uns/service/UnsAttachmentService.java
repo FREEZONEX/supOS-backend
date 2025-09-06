@@ -1,5 +1,6 @@
 package com.supos.uns.service;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.net.URLDecoder;
 import cn.hutool.core.thread.ThreadUtil;
@@ -14,7 +15,10 @@ import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.mqtt.TopicDefinition;
 import com.supos.common.exception.BuzException;
+import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.service.IUnsDefinitionService;
+import com.supos.common.utils.I18nUtils;
+import com.supos.common.utils.SuposIdUtil;
 import com.supos.uns.bo.UnsAttachmentBo;
 import com.supos.uns.dao.mapper.UnsAttachmentMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
@@ -63,12 +67,13 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
     IUnsDefinitionService unsDefinitionService;
 
     @Transactional(rollbackFor = Exception.class, timeout = 300)
-    public String upload(String alias, MultipartFile[] files) {
+    public ResultVO<List<UnsAttachmentBo>> upload(String alias, MultipartFile[] files) {
         UnsPo unsPo = unsMapper.selectOne(new LambdaQueryWrapper<UnsPo>().eq(UnsPo::getAlias, alias).select(UnsPo::getId, UnsPo::getWithFlags));
         if (unsPo == null) {
             log.warn("upload: 找不到 UNS: {}", alias);
-            return "找不到 UNS:" + alias;
+            return ResultVO.fail(I18nUtils.getMessage("uns.folder.or.file.not.found"));
         }
+        List<UnsAttachmentBo> boList = new ArrayList<>(files.length);
         for (MultipartFile file : files) {
             if (file.getSize() > Constants.ATTACHMENT_MAX_SIZE) {
                 throw new BuzException("uns.attachment.max.size");
@@ -103,7 +108,7 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
             }
 
             UnsAttachmentPo attachmentPo = new UnsAttachmentPo();
-            attachmentPo.setId(IdUtil.getSnowflakeNextId());
+            attachmentPo.setId(SuposIdUtil.nextId());
             attachmentPo.setOriginalName(originalFilename);
             attachmentPo.setAttachmentName(attachmentName);
             attachmentPo.setAttachmentPath(attachmentPath);
@@ -112,6 +117,8 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
                 attachmentPo.setExtensionName(extensionName.toUpperCase());
             }
             unsAttachmentMapper.insert(attachmentPo);
+            UnsAttachmentBo bo = BeanUtil.copyProperties(attachmentPo,UnsAttachmentBo.class);
+            boList.add(bo);
         }
 
         Integer flags = unsPo.getWithFlags();
@@ -125,7 +132,8 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
         if (definition != null) {
             definition.getCreateTopicDto().setFlags(flags);
         }
-        return null;
+
+        return ResultVO.successWithData(boList);
     }
 
     public Pair<String, InputStream> download(String objectName) throws FileNotFoundException {
@@ -155,29 +163,29 @@ public class UnsAttachmentService extends ServiceImpl<UnsAttachmentMapper, UnsAt
                 } catch (Exception ex) {
                     log.warn("Minio删除失败: {} {}", objectName, ex.getMessage());
                 }
-                File file = new File(FileUtils.getFileRootPath(), objectName);
-                FileUtil.del(file);
+            }
+            File file = new File(FileUtils.getFileRootPath(), objectName);
+            FileUtil.del(file);
 
-                unsAttachmentMapper.deleteById(attachmentPos.get(0).getId());
-                String unsAlias = attachmentPos.get(0).getUnsAlias();
-                Long countUnsAttachments = unsAttachmentMapper.selectCount(new LambdaQueryWrapper<UnsAttachmentPo>().eq(UnsAttachmentPo::getUnsAlias, unsAlias));
-                if (countUnsAttachments == null || countUnsAttachments.intValue() == 0) {
-                    UnsPo unsPo = unsMapper.selectOne(new LambdaQueryWrapper<UnsPo>().eq(UnsPo::getAlias, unsAlias).select(UnsPo::getId, UnsPo::getWithFlags));
-                    if (unsPo != null) {
-                        Integer flags = unsPo.getWithFlags();
-                        if (flags == null) {
-                            flags = 0;
-                        }
-                        flags = flags & ~UNS_FLAG_WITH_ATTACHMENT;
-                        unsPo.setWithFlags(flags);
-                        unsMapper.updateById(unsPo);
-                        TopicDefinition definition = unsDefinitionService.getTopicDefinitionMap().get(unsPo.getId());
-                        if (definition != null) {
-                            definition.getCreateTopicDto().setFlags(flags);
-                        }
-                    } else {
-                        log.warn("delete Attachment: 找不到 UNS: {}", unsAlias);
+            unsAttachmentMapper.deleteById(attachmentPos.get(0).getId());
+            String unsAlias = attachmentPos.get(0).getUnsAlias();
+            Long countUnsAttachments = unsAttachmentMapper.selectCount(new LambdaQueryWrapper<UnsAttachmentPo>().eq(UnsAttachmentPo::getUnsAlias, unsAlias));
+            if (countUnsAttachments == null || countUnsAttachments.intValue() == 0) {
+                UnsPo unsPo = unsMapper.selectOne(new LambdaQueryWrapper<UnsPo>().eq(UnsPo::getAlias, unsAlias).select(UnsPo::getId, UnsPo::getWithFlags));
+                if (unsPo != null) {
+                    Integer flags = unsPo.getWithFlags();
+                    if (flags == null) {
+                        flags = 0;
                     }
+                    flags = flags & ~UNS_FLAG_WITH_ATTACHMENT;
+                    unsPo.setWithFlags(flags);
+                    unsMapper.updateById(unsPo);
+                    TopicDefinition definition = unsDefinitionService.getTopicDefinitionMap().get(unsPo.getId());
+                    if (definition != null) {
+                        definition.getCreateTopicDto().setFlags(flags);
+                    }
+                } else {
+                    log.warn("delete Attachment: 找不到 UNS: {}", unsAlias);
                 }
             }
         }

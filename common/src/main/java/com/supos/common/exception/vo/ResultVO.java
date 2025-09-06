@@ -2,6 +2,8 @@ package com.supos.common.exception.vo;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.io.Serializable;
+
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,10 +18,13 @@ public class ResultVO<T> implements Serializable {
 
   private static final long serialVersionUID = 1l;
 
+  @Schema(description = "状态码")
   private int code;
 
+  @Schema(description = "提示消息")
   private String msg;
 
+  @Schema(description = "返回数据")
   private T data;
 
   public static <T> ResultVO successWithData(T data) {

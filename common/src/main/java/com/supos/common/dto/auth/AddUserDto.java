@@ -53,6 +53,11 @@ public class AddUserDto {
      */
     private String phone;
 
+    /**
+     * 用户来源
+     */
+    private String source;
+
 
     /**
      * 角色列表

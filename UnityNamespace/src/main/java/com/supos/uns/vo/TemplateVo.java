@@ -40,8 +40,8 @@ public class TemplateVo {
     Long createTime;
 
     /**
-     * 模型描述
+     * 模板描述
      */
-    @Schema(description = "模型描述")
+    @Schema(description = "模板描述")
     String description;
 }

@@ -3,6 +3,7 @@ package com.supos.common.service;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.mqtt.TopicDefinition;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,4 +23,5 @@ public interface IUnsDefinitionService {
 
     ConcurrentHashMap<String, Long> getPathMap();
 
+    List<CreateTopicDto> allDefinitions();
 }

@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * ws session管理
@@ -48,6 +49,28 @@ public class WebsocketSessionManager {
         sessionIds.add(sessionId);
         topicSessions.put(topic, sessionIds);
         return true;
+    }
+
+    /**
+     * 发送普通消息给所有的session，需要排除已经被订阅的session
+     */
+    public synchronized void sendMessageBroadcastSync(String msg, int delayMS) {
+        // 需要排除已经被topic订阅的session列表
+        Set<String> subscribedSessions = topicSessions.values().stream().flatMap(Set::stream).collect(Collectors.toSet());
+        for (Map.Entry<String, WebSocketSession> entry : sessions.entrySet()) {
+            if (!subscribedSessions.contains(entry.getKey())) {
+                try {
+                    entry.getValue().sendMessage(new TextMessage(msg));
+                } catch (IOException e) {
+                    log.error("ws: 消息发送失败, msg={}", msg, e);
+                }
+            }
+        }
+        try {
+            Thread.sleep(delayMS);
+        } catch (InterruptedException e) {
+            // ignore
+        }
     }
 
     /**

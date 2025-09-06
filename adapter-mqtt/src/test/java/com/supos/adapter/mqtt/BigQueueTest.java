@@ -1,7 +1,7 @@
 package com.supos.adapter.mqtt;
 
 import cn.hutool.core.thread.ThreadUtil;
-import com.bluejeans.common.bigqueue.BigQueue;
+import com.bluejeans.bigqueue.BigQueue;
 import com.supos.common.Constants;
 
 import java.io.File;

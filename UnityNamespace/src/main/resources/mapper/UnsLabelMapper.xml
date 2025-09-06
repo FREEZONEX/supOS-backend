@@ -6,12 +6,14 @@
 <mapper namespace="com.supos.uns.dao.mapper.UnsLabelMapper">
 
 
-    <select id="getUnsByKeywordExistsLabel">
-        select n.*,
-               CASE WHEN (SELECT COUNT(*) FROM uns_namespace c WHERE c.parent_id = n.id) > 0 THEN true ELSE false END AS hasChildren
-        from uns_namespace n where n.id in ( 1917411973415841792 ) and n.status=1
-
-
+    <select id="deleteRefByUnsIdLabelNames">
+        DELETE from uns_label_ref ref where ref.uns_id = #{unsId} and label_id in
+         (
+         select id from uns_label where label_name in
+        <foreach item="name" index="index" collection="labelNames" open="(" separator="," close=")">
+            #{name}
+        </foreach>
+         )
     </select>
 
 </mapper>

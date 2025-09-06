@@ -183,6 +183,9 @@ public class UserManageService {
         if (updateUserDto.getFirstTimeLogin() != null) {
             userAttribute.setFirstTimeLogin(updateUserDto.getFirstTimeLogin());
         }
+        if (StringUtils.isNotBlank(updateUserDto.getSource())) {
+            userAttribute.setSource(updateUserDto.getSource());
+        }
         params.put("attributes", userAttribute);
         boolean isUpdate = keycloakUtil.updateUser(userId, params);
         if (!isUpdate) {
@@ -299,11 +302,16 @@ public class UserManageService {
                 return ResultVO.fail(I18nUtils.getMessage("user.email.already.exists"));
             }
         }
+        UserAttributeVo userAttribute = new UserAttributeVo();
         if (StringUtils.isNotBlank(addUserDto.getPhone())){
-            UserAttributeVo userAttribute = new UserAttributeVo();
             userAttribute.setPhone(addUserDto.getPhone());
-            createUserDto.setAttributes(userAttribute);
         }
+
+        if (StringUtils.isNotBlank(addUserDto.getSource())){
+            userAttribute.setSource(addUserDto.getSource());
+        }
+
+        createUserDto.setAttributes(userAttribute);
         String userId = keycloakUtil.createUser(JSONObject.toJSONString(createUserDto));
         addUserDto.setId(userId);
         boolean isReset = keycloakUtil.resetPwd(userId, addUserDto.getPassword());

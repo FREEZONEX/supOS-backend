@@ -52,6 +52,10 @@ public class CreateTopicDto {
      */
     @Hidden
     int index = -1;
+
+    @Hidden
+    String flagNo;
+
     @JsonIgnore
     private String tmField;
 
@@ -164,6 +168,9 @@ public class CreateTopicDto {
     @Schema(description = "字段定义")
     FieldDefine[] fields;// 字段定义
 
+    @Schema(description = "扩展字段使用")
+    String[] extendFieldUsed;
+
     @Hidden
     String dataPath;// 数据在rest 数据当中的路径; 模型字段对应的数据字段映射放在 FieldDefine.index
 
@@ -214,8 +221,8 @@ public class CreateTopicDto {
     Boolean createTemplate;//是否同步创建模板：只针对文件夹
 
     @StreamTimeValidator(field = "frequency")
-    @Schema(description = "当集合类型时的计算时间间隔，单位：秒:s 分钟:m 小时：h；如三分钟：3m")
-    String frequency;// 当集合类型时的计算时间间隔，单位：秒:s 分钟:m 小时：h；如三分钟：3m
+    @Schema(description = "聚合计算频率：当聚合类型时(dataType=6)的计算时间间隔，单位支持：秒:s 分钟:m 小时：h；如三分钟：3m")
+    String frequency;
 
     @JsonIgnore
     @JSONField(deserialize = false, serialize = false)
@@ -383,6 +390,9 @@ public class CreateTopicDto {
     }
 
     public String gainBatchIndex() {
+        if (StringUtils.isNotBlank(flagNo)) {
+            return flagNo;
+        }
         return String.format("%d-%d", batch, index);
     }
 

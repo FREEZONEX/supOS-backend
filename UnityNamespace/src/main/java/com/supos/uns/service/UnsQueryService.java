@@ -47,6 +47,7 @@ import com.supos.uns.util.ParserUtil;
 import com.supos.uns.util.UnsConverter;
 import com.supos.uns.util.UnsCountCache;
 import com.supos.uns.vo.*;
+import com.supos.ws.WebsocketSessionManager;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.ArrayUtils;
@@ -74,8 +75,11 @@ public class UnsQueryService implements UnsQueryApi {
     private final AlarmMapper alarmMapper;
     private final UnsLabelMapper unsLabelMapper;
     private final AlarmHandlerMapper alarmHandlerMapper;
+    private final UnsLabelService unsLabelService;
     @Autowired
     IUnsDefinitionService unsDefinitionService;
+    @Autowired
+    private WebsocketSessionManager wssm;
 
     @Autowired
     UnsCountCache unsCountCache;
@@ -88,11 +92,13 @@ public class UnsQueryService implements UnsQueryApi {
 
     public UnsQueryService(@Autowired UnsMapper unsMapper, @Autowired AlarmMapper alarmMapper,
                            @Autowired UnsLabelMapper unsLabelMapper,
-                           @Autowired AlarmHandlerMapper alarmHandlerMapper) {
+                           @Autowired AlarmHandlerMapper alarmHandlerMapper,
+                           @Autowired UnsLabelService unsLabelService) {
         this.unsMapper = unsMapper;
         this.alarmMapper = alarmMapper;
         this.unsLabelMapper = unsLabelMapper;
         this.alarmHandlerMapper = alarmHandlerMapper;
+        this.unsLabelService = unsLabelService;
     }
 
     public JsonResult<Collection<String>> listTypes() {
@@ -278,6 +284,7 @@ public class UnsQueryService implements UnsQueryApi {
                         srs.setName(po.getName());
                         srs.setPath(po.getPath());
                         srs.setFields(fields);
+                        srs.setDataType(po.getDataType());
                         rs.add(srs);
                     }
                 }
@@ -576,6 +583,7 @@ public class UnsQueryService implements UnsQueryApi {
         }
         result.setParentAlias(uns.getParentAlias());
         result.setPathType(uns.getPathType());
+        result.setDataType(uns.getDataType());
         String name = PathUtil.getName(uns.getPath());
         result.setName(name);
         result.setDisplayName(uns.getDisplayName());
@@ -721,7 +729,7 @@ public class UnsQueryService implements UnsQueryApi {
         UnsPo unsPo = origPo != null ? origPo : file;
         if (unsPo.getFields() != null) {
             FieldDefine[] fields = unsPo.getFields();
-            FieldDefine[] fieldDefines;
+            FieldDefine[] fieldDefines = new FieldDefine[0];
             int dataType = unsPo.getDataType();
             if (dataType == Constants.TIME_SEQUENCE_TYPE || dataType == Constants.CALCULATION_REAL_TYPE) {
                 LinkedList<FieldDefine> fsList = new LinkedList<>(Arrays.asList(fields));
@@ -742,10 +750,12 @@ public class UnsQueryService implements UnsQueryApi {
                 }
                 fieldDefines = fsList.toArray(new FieldDefine[0]);
             } else {
-                SrcJdbcType jdbcType = SrcJdbcType.getById(unsPo.getDataSrcId());
-                FieldDefine ct = FieldUtils.getTimestampField(fields), qos = FieldUtils.getQualityField(fields, jdbcType.typeCode);
-                fieldDefines = Arrays.stream(fields)
-                        .filter(fd -> fd != ct && fd != qos && !fd.getName().startsWith(Constants.SYSTEM_FIELD_PREV)).toList().toArray(new FieldDefine[0]);
+                    SrcJdbcType jdbcType = SrcJdbcType.getById(unsPo.getDataSrcId());
+                if (jdbcType != null) {
+                    FieldDefine ct = FieldUtils.getTimestampField(fields), qos = FieldUtils.getQualityField(fields, jdbcType.typeCode);
+                    fieldDefines = Arrays.stream(fields)
+                            .filter(fd -> fd != ct && fd != qos && !fd.getName().startsWith(Constants.SYSTEM_FIELD_PREV)).toList().toArray(new FieldDefine[0]);
+                }
             }
             dto.setFields(fieldDefines);
         }
@@ -774,7 +784,7 @@ public class UnsQueryService implements UnsQueryApi {
             dto.setWithSave2db(Constants.withSave2db(flags));
             dto.setSave2db(Constants.withSave2db(flags));
         }
-        dto.setLabelList(unsLabelMapper.getLabelByUnsId(fileId));
+        dto.setLabelList(unsLabelService.getLabelListByUnsId(fileId));
 
         Long templateId = file.getModelId();
         if (templateId != null) {
@@ -799,7 +809,7 @@ public class UnsQueryService implements UnsQueryApi {
                     .eq(UnsPo::getPathType, Constants.PATH_TYPE_DIR)
                     .eq(UnsPo::getAlias, alias));
         }
-        if (null == po) {
+        if (po == null) {
             return new JsonResult<>(0, I18nUtils.getMessage("uns.model.not.found"), dto);
         }
         dto.setId(po.getId().toString());
@@ -813,7 +823,7 @@ public class UnsQueryService implements UnsQueryApi {
         dto.setCreateTime(getDatetime(po.getCreateAt()));
         dto.setUpdateTime(getDatetime(po.getUpdateAt()));
         dto.setDescription(po.getDescription());
-        dto.setAlias(po.getAlias());
+        dto.setParentAlias(po.getParentAlias());
         dto.setExtend(po.getExtend());
         FieldDefine[] fs = po.getFields();
         if (fs != null) {
@@ -855,7 +865,12 @@ public class UnsQueryService implements UnsQueryApi {
             return getLastMsg(def, includeBlob);
         } else {
             TopicMessageInfo msgInfo = externTopicLastMessages.get(path);
-            return new JsonResult<>(0, "404", msgInfo != null ? msgInfo.newestMessage : null);
+            if (msgInfo != null) {
+                String newestMessage = JSON.toJSONString(msgInfo.jsonObject);
+                return new JsonResult<>(0, "404", newestMessage);
+            } else {
+                return new JsonResult<>(0, "404", null);
+            }
         }
     }
 
@@ -929,7 +944,10 @@ public class UnsQueryService implements UnsQueryApi {
         }
         String msg = null;
         if (msgInfo != null) {
-            msg = msgInfo.newestMessage;
+            Integer dataType = def.getDataType();
+            SerializeFilter filter = dataType != null && dataType == Constants.RELATION_TYPE ?
+                (PropertyFilter) (object, name, value) -> !Constants.SYS_FIELD_CREATE_TIME.equals(name) : null;
+            msg = JSON.toJSONString(msgInfo.jsonObject, filter);
             if (includeBlob) {
                 msg = DataUtils.handleBolb(msg, def);
             }
@@ -951,35 +969,27 @@ public class UnsQueryService implements UnsQueryApi {
             jsonObject.put("updateTime", lastUpdateTime);
             jsonObject.put("msg", err);
             if (data != null) {
+                jsonObject.put("data", data);
                 JSONObject dataJsonObj = jsonObject.getJSONObject("data");
-                if (dataJsonObj == null) {
-                    jsonObject.put("data", data);
-                } else {
-                    dataJsonObj.putAll(data);
-                    // TODO tag_name
-                    dataJsonObj.remove(Constants.SYSTEM_SEQ_TAG);
-                    dataJsonObj.remove(Constants.MERGE_FLAG);
-                }
-                JSONObject dtJsonObj = jsonObject.getJSONObject("dt");
-                if (dtJsonObj == null) {
-                    jsonObject.put("dt", dt);
-                } else {
-                    dtJsonObj.putAll(dt);
-                }
+                dataJsonObj.remove(Constants.SYSTEM_SEQ_TAG);
+                dataJsonObj.remove(Constants.MERGE_FLAG);
+                jsonObject.put("dt", dt);
+                jsonObject.put("payload", dataJsonObj.toJSONString());
             } else {
                 jsonObject.remove("data");
                 jsonObject.remove("dt");
+                jsonObject.put("payload", payload);
             }
 
-            JSONObject dataJsonObj = jsonObject.getJSONObject("data");
+            /*JSONObject dataJsonObj = jsonObject.getJSONObject("data");
             if (dataJsonObj == null) {
                 jsonObject.put("payload", payload);
             } else {
                 jsonObject.put("payload", dataJsonObj.toJSONString());
-            }
-            SerializeFilter filter = dataType != null && dataType == Constants.RELATION_TYPE ?
-                    (PropertyFilter) (object, name, value) -> !Constants.SYS_FIELD_CREATE_TIME.equals(name) : null;
-            newestMessage = JSON.toJSONString(jsonObject, filter);
+            }*/
+//            SerializeFilter filter = dataType != null && dataType == Constants.RELATION_TYPE ?
+//                    (PropertyFilter) (object, name, value) -> !Constants.SYS_FIELD_CREATE_TIME.equals(name) : null;
+//            newestMessage = JSON.toJSONString(jsonObject, filter);
             messageCount++;
             this.lastUpdateTime = lastUpdateTime;
         }
@@ -1004,20 +1014,26 @@ public class UnsQueryService implements UnsQueryApi {
     public void refreshLatestMsg(RefreshLatestMsgEvent event) {
         TopicMessageInfo msgInfo;
         if (event.unsId == null) {
-            // 非 UNS topic
-            // cache external topics
-            ExternalTopicCacheDto cacheDto = new ExternalTopicCacheDto(event.payload, new Date());
-            EXTERNAL_TOPIC_CACHE.put(event.path, cacheDto);
-            msgInfo = externTopicLastMessages.computeIfAbsent(event.path, k -> new TopicMessageInfo());
+            msgInfo = sendExternalMsg(event.path, event.payload);
             msgInfo.update(new Date().getTime(), event.dataType, event.payload, null, event.dt, null);
         } else {
             // 从缓存中取最近一条数据与最近发过来的数据进行合并
             msgInfo = topicLastMessages.computeIfAbsent(event.unsId, k -> new TopicMessageInfo());
             msgInfo.update(new Date().getTime(), event.dataType, event.payload, event.data, event.dt, "");
         }
-
     }
 
+    private TopicMessageInfo sendExternalMsg(String path, String payload) {
+        // 非 UNS topic
+        ExternalTopicCacheDto cacheDto = new ExternalTopicCacheDto(payload, new Date());
+        if (!EXTERNAL_TOPIC_CACHE.containsKey(path)) {
+            EXTERNAL_TOPIC_CACHE.put(path, cacheDto);
+            wssm.sendMessageBroadcastSync("refresh_notify", 2000);
+        } else {
+            EXTERNAL_TOPIC_CACHE.put(path, cacheDto);
+        }
+        return externTopicLastMessages.computeIfAbsent(path, k -> new TopicMessageInfo());
+    }
 
     //    @EventListener(classes = TopicMessageEvent.class)
 //    @Order(9)
@@ -1025,10 +1041,7 @@ public class UnsQueryService implements UnsQueryApi {
         TopicMessageInfo msgInfo;
         if (event.fieldsMap == null) {
             // 非 UNS topic
-            // cache external topics
-            ExternalTopicCacheDto cacheDto = new ExternalTopicCacheDto(event.payload, new Date());
-            EXTERNAL_TOPIC_CACHE.put(event.topic, cacheDto);
-            msgInfo = externTopicLastMessages.computeIfAbsent(event.topic, k -> new TopicMessageInfo());
+            msgInfo = sendExternalMsg(event.topic, event.payload);
             msgInfo.update(event.nowInMills, event.dataType, event.payload, null, event.lastDataTime, event.err);
             return;
         } else {
@@ -1156,7 +1169,7 @@ public class UnsQueryService implements UnsQueryApi {
      * @param fuzzyTopic
      * @return
      */
-    public List<TopicTreeResult> searchExternalTopics(String fuzzyTopic) {
+    public List<TopicTreeResult>  searchExternalTopics(String fuzzyTopic) {
         List<UnsPo> externalTopics = new ArrayList<>();
         EXTERNAL_TOPIC_CACHE.forEach((topic, date) -> {
             UnsPo uns = new UnsPo();
@@ -1171,6 +1184,11 @@ public class UnsQueryService implements UnsQueryApi {
             }
         });
         return getTopicTreeResults(externalTopics, externalTopics, false);
+    }
+
+    public void clearExternalTopicCache() {
+        EXTERNAL_TOPIC_CACHE.clear();
+        wssm.sendMessageBroadcastSync("refresh_notify", 2000);
     }
 
     static List<TopicTreeResult> getTopicTreeResults(List<UnsPo> all, List<UnsPo> list, boolean showRec) {
@@ -1551,9 +1569,10 @@ public class UnsQueryService implements UnsQueryApi {
         JSONObject resultData = new JSONObject();
         for (String alias : aliasList) {
             String msgInfo = getLastMsgByAlias(alias, true).getData();
+            JSONObject msg = JSON.parseObject(msgInfo);
             JSONObject data;
-            if (StringUtils.hasText(msgInfo)) {
-                data = JSON.parseObject(msgInfo).getJSONObject("data");
+            if (StringUtils.hasText(msgInfo) && !msg.isEmpty() && msg.getJSONObject("data") != null) {
+                data = msg.getJSONObject("data");
                 standardizingData(alias, data);
                 if (data.containsKey(Constants.QOS_FIELD)) {
                     Object qos = data.get(Constants.QOS_FIELD);

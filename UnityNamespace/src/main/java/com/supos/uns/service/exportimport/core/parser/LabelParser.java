@@ -1,9 +1,9 @@
 package com.supos.uns.service.exportimport.core.parser;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.supos.common.Constants;
 import com.supos.common.utils.I18nUtils;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
-import com.supos.uns.service.exportimport.core.data.ExportImportData;
-import com.supos.uns.service.exportimport.json.data.LabelData;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Map;
@@ -18,38 +18,44 @@ public class LabelParser extends AbstractParser {
 
     private static final int LENGTH_LIMIT = 63;
 
-    @Override
-    public void parseExcel(int batch, int index, Map<String, Object> dataMap, ExcelImportContext context) {
-        if (isEmptyRow(dataMap)) {
-            return;
-        }
-        String label = getString(dataMap, "name", "");
+    private String check(String flagNo, String label, ExcelImportContext context) {
         if (StringUtils.isBlank(label)) {
-            return;
+            return null;
         }
         if (StringUtils.length(label) > LENGTH_LIMIT) {
-            String batchIndex = String.format("%d-%d", batch, index);
-            context.addError(batchIndex, I18nUtils.getMessage("uns.label.length.limit.exceed", LENGTH_LIMIT));
-            return;
+            context.addError(flagNo, I18nUtils.getMessage("uns.import.length.limit", "name", LENGTH_LIMIT));
+            return null;
         }
-        context.addLabel(label);
+        if (!Constants.NAME_PATTERN.matcher(label).matches()) {
+            context.addError(flagNo, I18nUtils.getMessage("uns.import.formate.invalid", "name", I18nUtils.getMessage("uns.import.formate1")));
+            return null;
+        }
+        return label;
     }
 
     @Override
-    public void parseJson(int batch, int index, ExportImportData data, ExcelImportContext context) {
+    public void parseExcel(String flagNo, Map<String, Object> dataMap, ExcelImportContext context) {
+        if (isEmptyRow(dataMap)) {
+            return;
+        }
+        String label = getValueFromDataMap(dataMap, "name");
+        label = check(flagNo, label, context);
+
+        if (label != null) {
+            context.addLabel(label);
+        }
+    }
+
+    @Override
+    public void parseComplexJson(String flagNo, JsonNode data, ExcelImportContext context, Object parent) {
         if (data == null) {
             return;
         }
-        LabelData labelData = (LabelData) data;
-        String label = labelData.getName();
-        if (StringUtils.isBlank(label)) {
-            return;
+        String label = getValueFromJsonNode(data, "name");
+        label = check(flagNo, label, context);
+
+        if (label != null) {
+            context.addLabel(label);
         }
-        if (StringUtils.length(label) > LENGTH_LIMIT) {
-            String batchIndex = String.format("%d-%d", batch, index);
-            context.addError(batchIndex, I18nUtils.getMessage("uns.label.length.limit.exceed", LENGTH_LIMIT));
-            return;
-        }
-        context.addLabel(label);
     }
 }

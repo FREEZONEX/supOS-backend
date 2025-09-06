@@ -164,7 +164,11 @@ public class PathUtil {
             aliasPath = aliasPath.substring(0, 20);
         }
         String uuid = UUID.randomUUID().toString(true).substring(0, 20);
-        return aliasPath + "_" + uuid;
+        aliasPath = aliasPath + "_" + uuid;
+        if (!Character.isLetter(aliasPath.charAt(0))) {
+            aliasPath = "_" + aliasPath;
+        }
+        return aliasPath;
     }
 
     public static String subParentPath(String path) {
@@ -215,10 +219,11 @@ public class PathUtil {
                 }
             }
         }
-
         // 如果 path 不是以 basePath 开头，返回 null 或者处理异常
         return null;
     }
+
+
 
     /**
      * 判断path是否是basePath的下级路径

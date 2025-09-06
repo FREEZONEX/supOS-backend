@@ -1,8 +1,11 @@
 package com.supos.uns;
 
 import com.supos.common.dto.JsonResult;
+import com.supos.common.utils.UserContext;
 import com.supos.uns.service.UnsExcelService;
 import com.supos.uns.vo.ExportParam;
+import com.supos.uns.vo.UnsExportRecordConfirmReq;
+import com.supos.uns.vo.UnsExportRecordVo;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 @RestController
 @RequestMapping("/inter-api/supos/uns/excel")
@@ -68,7 +72,34 @@ public class UnsExcelApiController {
      */
     @PostMapping("/data/export")
     public JsonResult<String> dataExport(@RequestBody ExportParam exportParam) {
-        return unsExcelService.dataExport(exportParam);
+        String sub = UserContext.get().getSub();
+        exportParam.setUserId(sub);
+        return unsExcelService.dataExport(exportParam, true);
+    }
+
+    /**
+     * 获取导出记录
+     * @param pageNo
+     * @param pageSize
+     * @return
+     */
+    @GetMapping("/data/getExportRecords")
+    public JsonResult<List<UnsExportRecordVo>> getExportRecords(
+            @RequestParam(value = "userId",required = false,defaultValue = "1") String userId,
+            @RequestParam(value = "pageNo",required = false,defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize",required = false,defaultValue = "5") Integer pageSize) {
+        String sub = UserContext.get().getSub();
+        return unsExcelService.getExportRecords(sub, pageNo, pageSize);
+    }
+
+    /**
+     * 确认导出记录
+     * @param req
+     * @return
+     */
+    @PostMapping("/data/exportRecordConfirm")
+    public JsonResult<String> exportRecordConfirm(@RequestBody UnsExportRecordConfirmReq req) {
+        return unsExcelService.exportRecordConfirm(req);
     }
 
     /**
@@ -78,7 +109,10 @@ public class UnsExcelApiController {
      */
     @PostMapping("/data/import/test")
     public void dataImport(@RequestParam("path") String path) {
+        //path = "./export/xx.json";
+        path = "d:/err_namespace-20250826103216.xlsx";
+        //path = "d:/all-namespace.json";
         unsExcelService.asyncImport(new File(path), new UnsExcelService.LogWrapperConsumer(runningStatus -> {
-        }), false);
+        }), false, "zh");
     }
 }

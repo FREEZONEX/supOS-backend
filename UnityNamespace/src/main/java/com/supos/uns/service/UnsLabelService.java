@@ -10,12 +10,14 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
+import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.PageResultDTO;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
+import com.supos.common.utils.SuposIdUtil;
 import com.supos.common.vo.LabelVo;
 import com.supos.uns.bo.UnsLabels;
 import com.supos.uns.dao.mapper.UnsLabelMapper;
@@ -23,6 +25,8 @@ import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsLabelRefPo;
 import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.openapi.dto.MakeLabelDto;
+import com.supos.uns.openapi.dto.UpdateLabelDto;
 import com.supos.uns.util.PageUtil;
 import com.supos.uns.vo.FileVo;
 import jakarta.annotation.Resource;
@@ -30,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
@@ -43,24 +48,30 @@ import java.util.stream.Collectors;
 @Service
 public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
 
-    @Resource
+    @Autowired
     private UnsMapper unsMapper;
-    @Resource
+    @Autowired
     private UnsLabelRefService unsLabelRefService;
+    @Autowired
+    private UnsDefinitionService unsDefinitionService;
 
 
     /**
      * 标签列表
      */
-    public ResultVO<List<UnsLabelPo>> allLabels(String key) {
+    public ResultVO<List<LabelVo>> allLabels(String key) {
         List<UnsLabelPo> list = this.baseMapper.selectList(new LambdaQueryWrapper<UnsLabelPo>().like(StringUtils.isNotBlank(key), UnsLabelPo::getLabelName, key));
-        return ResultVO.successWithData(list);
+        if (CollectionUtils.isEmpty(list)){
+            return ResultVO.successWithData(Collections.emptyList());
+        }
+        List<LabelVo> voList = list.stream().map(po -> BeanUtil.copyProperties(po,LabelVo.class)).collect(Collectors.toList());
+        return ResultVO.successWithData(voList);
     }
 
 
     public ResultVO<LabelVo> detail(Long id) {
         UnsLabelPo po = getById(id);
-        if (null == po) {
+        if (po == null) {
             return ResultVO.fail(I18nUtils.getMessage("uns.label.not.exists"));
         }
         LabelVo vo = BeanUtil.copyProperties(po, LabelVo.class);
@@ -96,6 +107,10 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
     }
 
     public ResultVO delete(Long id) {
+        UnsLabelPo po = getById(id);
+        if (po == null) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.label.not.exists"));
+        }
         removeById(id);
         List<Long> unsIds = unsLabelRefService.listObjs(new LambdaQueryWrapper<UnsLabelRefPo>()
                         .eq(UnsLabelRefPo::getLabelId, id).select(UnsLabelRefPo::getUnsId)).stream()
@@ -119,19 +134,23 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
         return ResultVO.success("ok");
     }
 
-    public ResultVO update(LabelVo labelVo) {
-        long labelId = Long.parseLong(labelVo.getId());
+    public ResultVO update(UpdateLabelDto dto) {
+        long labelId = dto.getId();
+        UnsLabelPo po = getById(labelId);
+        if (po == null) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.label.not.exists"));
+        }
         long c = count(new LambdaQueryWrapper<UnsLabelPo>()
-                .eq(UnsLabelPo::getLabelName, labelVo.getLabelName())
+                .eq(UnsLabelPo::getLabelName, dto.getLabelName())
                 .ne(UnsLabelPo::getId, labelId));
         if (c > 0) {
             return ResultVO.fail(I18nUtils.getMessage("uns.label.already.exists"));
         }
         LambdaUpdateWrapper<UnsLabelPo> lambdaUpdateWrapper = new LambdaUpdateWrapper<>();
         lambdaUpdateWrapper.eq(UnsLabelPo::getId, labelId);
-        lambdaUpdateWrapper.set(UnsLabelPo::getLabelName, labelVo.getLabelName());
+        lambdaUpdateWrapper.set(UnsLabelPo::getLabelName, dto.getLabelName());
         update(lambdaUpdateWrapper);
-        unsMapper.updateUnsLabelNames(labelId, labelVo.getLabelName());// 更新uns冗余的标签 id->name 键值对
+        unsMapper.updateUnsLabelNames(labelId, dto.getLabelName());// 更新uns冗余的标签 id->name 键值对
         return ResultVO.success("ok");
     }
 
@@ -271,6 +290,15 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
         return ResultVO.success("ok");
     }
 
+    public ResultVO cancelLabel(String unsAlias, List<String> labelNames) {
+        UnsPo uns = unsMapper.getByAlias(unsAlias);
+        if (uns == null) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.file.not.exist"));
+        }
+        this.baseMapper.deleteRefByUnsIdLabelNames(uns.getId(), labelNames);
+        return ResultVO.success("ok");
+    }
+
     public PageResultDTO<FileVo> pageListUnsByLabel(Long labelId, Long pageNo, Long pageSize) {
         Page<UnsPo> page = new Page<>(pageNo, pageSize, true);
         IPage<UnsPo> iPage = this.baseMapper.getUnsByLabel(page, labelId);
@@ -285,10 +313,41 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
         return PageUtil.build(iPage, fileList);
     }
 
-    private static final Snowflake LABEL_SNOW = new Snowflake(2);
+    public List<LabelVo> getLabelListByUnsId(Long unsId){
+        List<UnsLabelPo> poList = this.baseMapper.getLabelByUnsId(unsId);
+        List<LabelVo> voList = poList.stream().map(po -> BeanUtil.copyProperties(po,LabelVo.class)).collect(Collectors.toList());
+        return voList;
+    }
+
+    public ResultVO batchMakeLabel(List<MakeLabelDto> makeLabelList) {
+        ResultVO resultVO = new ResultVO();
+        resultVO.setCode(200);
+        resultVO.setMsg("ok");
+        List<String> notExists = new ArrayList<>();
+        for (MakeLabelDto dto : makeLabelList) {
+            String alias = dto.getFileAlias();
+            CreateTopicDto createTopicDto = unsDefinitionService.getDefinitionByAlias(alias);
+            if (createTopicDto == null){
+                notExists.add(alias);
+                continue;
+            }
+            List<LabelVo> labelList = dto.getLabelNames().stream().map(name ->{
+                LabelVo vo = new LabelVo();
+                vo.setLabelName(name);
+                return vo;
+            }).collect(Collectors.toList());
+            makeLabel(createTopicDto.getId(), labelList);
+        }
+
+        if (CollectionUtils.isNotEmpty(notExists)) {
+            resultVO.setCode(400);
+            resultVO.setData(notExists);
+        }
+        return resultVO;
+    }
 
     private static long nextId() {
-        return LABEL_SNOW.nextId();
+        return SuposIdUtil.nextId();
     }
 
     @EventListener(classes = RemoveTopicsEvent.class)

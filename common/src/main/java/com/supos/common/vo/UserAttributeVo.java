@@ -29,4 +29,9 @@ public class UserAttributeVo {
      * 手机号
      */
     private String phone;
+
+    /**
+     * 用户来源
+     */
+    private String source;
 }

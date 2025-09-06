@@ -17,7 +17,10 @@ public class WSConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(websocketHandler, "/inter-api/supos/uns/event/ws","/open-api/supos/uns/event/ws")
+        registry.addHandler(websocketHandler,
+                        "/inter-api/supos/uns/external/topic",
+                        "/inter-api/supos/uns/event/ws",
+                        "/open-api/supos/uns/event/ws")
                 .setAllowedOriginPatterns("*")
                 .addInterceptors(new HttpSessionHandshakeInterceptor());
     }

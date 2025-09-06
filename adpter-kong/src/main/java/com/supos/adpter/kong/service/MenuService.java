@@ -1,9 +1,11 @@
 package com.supos.adpter.kong.service;
+import java.util.Date;
 
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.io.FileUtil;
 import com.alibaba.fastjson.JSONObject;
 import com.supos.adpter.kong.dto.MenuDto;
+import com.supos.adpter.kong.po.ResourcePo;
 import com.supos.adpter.kong.vo.RoutResponseVO;
 import com.supos.adpter.kong.vo.ServiceResponseVO;
 import com.supos.common.Constants;
@@ -219,6 +221,17 @@ public class MenuService {
             log.error(e.getMessage(), e);
             throw new BuzException("menu.save.failed");
         }
+
+        //注册资源
+        ResourcePo resourcePo = new ResourcePo();
+        resourcePo.setGroupType(1);
+        resourcePo.setType(2);
+        resourcePo.setCode(menuDto.getName());
+        resourcePo.setUrl(menuDto.getBaseUrl());
+        resourcePo.setUrlType(2);
+        resourcePo.setOpenType(0);
+        resourcePo.setDescription(menuDto.getDescription());
+        resourcePo.setRemark(menuDto.getShowName());
     }
 
     /**

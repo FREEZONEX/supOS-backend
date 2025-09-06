@@ -35,12 +35,17 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
     static final Set<String> streamAggregateFunctions = new HashSet<>(Arrays.asList("count", "avg", "sum", "max", "min"));
 
     public static String checkRefers(CreateTopicDto ins) {
+        if (!Integer.valueOf(Constants.PATH_TYPE_FILE).equals(ins.getPathType())) {
+            return null;
+        }
         InstanceField[] refers = ins.getRefers();
-        if (ins.getDataType() == Constants.MERGE_TYPE || ins.getDataType() == Constants.CITING_TYPE) {
+        Integer dataType = ins.getDataType();
+        final int DATA_TYPE = dataType != null ? dataType : 0;
+        if (DATA_TYPE == Constants.MERGE_TYPE) { // dataType = 7 可以支持不选择引用
             if (ArrayUtil.isEmpty(ins.getReferIds()) && ArrayUtil.isEmpty(refers)) {
                 return I18nUtils.getMessage("uns.invalid.stream.empty.referTopic");
             }
-            if (ins.getDataType() == Constants.MERGE_TYPE && ins.getFrequencySeconds() == null) {
+            if (ins.getFrequencySeconds() == null) {
                 return I18nUtils.getMessage("uns.create.empty.frequency");
             }
         }
@@ -52,10 +57,10 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
             }
             ins.setRefers(refers);
         }
-        if (ins.getDataType() == Constants.CITING_TYPE && refers != null && refers.length > 1) {
+        if (DATA_TYPE == Constants.CITING_TYPE && refers != null && refers.length > 1) {
             ins.setRefers(new InstanceField[]{refers[0]});// 引用类型只能引用一个，多于一个时只取第一个
         }
-        if (ins.getDataType() == Constants.CALCULATION_HIST_TYPE) {
+        if (DATA_TYPE == Constants.CALCULATION_HIST_TYPE) {
             if (ins.getStreamOptions() == null) {
                 return I18nUtils.getMessage("uns.invalid.stream.window.emptyStreamOptions");
             }
@@ -91,7 +96,7 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
         String expression = inst.getExpression();
 
         //当计算实例 表达式为空时 refers设置为空数组
-        if (dataType == Constants.CALCULATION_REAL_TYPE && !StringUtils.hasText(expression)){
+        if (dataType == Constants.CALCULATION_REAL_TYPE && !StringUtils.hasText(expression)) {
             InstanceField[] refFields = new InstanceField[0];
             inst.setRefers(refFields);
             return null;
@@ -188,7 +193,10 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
     public void tryUpdateCalcRefUns(Map<String, String> errTipMap, Map<String, CreateTopicDto> paramInstances, Function<Long, UnsPo> existsPos) {
         Map<Long, Set<CreateTopicDto>> topicIdRefMap = Collections.EMPTY_MAP;
         Map<Long, CreateTopicDto> calcTopics = Collections.EMPTY_MAP;
-        for (CreateTopicDto bo : paramInstances.values()) {
+        Iterator<Map.Entry<String, CreateTopicDto>> itr = paramInstances.entrySet().iterator();
+        final int SIZE = paramInstances.size();
+        while (itr.hasNext()) {
+            CreateTopicDto bo = itr.next().getValue();
             InstanceField[] refers = bo.getRefers();
             if (ArrayUtil.isEmpty(refers)) {
                 continue;
@@ -206,7 +214,7 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
                     UnsPo po = existsPos.apply(refId);
                     if (po == null) {
                         errTipMap.put(batchIndex, I18nUtils.getMessage("uns.topic.calc.expression.topic.ref.notFound", bo.getAlias()));
-                        paramInstances.remove(bo.getAlias());
+                        itr.remove();
                         next = false;
                         break;
                     }
@@ -214,7 +222,7 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
                     if (refDataType != Constants.TIME_SEQUENCE_TYPE && refDataType != Constants.RELATION_TYPE && dataType.intValue() == refDataType) {
                         String t1 = I18nUtils.getMessage("uns.dataType." + dataType);
                         errTipMap.put(batchIndex, I18nUtils.getMessage("uns.ref.invalid.dataType", bo.getAlias(), t1, t1));
-                        paramInstances.remove(bo.getAlias());
+                        itr.remove();
                         next = false;
                         break;
                     }
@@ -226,7 +234,7 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
             }
             if (next) {
                 if (calcTopics == Collections.EMPTY_MAP) {
-                    calcTopics = new HashMap<>(Math.max(16, paramInstances.size()));
+                    calcTopics = new HashMap<>(Math.max(16, SIZE));
                 }
                 calcTopics.put(bo.getId(), bo);
 
@@ -397,7 +405,7 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
                 return calcUns;
             }
         }
-        return new ArrayList<>();
+        return Collections.emptyList();
     }
 
     private List<UnsPo> filterAssociatedCalcInstanceIds(List<FieldDefine> delFields, Set<Long> fileIds, List<UnsPo> refers) {

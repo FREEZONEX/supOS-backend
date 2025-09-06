@@ -26,6 +26,7 @@ import org.apache.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -184,8 +185,8 @@ public class WebsocketService implements WebsocketSender {
         long t0 = System.currentTimeMillis();
         for (SimpleUnsInstance file : event.topics.values()) {
             Long unsId = file.getId();
-            String topic = file.getTopic();
-            unsTopologyService.removeFromGlobalTopologyData(topic);
+//            String topic = file.getTopic();
+//            unsTopologyService.removeFromGlobalTopologyData(topic);
             Set<String> connectionIds = idToSessionsMap.remove(unsId);
             if (connectionIds != null) {
                 for (String connId : connectionIds) {
@@ -247,6 +248,7 @@ public class WebsocketService implements WebsocketSender {
                         }
                     }), true);
                 }else{
+                    HttpHeaders httpHeaders = session.getHandshakeHeaders();
                     // uns导入
                     String path = URLDecoder.decode(file, StandardCharsets.UTF_8);
                     File excelFile = new File(FileUtils.getFileRootPath(), path);
@@ -258,7 +260,7 @@ public class WebsocketService implements WebsocketSender {
                         } catch (IOException e) {
                             log.error("fail to send uploadStatus: " + json, e);
                         }
-                    }), true);
+                    }), true, org.apache.commons.lang3.StringUtils.join(httpHeaders.getAcceptLanguage().stream().map(Locale.LanguageRange::getRange).collect(Collectors.toList()), ','));
                 }
             }
 
@@ -567,10 +569,12 @@ public class WebsocketService implements WebsocketSender {
             }
 
             for (String topic : subscription.topics) {
-                Set<String> connectionIds = topicToSessionsMap.get(topic);
+                String decodeTopic = URLDecoder.decode(topic, StandardCharsets.UTF_8);
+                Set<String> connectionIds = topicToSessionsMap.get(decodeTopic);
                 if (connectionIds != null) {
                     connectionIds.remove(connectionId);
                 }
+
             }
 
             for (String alias : subscription.aliasSet) {

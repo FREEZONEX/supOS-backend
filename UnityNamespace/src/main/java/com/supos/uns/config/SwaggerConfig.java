@@ -50,8 +50,9 @@ public class SwaggerConfig {
     @Bean
     public GroupedOpenApi publicApi() {
         return GroupedOpenApi.builder()
-                .group("open-api")
+                .group("supOS-openAPI")
                 .pathsToMatch("/open-api/**")  // 只暴露openAPI
+                .packagesToExclude("com.supos.pride")
                 .addOperationCustomizer(customOperationCustomizer)
                 .build();
     }

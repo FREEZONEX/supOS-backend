@@ -33,8 +33,6 @@ public class NodeFlowPO {
 
     private String description;
 
-
-
     private Date createTime;
 
     private Date updateTime;

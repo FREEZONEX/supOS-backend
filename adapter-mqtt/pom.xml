@@ -25,9 +25,15 @@
     </repositories>
     <dependencies>
         <dependency>
-            <groupId>com.bluejeans.common</groupId>
+            <groupId>com.esotericsoftware</groupId>
+            <artifactId>kryo</artifactId>
+            <version>5.6.2</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/com.bluejeans/bigqueue -->
+        <dependency>
+            <groupId>com.bluejeans</groupId>
             <artifactId>bigqueue</artifactId>
-            <version>1.7.0.5</version>
+            <version>1.7.0.6</version>
         </dependency>
         <dependency>
             <groupId>io.dropwizard.metrics</groupId>

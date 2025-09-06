@@ -10,4 +10,10 @@ import lombok.NoArgsConstructor;
 public class UnsCountDTO {
     private int countChildren;
     private int countDirectChildren;
+    private boolean hasChildren;
+
+    public UnsCountDTO(int countChildren, int countDirectChildren) {
+        this.countChildren = countChildren;
+        this.countDirectChildren = countDirectChildren;
+    }
 }

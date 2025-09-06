@@ -1,5 +1,6 @@
 package com.supos.uns.vo;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.supos.common.annotation.AliasValidator;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.utils.PathUtil;
@@ -10,6 +11,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @NoArgsConstructor
@@ -19,6 +21,9 @@ public class CreateTemplateVo {
     int batch;
     @Hidden
     int index;
+    @Hidden
+    String flagNo;
+
     @AliasValidator
     @Schema(description = "别名，唯一，最长63，可用字符：a-zA-Z0-9_")
     String alias;
@@ -34,7 +39,7 @@ public class CreateTemplateVo {
      * 模板名称
      */
     @NotEmpty(message = "模板名称不可为空")
-    @Size(max = 63 , message = "名称最多63个字符")
+    @Size(max = 63 , message = "uns.template.name.length")
     @Schema(description = "模板名称")
     String name;
     /**
@@ -42,15 +47,19 @@ public class CreateTemplateVo {
      */
     @NotEmpty(message = "字段定义不可为空")
     @Schema(description = "字段定义")
+    @JsonAlias({"fields","definition"})
     FieldDefine[] fields;
     /**
      * 模板描述
      */
     @Schema(description = "模板描述")
-    @Size(max = 255 , message = "模板描述最多255个字符")
+    @Size(max = 255 , message = "uns.description.length.limit.exceed")
     String description;
 
     public String gainBatchIndex() {
+        if (StringUtils.isNotBlank(flagNo)) {
+            return flagNo;
+        }
         return String.format("%d-%d", batch, index);
     }
 

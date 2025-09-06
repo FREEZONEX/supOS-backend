@@ -60,14 +60,6 @@ public class NodeRedAdapterController {
         return nodeRedAdapterService.selectList(fuzzyName, Integer.parseInt(pageNo), Integer.parseInt(pageSize));
     }
 
-    @GetMapping({"/inter-api/supos/event/flow/by/topic"})
-    public ResultDTO<NodeFlowVO> getByTopic(@RequestParam("t") String topic) {
-        List<NodeFlowVO> result = nodeRedAdapterService.getByTopic(topic);
-        return ResultDTO.successWithData(result);
-    }
-
-
-
     /**
      * 部署单个流程, 流程ID从当前cookie中获取
      * @param requestBody
@@ -85,6 +77,12 @@ public class NodeRedAdapterController {
         long id = Long.parseLong(requestBody.getId());
         nodeRedAdapterService.saveFlowData(id, requestBody.getFlows());
         return ResultDTO.success("ok");
+    }
+
+    @GetMapping({"/inter-api/supos/event/flow/version"})
+    public ResultDTO<String> getRevVersion() {
+        String version = nodeRedAdapterService.getVersion();
+        return ResultDTO.successWithData(version);
     }
 
     /**

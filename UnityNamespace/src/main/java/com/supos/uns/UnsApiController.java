@@ -10,7 +10,6 @@ import com.supos.common.utils.JsonUtil;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.service.*;
 import com.supos.uns.vo.*;
-import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -45,6 +44,8 @@ public class UnsApiController {
     UnsDataService unsDataService;
     @Autowired
     UnsExternalTopicService unsExternalTopicService;
+    @Autowired
+    UnsTreeService unsTreeService;
 
     private static final Set<Integer> baseDataTypes = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE)));
 
@@ -91,16 +92,21 @@ public class UnsApiController {
         return new JsonResult<>(0, "ok", treeResults);
     }
 
-
-    @Operation(summary = "多条件分页查询树结构", tags = {"openapi.tag.folder.management"})
-    @PostMapping(path = {"/inter-api/supos/uns/condition/tree","/open-api/supos/uns/condition/tree"})
-    public PageResultDTO<TopicTreeResult> searchTreeByCondition(@RequestBody UnsSearchCondition params) {
-        return unsQueryService.unsTree(params);
+    @Operation(summary = "清除所有外部topic" , tags = "openapi.tag.folder.management")
+    @DeleteMapping(path = {"/inter-api/supos/external/topic/clear"})
+    public JsonResult<String> clearExternalTree() {
+        unsQueryService.clearExternalTopicCache();
+        return new JsonResult<>(0, "ok");
     }
 
+    @Operation(summary = "多条件分页查询树结构", tags = {"openapi.tag.folder.management"})
+    @PostMapping(path = {"/inter-api/supos/uns/condition/tree"})
+    public PageResultDTO<TopicTreeResult> unsTreeByDefinitions(@RequestBody UnsTreeCondition params) {
+        return unsTreeService.tree(params);
+    }
 
     @Operation(summary = "枚举数据类型", description = "列出所有支持的数据类型，供建表时下拉选择", tags = "openapi.tag.folder.management")
-    @GetMapping(path = {"/inter-api/supos/uns/types", "/open-api/supos/uns/types"})
+    @GetMapping(path = {"/inter-api/supos/uns/types"})
     public JsonResult<Collection<String>> listTypes() {
         return unsQueryService.listTypes();
     }
@@ -158,27 +164,15 @@ public class UnsApiController {
     }
 
     @Operation(summary = "查询文件夹详情", tags = "openapi.tag.folder.management")
-    @GetMapping(path = {"/inter-api/supos/uns/model", "/open-api/supos/uns/model"})
+    @GetMapping(path = {"/inter-api/supos/uns/model"})
     public JsonResult<ModelDetail> getModelDefinition(@RequestParam(name = "id") @Parameter(description = "模型对应的主题ID") Long id) throws Exception {
         return unsQueryService.getModelDefinition(id, null);
     }
 
-    @Operation(summary = "根据别名,查询文件夹详情", tags = "openapi.tag.folder.management")
-    @GetMapping(path = {"/open-api/supos/uns/folderDetail"})
-    public JsonResult<ModelDetail> getModelDefinitionByAlias(@RequestParam(name = "alias") @Parameter(description = "别名") String alias) {
-        return unsQueryService.getModelDefinition(null, alias);
-    }
-
     @Operation(summary = "查询文件详情", tags = "openapi.tag.folder.management")
-    @GetMapping(path = {"/inter-api/supos/uns/instance", "/open-api/supos/uns/instance"})
+    @GetMapping(path = {"/inter-api/supos/uns/instance"})
     public JsonResult<InstanceDetail> getInstanceDetail(@RequestParam(name = "id") @Parameter(description = "模型对应的主题ID") Long id) throws Exception {
         return unsQueryService.getInstanceDetail(id, null);
-    }
-
-    @Operation(summary = "根据别名,查询文件详情", tags = "openapi.tag.folder.management")
-    @GetMapping(path = {"/open-api/supos/uns/fileDetail"})
-    public JsonResult<InstanceDetail> getInstanceDetailByAlias(@RequestParam(name = "alias") @Parameter(description = "别名") String alias) {
-        return unsQueryService.getInstanceDetail(null, alias);
     }
 
     @Operation(summary = "外部数据源表的字段定义转uns字段定义")
@@ -200,26 +194,11 @@ public class UnsApiController {
     }
 
     @Operation(summary = "创建文件夹和文件", tags = "openapi.tag.folder.management")
-    @PostMapping(path = {"/inter-api/supos/uns/model", "/open-api/supos/uns/model"})
+    @PostMapping(path = {"/inter-api/supos/uns/model"})
     @Valid
     public JsonResult<String> createModelInstance(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "文件夹或文件字段定义") CreateTopicDto dto) throws Exception {
         return unsAddService.createModelInstance(dto);
     }
-
-    @Operation(summary = "创建文件夹", tags = "openapi.tag.folder.management")
-    @PostMapping(path = {"/inter-api/supos/uns/folder", "/open-api/supos/uns/folder"})
-    @Valid
-    public JsonResult<String> createFolder(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "文件夹字段定义") CreateFolderDto dto) throws Exception {
-        return unsAddService.createModelInstance(dto);
-    }
-
-    @Operation(summary = "创建文件", tags = "openapi.tag.folder.management")
-    @PostMapping(path = {"/inter-api/supos/uns/file", "/open-api/supos/uns/file"})
-    @Valid
-    public JsonResult<String> createFile(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "文件字段定义") CreateFileDto dto) throws Exception {
-        return unsAddService.createModelInstance(dto);
-    }
-
 
     @Operation(summary = "修改文件夹或文件明细", tags = "openapi.tag.folder.management")
     @PutMapping(path = {"/inter-api/supos/uns/detail"})
@@ -269,6 +248,12 @@ public class UnsApiController {
         return ResultVO.successWithData(results);
     }
 
+    @Operation(summary = "删除前预先判断是否有被引用对象")
+    @GetMapping(path = {"/inter-api/supos/uns/detectIfRemove"})
+    public RemoveResult detect(@RequestParam(name = "id") @Parameter(description = "uns 主键") Long id) throws Exception {
+        return unsRemoveService.detectRefers(id);
+    }
+
     @Operation(summary = "删除指定路径下的所有文件夹和文件", tags = "openapi.tag.folder.management")
     @DeleteMapping({"/inter-api/supos/uns"})
     public RemoveResult removeModelOrInstance(@RequestParam(name = "id") @Parameter(description = "uns 主键") Long id
@@ -281,11 +266,8 @@ public class UnsApiController {
         return rs;
     }
 
-    /**
-     * 此接口pride在用
-     */
     @Operation(summary = "根据别名集合批量删除文件夹和文件")
-    @DeleteMapping({"/inter-api/supos/uns/batch/alias", "/open-api/supos/uns/batch/alias"})
+    @DeleteMapping({"/inter-api/supos/uns/batch/alias"})
     public ResponseEntity<RemoveResult> batchRemoveResultByAliasList(@RequestBody BatchRemoveUnsDto batchRemoveUnsDto) {
         return unsRemoveService.batchRemoveResultByAliasList(batchRemoveUnsDto);
     }
@@ -354,23 +336,19 @@ public class UnsApiController {
 
 
     @Operation(summary = "批量查询文件实时值", tags = {"openapi.tag.folder.management"})
-    @PostMapping(path = {"/inter-api/supos/uns/file/current/batchQuery","/open-api/supos/uns/file/current/batchQuery"})
+    @PostMapping(path = {"/inter-api/supos/uns/file/current/batchQuery"})
     public ResponseEntity<ResultVO> batchQueryFile(@RequestBody @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "别名数组") List<String> aliasList) {
         return unsQueryService.batchQueryFile(aliasList);
     }
 
-    /**
-     * 基于pride历史查询需求实现  @安冬
-     * 91669 【open-api-批量查询文件历史值】需要提供一个标准接口，可以查询文件下“键”名非value的文件历史值，目前定制给PRIDE的接口，只能查询键名为value的历史值
-     */
     @Operation(summary = "批量查询文件历史值", tags = {"openapi.tag.folder.management"})
-    @PostMapping(path = {"/inter-api/supos/uns/file/history/batch/query", "/open-api/supos/uns/file/history/batch/query"})
+    @PostMapping(path = {"/inter-api/supos/uns/file/history/batch/query"})
     public ResponseEntity<ResultVO<UnsHistoryQueryResult>> batchQueryFileHistoryValue(@RequestBody @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "历史值查询请求参数") HistoryValueRequest historyValueRequest) {
         return unsDataService.batchQueryFileHistoryValue(historyValueRequest);
     }
 
     @Operation(summary = "批量写文件实时值",tags = {"openapi.tag.folder.management"})
-    @PostMapping(path = {"/inter-api/supos/uns/file/current/batchUpdate", "/open-api/supos/uns/file/current/batchUpdate"})
+    @PostMapping(path = {"/inter-api/supos/uns/file/current/batchUpdate"})
     public ResponseEntity<ResultVO<UnsDataResponseVo>> batchUpdateFile(@RequestBody List<UpdateFileDTO> list) {
         return ResponseEntity.ok(unsDataService.batchUpdateFile(list));
     }

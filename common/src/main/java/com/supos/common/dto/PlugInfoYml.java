@@ -52,20 +52,16 @@ public class PlugInfoYml implements Serializable {
     @Schema(description = "插件路由")
     private PlugRoute route;
 
+    @Schema(description = "插件资源")
+    private List<PlugResource> resources;
+
     @Schema(description = "插件依赖")
     private List<PlugDependency> dependencies;
 
     @Data
     public static class PlugRoute implements Serializable {
         private String name;
-        private String description;
-        private Integer sort;
-        private String parentName;
         private String path;
-        private String icon;
-        private String moduleName;
-        private String homeParentName;
-        private String homeIconUrl;
     }
 
     @Data
@@ -77,4 +73,41 @@ public class PlugInfoYml implements Serializable {
             this.name = name;
         }
     }
+
+    @Data
+    @NoArgsConstructor
+    public static class PlugResource implements Serializable {
+        private String code;
+        private Integer groupType;
+        private Integer type;
+        private String url;
+        private Integer urlType;
+        private Integer openType;
+        private String icon;
+        private String description;
+        private Integer sort;
+        private Long parentId;
+
+        private List<PlugResource> children;
+        private List<PlugOperation> operations;
+    }
+
+    @Data
+    @NoArgsConstructor
+    public static class PlugOperation implements Serializable {
+        private String code;
+
+        public PlugOperation(String code) {
+            this.code = code;
+        }
+    }
+
+//    public String getShowName() {
+//        return this.showName != null ? I18nUtils.getMessage4Plugin(this.name, this.showName) : this.showName;
+//    }
+//
+//    public String getDescription() {
+//        return this.description != null ? I18nUtils.getMessage4Plugin(this.name, this.description) : this.description;
+//    }
+
 }

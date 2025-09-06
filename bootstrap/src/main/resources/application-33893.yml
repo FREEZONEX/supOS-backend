@@ -3,6 +3,10 @@ springdoc:
     path: /swagger-ui
   api-docs:
     path: /swagger-ui/v3/api-docs
+#  swagger-ui:
+#    urls:
+#      - name: supOS-openAPI
+#        url: /inter-api/supos/supOS-CE.openapi.yaml
 grpc:
   server:
     port: 19099

@@ -37,6 +37,10 @@ public class TopicTreeResult {
     @Schema(description = "路径类型: 0--文件夹，1--模板，2--文件")
     int pathType; // 路径类型: 0--文件夹，1--模板，2--文件
     int type; // 路径类型: 0--文件夹，1--模板，2--文件
+    /**
+     * 0--保留（模板），1--时序，2--关系，3--计算型, 5--告警 6--聚合 7--引用
+     */
+    Integer dataType;
     @Schema(description = "名称")
     String name;//名称
     @Schema(description = "显示名称")

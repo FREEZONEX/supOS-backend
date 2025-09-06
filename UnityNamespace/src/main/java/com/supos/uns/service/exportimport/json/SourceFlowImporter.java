@@ -18,6 +18,7 @@ import com.supos.common.enums.GlobalExportModuleEnum;
 import com.supos.common.exception.BuzException;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.NodeRedUtils;
+import com.supos.common.utils.SuposIdUtil;
 import com.supos.uns.service.exportimport.core.SourceFlowImportContext;
 import com.supos.uns.service.exportimport.json.data.SourceFlowJsonWrapper;
 import lombok.Getter;
@@ -118,7 +119,7 @@ public class SourceFlowImporter {
                 if (CollUtil.isNotEmpty(nodeFlowModelPOS)) {
                     addModelList.addAll(nodeFlowModelPOS);
                 }
-                nodeFlowPO.setId(IdUtil.getSnowflakeNextId());
+                nodeFlowPO.setId(SuposIdUtil.nextId());
                 if (CollUtil.isNotEmpty(nodeFlowModelPOS)) {
                     for (NodeFlowModelPO nodeFlowModelPO : nodeFlowModelPOS) {
                         nodeFlowModelPO.setParentId(nodeFlowPO.getId());

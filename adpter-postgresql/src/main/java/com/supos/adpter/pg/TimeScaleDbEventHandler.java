@@ -227,12 +227,10 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
                 for (SaveDataDto dto : event.topicData) {
                     String table = DbTableNameUtils.getFullTableName(dto.getTable());
 
-                    List<Map<String, Object>>[] listList = Lists.partition(dto.getList(), 1000).toArray(new List[0]);
+                    List<List<Map<String, Object>>> listList = Lists.partition(dto.getList(), 1000);
                     for (List<Map<String, Object>> list : listList) {
-                        List<String> saveOrUpdateSQLs = List.of(getInsertSQL(list, table, dto, event.duplicateIgnore));
-                        for (String saveOrUpdateSQL : saveOrUpdateSQLs) {
-                            SQLs.add(Pair.of(dto, saveOrUpdateSQL));
-                        }
+                        String saveOrUpdateSQL = getInsertSQL(list, table, dto, event.duplicateIgnore);
+                        SQLs.add(Pair.of(dto, saveOrUpdateSQL));
                     }
                 }
 
@@ -242,19 +240,19 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
 
             List<List<Pair<SaveDataDto, String>>> segments = Lists.partition(SQLs, Constants.SQL_BATCH_SIZE);
             for (List<Pair<SaveDataDto, String>> sqlPairList : segments) {
-                List<String> sqlList = sqlPairList.stream().map(Pair::getValue).collect(Collectors.toList());
-                log.debug("PgTimeScale Write: \n{}", sqlList);
-                String[] sqlArray = sqlList.toArray(new String[0]);
+                String[] sqlArray = new String[sqlPairList.size()];
+                for (int i = 0; i < sqlPairList.size(); i++) {
+                    sqlArray[i] = sqlPairList.get(i).getValue();
+                }
                 try {
                     jdbcTemplate.batchUpdate(sqlArray);
                 } catch (DuplicateKeyException e1) {
                     // 使用 on conflict update重试
-                    log.debug("PgTimeScale 写入失败, 主键冲突", e1);
-                    log.error("PgTimeScale 写入失败, 主键冲突， 使用on conflict update重试");
+                    log.warn("PgTimeScale 写入失败, 主键冲突， 使用on conflict update重试: {}", e1.getMessage());
                     try {
                         List<String> retrySqlList = buildRetrySqlArray(sqlPairList);
                         jdbcTemplate.batchUpdate(retrySqlList.toArray(new String[0]));
-                        log.debug("retry success!");
+                        log.info("PgTimeScale retry success!");
                     } catch (Exception rex) {
                         log.error("PgTimeScale写入 重试失败:", rex);
                     }
