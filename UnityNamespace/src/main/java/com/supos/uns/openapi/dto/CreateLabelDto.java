@@ -1,0 +1,17 @@
+package com.supos.uns.openapi.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+@Data
+public class CreateLabelDto {
+
+
+    @Schema(description = "标签名称")
+    @Size(max = 63 , message = "uns.label.length.limit.exceed")
+    @NotEmpty(message = "uns.label.name.not.empty")
+    private String labelName;
+}
+

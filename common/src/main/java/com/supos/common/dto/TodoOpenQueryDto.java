@@ -24,7 +24,6 @@ public class TodoOpenQueryDto extends PaginationDTO{
     private String todoMsg;
 
     @Schema(description = "用户名")
-    @NotBlank(message = "用户名不可为空")
     private String username;
 
     @Schema(description = "开始时间，UTC格式：如2014-11-11T12:00:00Z")
@@ -32,4 +31,7 @@ public class TodoOpenQueryDto extends PaginationDTO{
 
     @Schema(description = "结束时间，UTC格式：如2014-11-11T12:00:00Z")
     private String endTime;
+
+    @Schema(description = "处理人用户名")
+    private String handlerUsername;
 }

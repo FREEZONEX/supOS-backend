@@ -1,8 +1,5 @@
-springdoc:
-  swagger-ui:
-    path: /swagger-ui
-  api-docs:
-    path: /swagger-ui/v3/api-docs
+server:
+  port: 8080
 grpc:
   server:
     port: 19099
@@ -57,7 +54,7 @@ mybatis:
   configuration:
     map-underscore-to-camel-case: true
 kong:
-  host: 192.168.235.58
+  host: 192.168.235.123
   port: 8001
 node-red:
   host: 100.100.100.20
@@ -95,6 +92,9 @@ minio:
   endpoint: ${MINIO_ENDPOINT:http://office.unibutton.com:11490}
   accessKey: ${MINIO_ACCESSKEY:admin}
   secreKey: ${MINIO_SECREKEY:adminpassword}
+chat2db:
+  enable: ${ENABLE_CHAT2DB:false}
+  address: http://chat2db:10824
 #camunda:
 #  bpm:
 #    database:

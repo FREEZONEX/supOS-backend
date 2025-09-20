@@ -126,10 +126,10 @@ public class PluginJarService {
     //    private String bootBeanName;
     private String CONFIGURATION_CLASS_ATTRIBUTE;
 
-    @Autowired
-    MultipleOpenApiResource openApi;
-    @Autowired
-    SpringWebProvider springWebProvider;
+//    @Autowired
+//    MultipleOpenApiResource openApi;
+//    @Autowired
+//    SpringWebProvider springWebProvider;
     @Autowired
     SqlSessionTemplate sqlSessionTemplate;
     @Autowired
@@ -530,7 +530,7 @@ public class PluginJarService {
             plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALL_FAIL);
             throw installError;
         }
-        clearSwaggerApiCache(null);
+//        clearSwaggerApiCache(null);
 
         plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALLED);
         if (!onStarts.isEmpty()) {
@@ -1038,7 +1038,7 @@ public class PluginJarService {
         resetBeanPostProcessorCache.setAccessible(true);
         resetBeanPostProcessorCache.invoke(factory);
         // 卸载后，清理 swagger 接口缓存
-        clearSwaggerApiCache(ctlNames);
+//        clearSwaggerApiCache(ctlNames);
 
         plugInfo.getClassLoader().close();// 关闭 URLClassLoader 以释放文件句柄
         ResolvableType.clearCache();
@@ -1048,32 +1048,32 @@ public class PluginJarService {
         plugInfo.setClassLoader(null);
     }
 
-    private void clearSwaggerApiCache(@Nullable String[] ctlNames) throws NoSuchFieldException, IllegalAccessException {
-        Field fieldGroupedOpenApiResources = MultipleOpenApiResource.class.getDeclaredField("groupedOpenApiResources");
-        fieldGroupedOpenApiResources.setAccessible(true);
-        Map<String, OpenApiResource> openApiResources = (Map<String, OpenApiResource>) fieldGroupedOpenApiResources.get(openApi);
-        //org.springdoc.api.AbstractOpenApiResource.openAPIService
-        Field fieldOpenApiResource = AbstractOpenApiResource.class.getDeclaredField("openAPIService");
-        fieldOpenApiResource.setAccessible(true);
-
-        Field fieldCachedOpenAPI = OpenAPIService.class.getDeclaredField("cachedOpenAPI");
-        fieldCachedOpenAPI.setAccessible(true);
-
-        for (OpenApiResource apiResource : openApiResources.values()) {
-            OpenAPIService openAPIService = (OpenAPIService) fieldOpenApiResource.get(apiResource);
-            Map<String, OpenAPI> cachedOpenAPI = (Map<String, OpenAPI>) fieldCachedOpenAPI.get(openAPIService);
-            cachedOpenAPI.clear();
-            if (ctlNames != null) {
-                Map<String, Object> mappingsMap = openAPIService.getMappingsMap();
-                for (String rest : ctlNames) {
-                    mappingsMap.remove(rest);
-                }
-            }
-        }
-        Field handlerMethods = SpringWebProvider.class.getDeclaredField("handlerMethods");
-        handlerMethods.setAccessible(true);
-        handlerMethods.set(springWebProvider, null);
-    }
+//    private void clearSwaggerApiCache(@Nullable String[] ctlNames) throws NoSuchFieldException, IllegalAccessException {
+//        Field fieldGroupedOpenApiResources = MultipleOpenApiResource.class.getDeclaredField("groupedOpenApiResources");
+//        fieldGroupedOpenApiResources.setAccessible(true);
+//        Map<String, OpenApiResource> openApiResources = (Map<String, OpenApiResource>) fieldGroupedOpenApiResources.get(openApi);
+//        //org.springdoc.api.AbstractOpenApiResource.openAPIService
+//        Field fieldOpenApiResource = AbstractOpenApiResource.class.getDeclaredField("openAPIService");
+//        fieldOpenApiResource.setAccessible(true);
+//
+//        Field fieldCachedOpenAPI = OpenAPIService.class.getDeclaredField("cachedOpenAPI");
+//        fieldCachedOpenAPI.setAccessible(true);
+//
+//        for (OpenApiResource apiResource : openApiResources.values()) {
+//            OpenAPIService openAPIService = (OpenAPIService) fieldOpenApiResource.get(apiResource);
+//            Map<String, OpenAPI> cachedOpenAPI = (Map<String, OpenAPI>) fieldCachedOpenAPI.get(openAPIService);
+//            cachedOpenAPI.clear();
+//            if (ctlNames != null) {
+//                Map<String, Object> mappingsMap = openAPIService.getMappingsMap();
+//                for (String rest : ctlNames) {
+//                    mappingsMap.remove(rest);
+//                }
+//            }
+//        }
+//        Field handlerMethods = SpringWebProvider.class.getDeclaredField("handlerMethods");
+//        handlerMethods.setAccessible(true);
+//        handlerMethods.set(springWebProvider, null);
+//    }
 
     private Class<?> removeBean(PlugInfo plugInfo, String beanName, DefaultListableBeanFactory factory) {
         Class<?> beanClass = null;

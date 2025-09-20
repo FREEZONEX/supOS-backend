@@ -11,20 +11,23 @@ import com.supos.common.Constants;
 import com.supos.common.adpater.TopicMessageConsumer;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.JsonResult;
-import com.supos.common.dto.SimpleUnsInstance;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.event.UnsTopologyChangeEvent;
 import com.supos.common.event.WebsocketNotifyEvent;
 import com.supos.common.sdk.WebsocketSender;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.DataUtils;
+import com.supos.common.utils.FileUtils;
 import com.supos.common.utils.JsonUtil;
-import com.supos.uns.util.FileUtils;
+import com.supos.common.utils.UserContext;
+import com.supos.i18n.service.I18nExcelService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
@@ -59,19 +62,22 @@ public class WebsocketService implements WebsocketSender {
     final IUnsDefinitionService definitionService;
     final GlobalExportService globalExportService;
     final UnsExcelService unsExcelService;
+    final I18nExcelService i18nExcelService;
     @Autowired
     TopicMessageConsumer topicMessageConsumer;
 
     public WebsocketService(@Autowired UnsQueryService unsQueryService, @Autowired UnsExcelService unsExcelService,
                                @Autowired UnsTopologyService unsTopologyService,
                                @Autowired IUnsDefinitionService definitionService,
-                               @Autowired GlobalExportService globalExportService
+                               @Autowired GlobalExportService globalExportService,
+                               @Autowired I18nExcelService i18nExcelService
     ) {
         this.unsQueryService = unsQueryService;
         this.unsExcelService = unsExcelService;
         this.unsTopologyService = unsTopologyService;
         this.definitionService = definitionService;
         this.globalExportService = globalExportService;
+        this.i18nExcelService = i18nExcelService;
     }
 
     private static class WsSubscription {
@@ -183,7 +189,7 @@ public class WebsocketService implements WebsocketSender {
     @Order(100)
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
         long t0 = System.currentTimeMillis();
-        for (SimpleUnsInstance file : event.topics.values()) {
+        for (CreateTopicDto file : event.topics) {
             Long unsId = file.getId();
 //            String topic = file.getTopic();
 //            unsTopologyService.removeFromGlobalTopologyData(topic);
@@ -223,6 +229,7 @@ public class WebsocketService implements WebsocketSender {
     }
 
     public void handleSessionConnected(WebSocketSession session) {
+        log.info(LocaleContextHolder.getLocale().getLanguage());
         UriComponents components = UriComponentsBuilder.fromUri(session.getUri()).build();
         List<String> idStrs = components.getQueryParams().get("id");
         List<String> topics = components.getQueryParams().get("topic");
@@ -231,10 +238,10 @@ public class WebsocketService implements WebsocketSender {
 
 
         if (CollectionUtils.isEmpty(idStrs) && CollectionUtils.isEmpty(topics)) {
-            String file = components.getQueryParams().getFirst("file");
-            if (file != null) {
-                String global = components.getQueryParams().getFirst("global");
-                if(StringUtils.hasText(global)){
+            Pair<String, String> isImportRequest = importRequest(components);
+            if (isImportRequest != null) {
+                String file = isImportRequest.getLeft();
+                if (isImportRequest.getRight().equals("global")) {
                     // 全局导入
                     String path = URLDecoder.decode(file, StandardCharsets.UTF_8);
                     File zipFile = new File(FileUtils.getFileRootPath(), path);
@@ -247,7 +254,22 @@ public class WebsocketService implements WebsocketSender {
                             log.error("global import process data fail to send uploadStatus: " + json, e);
                         }
                     }), true);
-                }else{
+                } else if (isImportRequest.getRight().equals("i18n")) {
+                    // 国际化导入
+                    // uns导入
+                    String path = URLDecoder.decode(file, StandardCharsets.UTF_8);
+                    File excelFile = new File(FileUtils.getFileRootPath(), path);
+                    i18nExcelService.asyncImport(excelFile, runningStatus -> dataPublishExecutor.submit(() -> {
+                        String json = null;
+                        try {
+                            json = JsonUtil.toJson(runningStatus);
+                            session.sendMessage(new TextMessage(json));
+                        } catch (Throwable e) {
+                            log.error("fail to send uploadStatus: " + json, e);
+                        }
+                    }), true);
+                } else if (isImportRequest.getRight().equals("uns")) {
+                    // uns导入
                     HttpHeaders httpHeaders = session.getHandshakeHeaders();
                     // uns导入
                     String path = URLDecoder.decode(file, StandardCharsets.UTF_8);
@@ -292,6 +314,27 @@ public class WebsocketService implements WebsocketSender {
                 publishMessage(session, decodeTopic);
             }
         }
+    }
+
+    private Pair<String, String> importRequest(UriComponents components) {
+        String file = components.getQueryParams().getFirst("file");
+        // 这是导入请求
+        if (file != null) {
+            String global = components.getQueryParams().getFirst("global");
+            if(StringUtils.hasText(global)){
+                // 这是全局导入请求
+                return Pair.of(file, "global");
+            }
+
+            String i18n = components.getQueryParams().getFirst("i18n");
+            if(StringUtils.hasText(i18n)){
+                // 这是i18n导入请求
+                return Pair.of(file, "i18n");
+            }
+
+            return Pair.of(file, "uns");
+        }
+        return null;
     }
 
     private static Set<String> getConnectionIds(Long unsId) {

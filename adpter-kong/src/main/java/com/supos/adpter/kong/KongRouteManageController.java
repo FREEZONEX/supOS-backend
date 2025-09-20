@@ -3,22 +3,17 @@ package com.supos.adpter.kong;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
-import com.alibaba.fastjson.JSONObject;
 import com.supos.adpter.kong.service.KongAdapterService;
-import com.supos.adpter.kong.service.UserMenuService;
-import com.supos.adpter.kong.vo.MarkRouteRequestVO;
 import com.supos.adpter.kong.vo.ResultVO;
-import com.supos.adpter.kong.vo.RouteVO;
-import com.supos.common.dto.UserMenuDto;
+import com.supos.adpter.kong.vo.SimpleRouteVo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
-import java.io.IOException;
+
 import java.net.HttpCookie;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,33 +24,16 @@ public class KongRouteManageController {
 
     @Autowired
     private KongAdapterService KongAdapterService;
-    @Autowired
-    private UserMenuService userMenuService;
 
     @Value("${node-red.host:nodered}")
     private String nodeRedHost;
     @Value("${node-red.port:1880}")
     private String nodeRedPort;
 
-    /**
-     * 获取所有路由， 并且标记是否需要展示
-     * @return
-     */
-    @GetMapping("/inter-api/supos/kong/routes")
-    public ResultVO<List> queryRoutes() {
-        List<RouteVO> routes = KongAdapterService.queryRoutes();
-        return ResultVO.success(routes);
-    }
 
-    @PostMapping("/inter-api/supos/kong/routes")
-    public ResultVO markRoutes(@RequestBody List<MarkRouteRequestVO> menus) {
-        try {
-            KongAdapterService.markMenu(menus);
-        } catch (IOException e) {
-            log.error("save failed", e);
-            return ResultVO.fail("save failed!");
-        }
-        return ResultVO.success("ok");
+    @GetMapping("/inter-api/supos/kong/routeList")
+    public ResultVO<List<SimpleRouteVo>> routeList() {
+        return ResultVO.success(KongAdapterService.routeList());
     }
 
     /**
@@ -81,40 +59,5 @@ public class KongRouteManageController {
         HttpResponse response = postClient.execute();
         log.info("<=== Get node response: {}", response.body());
         return response.body();
-    }
-
-    /**
-     * 获取用户的路由列表
-     * @return
-     */
-    @GetMapping("/inter-api/supos/kong/user/routes")
-    public ResultVO<List<RouteVO>> userRoutes() {
-        List<RouteVO> routes = userMenuService.getUserRouteList();
-        return ResultVO.success(routes);
-    }
-
-    /**
-     * 用户菜单勾选
-     * @param menus
-     * @return
-     */
-    @PostMapping("/inter-api/supos/kong/user/routes/mark")
-    public ResultVO markMenu(@RequestBody List<UserMenuDto> menus) {
-        return userMenuService.setUserMenu(menus);
-    }
-
-
-    /**
-     * kong插件启用状态代理
-     */
-//    @PatchMapping("/service-api/supos/proxy/kong/plugins/{id}")
-//    public ResponseEntity pluginsProxy(@PathVariable("id") String id, @RequestBody JSONObject params) {
-//        return KongAdapterService.pluginsProxy(id,params);
-//    }
-
-    @GetMapping("/inter-api/supos/kong/resource")
-    public ResultVO saveResourceByRoutes(){
-        userMenuService.saveResourceByRoutes();
-        return ResultVO.success("ok");
     }
 }

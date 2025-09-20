@@ -29,7 +29,6 @@ supOS Backend 是一个基于 Spring Boot 3.1.0 的多模块 Java 项目，旨�
 | app-manager         | 应用管理模块 |
 | adpter-kong         | Kong API 网关适配器 |
 | adpter-nodered      | Node-RED 适配器 |
-| adpter-hasura       | Hasura 适配器 |
 | gateway             | 网关服务 |
 | adpter-elasticsearch| Elasticsearch 适配器 |
 | adpter-minio        | Minio 存储适配器 |

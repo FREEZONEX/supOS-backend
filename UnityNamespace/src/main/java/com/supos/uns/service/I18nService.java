@@ -1,7 +1,11 @@
 package com.supos.uns.service;
 
+import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.io.FileUtil;
 import com.supos.common.utils.I18nUtils;
+import com.supos.i18n.common.Constants;
+import com.supos.i18n.dao.po.I18nResourcePO;
+import com.supos.i18n.service.I18nResourceService;
 import com.supos.uns.bo.PlugInfo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,25 +37,32 @@ public class I18nService {
     @Autowired
     private PluginManager pluginManager;
 
+    @Autowired
+    private I18nResourceService i18nResourceService;
+
 
     // 获取国际化信息
     public String readMessages(String lang) {
+        StringBuilder messages = new StringBuilder();
         try {
             if (lang == null) {
                 lang = getSysOsLang();
             }
 
-            String fileName = getSysMessageFilePath(lang);
+            // 转化为可识别语言
+            lang = transformLanguage(lang);
 
-            ClassPathResource resource = new ClassPathResource(fileName);
-            if (resource.exists()) {
-                return StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
+            List<I18nResourcePO> i18nResourcePOs = i18nResourceService.getAllResourceByModule(lang, Constants.DEFAULT_MODULE_CODE);
+            if (CollectionUtil.isNotEmpty(i18nResourcePOs)) {
+                for (I18nResourcePO i18nResourcePO : i18nResourcePOs) {
+                    messages.append(i18nResourcePO.getI18nKey()).append("=").append(i18nResourcePO.getI18nValue()).append("\n");
+                }
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.info(e.getMessage(), e);
         }
         // err or not exist
-        return "";
+        return messages.toString();
     }
 
     public String readMessages4Plugin(String lang, List<String> pluginId) {
@@ -65,31 +76,20 @@ public class I18nService {
         if (lang == null) {
             lang = getSysOsLang();
         }
-        Set<PlugInfo> needReturnPlugs = new HashSet<>();
-        pluginId.stream().forEach(pid -> {
-            plugInfos.stream().forEach(plugInfo -> {
-                if (Objects.equals(pid, plugInfo.getName())
-                        || (plugInfo.getPlugInfoYml() != null
-                        && plugInfo.getPlugInfoYml().getRoute() != null
-                        && Objects.equals(pid, plugInfo.getPlugInfoYml().getRoute().getName()))) {
-                    needReturnPlugs.add(plugInfo);
+        // 转化为可识别语言
+        lang = transformLanguage(lang);
+
+        StringBuilder messages = new StringBuilder();
+        for (PlugInfo plugInfo : plugInfos) {
+            List<I18nResourcePO> i18nResourcePOs = i18nResourceService.getAllResourceByModule(lang, plugInfo.getName());
+            if (CollectionUtil.isNotEmpty(i18nResourcePOs)) {
+                for (I18nResourcePO i18nResourcePO : i18nResourcePOs) {
+                    messages.append(i18nResourcePO.getI18nKey()).append("=").append(i18nResourcePO.getI18nValue()).append("\n");
                 }
-            });
-        });
 
-        if (CollectionUtils.isEmpty(needReturnPlugs)) {
-            return "";
+            }
         }
-        StringBuilder sb = new StringBuilder();
-        String finalLang = lang;
-        needReturnPlugs.stream().forEach(plugInfo -> {
-            sb.append("# plugin begin---" + plugInfo.getName() + "---\n");
-            sb.append(readMessages4Plugin(finalLang, plugInfo));
-            sb.append("\n");
-            sb.append("# plugin end---" + plugInfo.getName() + "---\n");
-        });
-
-        return sb.toString();
+        return messages.toString();
     }
 
     private String readMessages4Plugin(String lang, PlugInfo plugInfo) {
@@ -147,6 +147,10 @@ public class I18nService {
     private String getMessageFileName(String lang) {
         String sysLang = lang.replace("-", "_");
         return "messages_" + sysLang + ".properties";
+    }
+
+    private String transformLanguage(String lang) {
+        return lang.replace("-", "_");
     }
 
     public String getSysOsLang() {

@@ -1,10 +1,15 @@
 package com.supos.uns.i18n;
 
+import cn.hutool.core.util.StrUtil;
+import com.supos.common.utils.I18nUtils;
+import com.supos.uns.service.PersonConfigService;
+import com.supos.uns.vo.PersonConfigVo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 import org.springframework.context.support.ReloadableResourceBundleMessageSource;
 import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.i18n.SessionLocaleResolver;
 
 import java.util.HashMap;
 import java.util.Locale;
@@ -25,8 +30,25 @@ public class I18nResourceManager {
     @Autowired
     private MessageSource messageSource;
 
+    @Autowired
+    private PersonConfigService personConfigService;
+
     private Map<String, ReloadableResourceBundleMessageSource> messageSourceMap = new HashMap<>();
 
+    public String getMainLanguage(String userId) {
+        if (StrUtil.isNotBlank(userId)) {
+            PersonConfigVo configVo = personConfigService.getByUserId(userId);
+            if (configVo != null && StrUtil.isNotBlank(configVo.getMainLanguage())) {
+                return configVo.getMainLanguage().replace("-", "_");
+            }
+        }
+
+        if (I18nUtils.SYS_OS_LANG != null) {
+            return I18nUtils.SYS_OS_LANG.replace("-", "_");
+        }
+
+        return null;
+    }
 
     public MessageSource addMessageSource(String key, String path) {
         ReloadableResourceBundleMessageSource messageSource = new ReloadableResourceBundleMessageSource();

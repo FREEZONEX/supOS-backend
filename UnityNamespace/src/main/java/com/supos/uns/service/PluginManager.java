@@ -10,19 +10,20 @@ import com.supos.adpter.kong.service.KongAdapterService;
 import com.supos.adpter.kong.service.MenuService;
 import com.supos.adpter.kong.vo.RoutResponseVO;
 import com.supos.common.Constants;
+import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.dto.PlugInfoYml;
-import com.supos.common.dto.SaveResourceDto;
+import com.supos.common.dto.resource.SaveResource4ExternalDto;
 import com.supos.common.enums.ParentResourceEnum;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.PluginPreUnInstallEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.service.IResourceService;
-import com.supos.common.utils.I18nUtils;
-import com.supos.common.utils.PlugUtils;
-import com.supos.common.utils.RuntimeUtil;
-import com.supos.common.utils.SqlScriptExecutor;
+import com.supos.common.utils.*;
+import com.supos.i18n.init.I18nInit;
 import com.supos.uns.bo.PlugInfo;
+import com.supos.uns.openapi.swagger.SwaggerConfigController;
+import com.supos.uns.openapi.swagger.SwaggerUiManager;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.map.AbstractMapDecorator;
@@ -62,6 +63,8 @@ public class PluginManager implements EnvironmentAware {
 
     private final static String PLUGIN_EXT_NAME = ".tar.gz";
 
+    private final static String PLUGIN_PREFIX = "plugin_";
+
     private final Map<String, PlugInfo> plugins = new ConcurrentHashMap<>();
 
     @Autowired
@@ -78,7 +81,17 @@ public class PluginManager implements EnvironmentAware {
     @Autowired
     PluginJarService pluginJarService;
 
+    @Autowired
+    private I18nInit i18nInit;
+
     private Environment environment;
+
+    @Autowired
+    private SwaggerUiManager swaggerUiManager;
+
+    @Autowired
+    private SystemConfig systemConfig;
+
 
     @Override
     public void setEnvironment(Environment environment) {
@@ -515,21 +528,7 @@ public class PluginManager implements EnvironmentAware {
         plugins.put(plugInfo.getName(), plugInfo);
 
         // add i18n
-        String plugPath = plugInfo.getPlugPath();
-        if (plugPath != null) {
-            String protocol = "file:/";
-            if (plugPath.startsWith(File.separator)) {
-                plugPath = plugPath.substring(1);
-            }
-            String i18nPath = protocol + plugPath + File.separator + "i18n" + File.separator + "messages";
-            ReloadableResourceBundleMessageSource messageSource = new ReloadableResourceBundleMessageSource();
-            messageSource.setBasename(i18nPath);
-            messageSource.setDefaultEncoding("UTF-8");
-            messageSource.setUseCodeAsDefaultMessage(true);
-            I18nUtils.addPluginMessageSource(plugInfo.getName(), messageSource);
-
-            log.info("load plugin:{} and put i18n basename:{}", plugInfo.getName(), i18nPath);
-        }
+        installI8n(plugInfo);
     }
 
     public void deletePlugin(String name) {
@@ -582,6 +581,7 @@ public class PluginManager implements EnvironmentAware {
             moveTempToInstalled(plugInfo);
             // sql脚本
             runInitSql(plugInfo);
+            registerSwagger(plugInfo);
             // evironment
             injectEnvironment(plugInfo);
 
@@ -607,6 +607,7 @@ public class PluginManager implements EnvironmentAware {
 
             // 注册路由
             saveRoute(plugInfo);
+            installI8n(plugInfo);
 
             plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALLED);
             plugInfo.setInstallTime(System.currentTimeMillis());
@@ -685,21 +686,6 @@ public class PluginManager implements EnvironmentAware {
                 putPlugin(plugInfo);
                 plugInfo.getInstallStepFlags().add("backend");
             } else {
-                // add i18n
-                String plugPath = plugInfo.getPlugPath();
-                String protocol = "file:/";
-                if (plugPath.startsWith(File.separator)) {
-                    plugPath = plugPath.substring(1);
-                }
-                String i18nPath = protocol + plugPath + File.separator + "i18n" + File.separator + "messages";
-
-                ReloadableResourceBundleMessageSource messageSource = new ReloadableResourceBundleMessageSource();
-                messageSource.setBasename(i18nPath);
-                messageSource.setDefaultEncoding("UTF-8");
-                messageSource.setUseCodeAsDefaultMessage(true);
-                I18nUtils.addPluginMessageSource(plugInfo.getName(), messageSource);
-
-                log.info("load plugin 4 install:{} and put i18n basename:{}", plugInfo.getName(), i18nPath);
             }
 
 
@@ -744,6 +730,71 @@ public class PluginManager implements EnvironmentAware {
             }
         } catch (Exception e) {
             log.error("卸载执行插件的sql脚本失败", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 注册swagger文档
+     * @param plugInfo
+     */
+    public void registerSwagger(PlugInfo plugInfo) {
+        try {
+            log.info("安装执行插件{}，Swagger文档", plugInfo.getName());
+            String pluginName = plugInfo.getName();
+            String chName = plugInfo.getName() + "-ch";
+            String enName = pluginName + "-en";
+            //key:name  value: name.yaml
+            Map<String,String> files = Map.of(chName,pluginName + ".yaml",enName, enName + ".yaml");
+            for (String name : files.keySet()) {
+                //xxx.yaml
+                String fullName = files.get(name);
+                File swaggerFile = new File(plugInfo.getPlugPath() + "/static/" + fullName);
+                if (!swaggerFile.exists()) {
+                    log.warn("安装执行插件{}，Swagger文档 未找到文件！:{}，跳过", plugInfo.getName(), swaggerFile.getAbsolutePath());
+                    continue;
+                }
+                String targetPath = String.format("%s%s/%s", FileUtils.getFileRootPath(), Constants.UNS_ROOT, fullName);
+                File uploadFile = new File(targetPath);
+                if (!uploadFile.exists()) {
+                    FileUtil.copyFile(swaggerFile,uploadFile);
+                    log.info("安装执行插件{}，Swagger文档{}", plugInfo.getName(), uploadFile.getAbsolutePath());
+                }
+                String swaggerUrl = systemConfig.getEntranceUrl() + "/files/uns/" + fullName;
+                swaggerUiManager.addUserSwagger(swaggerUrl);
+                log.info("安装执行插件{}，Swagger地址：{}", plugInfo.getName(), swaggerUrl);
+                SwaggerConfigController.swaggerUrls.add(Map.of("name", name, "url", swaggerUrl));
+            }
+        } catch (Exception e) {
+            log.error("安装执行插件Swagger文档失败", e);
+            throw new RuntimeException(e);
+        }
+        addInstallStepFlag(plugInfo, "swagger");
+    }
+
+    /**
+     * 卸载swagger文档
+     * @param plugInfo
+     */
+    public void uninstallSwagger(PlugInfo plugInfo) {
+        try {
+            log.info("卸载插件{}Swagger文档", plugInfo.getName());
+            String pluginName = plugInfo.getName();
+            String chName = plugInfo.getName() + "-ch";
+            String enName = plugInfo.getName() + "-en";
+            //key:name  value: name.yaml
+            Map<String,String> files = Map.of(chName,pluginName + ".yaml",enName, enName + ".yaml");
+            for (String name : files.keySet()) {
+                String fileName = files.get(name);
+                String targetPath = String.format("%s%s/%s", FileUtils.getFileRootPath(), Constants.UNS_ROOT, fileName);
+                boolean delFlag = FileUtil.del(targetPath);
+                List<Map<String, String>> swaggerUrls = SwaggerConfigController.swaggerUrls;
+                String swaggerUrl = systemConfig.getEntranceUrl() + "/files/uns/" + fileName;
+                swaggerUrls.remove(Map.of("name", name, "url", swaggerUrl));
+                log.info("卸载插件{}Swagger文档，Swagger地址：{}，删除状态：{}", plugInfo.getName(), swaggerUrl, delFlag);
+            }
+        } catch (Exception e) {
+            log.error("卸载Swagger文档异常", e);
             throw new RuntimeException(e);
         }
     }
@@ -849,16 +900,17 @@ public class PluginManager implements EnvironmentAware {
         }
     }
 
-    private Long createResource(PlugInfoYml.PlugResource resource) {
-        SaveResourceDto resourceDto = new SaveResourceDto();
+    private Long createResource(String pluginCode, PlugInfoYml.PlugResource resource) {
+        SaveResource4ExternalDto resourceDto = new SaveResource4ExternalDto();
+        String sourceCode = Constants.generateCodeByPrefix(Constants.PLUG_PREFIX, pluginCode);
+        resourceDto.setSource(sourceCode);
         resourceDto.setCode(resource.getCode());
+        resourceDto.setNameCode(resource.getCode());
         resourceDto.setType(resource.getType());//资源类型菜单
         resourceDto.setUrl(resource.getUrl());
         resourceDto.setUrlType(resource.getUrlType());
         resourceDto.setOpenType(resource.getOpenType());
-        resourceDto.setDescription(resource.getDescription());
-
-        resourceDto.setGroupType(resource.getGroupType());// 菜单分组
+        resourceDto.setDescriptionCode(resource.getDescription());
 
         if (resource.getIcon() != null) {
             resourceDto.setIcon(resource.getIcon());
@@ -867,10 +919,22 @@ public class PluginManager implements EnvironmentAware {
             resourceDto.setSort(resource.getSort());
         }
 
-        if (resource.getParentId() != null) {
-            resourceDto.setParentId(resource.getParentId());
+        Long parentId = resource.getParentId();
+        if (parentId != null) {
+            if (parentId.equals(ParentResourceEnum.NAV_SYSTEM.getId())) {
+                resourceDto.setEditEnable(false);
+                resourceDto.setHomeEnable(true);
+                resourceDto.setFixed(true);
+                resourceDto.setEnable(true);
+            } else {
+                resourceDto.setEditEnable(true);
+                resourceDto.setHomeEnable(true);
+                resourceDto.setFixed(false);
+                resourceDto.setEnable(true);
+            }
+            resourceDto.setParentId(parentId);
         }
-        return iResourceService.saveResource(resourceDto);
+        return iResourceService.saveByExternal(resourceDto);
     }
 
     /**
@@ -897,23 +961,25 @@ public class PluginManager implements EnvironmentAware {
 
             if (CollectionUtils.isNotEmpty(plugInfoYml.getResources())) {
                 for (PlugInfoYml.PlugResource resource : plugInfoYml.getResources()) {
-                    Long resourceId = createResource(resource);
+                    Long resourceId = createResource(plugInfo.getName(), resource);
 
                     if (CollectionUtils.isNotEmpty(resource.getChildren())) {
                         for (PlugInfoYml.PlugResource childResource : resource.getChildren()) {
                             childResource.setParentId(resourceId);
-                            createResource(childResource);
+                            createResource(plugInfo.getName(), childResource);
                         }
                     }
 
                     if (CollectionUtils.isNotEmpty(resource.getOperations())) {
                         resource.getOperations().forEach(operation -> {
-                            SaveResourceDto operationResource = new SaveResourceDto();
-                            operationResource.setGroupType(resource.getGroupType());
-                            operationResource.setCode(resource.getCode() + "." + operation.getCode());
+                            SaveResource4ExternalDto operationResource = new SaveResource4ExternalDto();
+                            String sourceCode = Constants.generateCodeByPrefix(Constants.PLUG_PREFIX, plugInfo.getName());
+                            operationResource.setSource(sourceCode);
+                            operationResource.setCode(operation.getCode());//资源编码+插件名称前缀
+                            operationResource.setNameCode(operation.getCode());//国际化key
                             operationResource.setParentId(resourceId);
-                            operationResource.setType(3);//资源类型菜单
-                            iResourceService.saveResource(operationResource);
+                            operationResource.setType(3);//3-按钮（操作权限）
+                            iResourceService.saveByExternal(operationResource);
                         });
                     }
                 }
@@ -939,24 +1005,7 @@ public class PluginManager implements EnvironmentAware {
 
                 PlugInfoYml.PlugRoute plugRoute = plugInfoYml.getRoute();
                 menuService.deleteMenu(plugRoute.getName());
-
-                if (CollectionUtils.isNotEmpty(plugInfoYml.getResources())) {
-                    for (PlugInfoYml.PlugResource resource : plugInfoYml.getResources()) {
-                        iResourceService.deleteByCode(resource.getCode());
-
-                        if (CollectionUtils.isNotEmpty(resource.getChildren())) {
-                            for (PlugInfoYml.PlugResource childResource : resource.getChildren()) {
-                                iResourceService.deleteByCode(childResource.getCode());
-                            }
-                        }
-
-                        if (CollectionUtils.isNotEmpty(resource.getOperations())) {
-                            resource.getOperations().forEach(operation -> {
-                                iResourceService.deleteByCode(resource.getCode() + "." + operation.getCode());
-                            });
-                        }
-                    }
-                }
+                iResourceService.deleteBySource(plugInfoYml.getName());
             }
         } catch (Exception e) {
             log.error("deleteRoute error", e);
@@ -1003,6 +1052,39 @@ public class PluginManager implements EnvironmentAware {
             }
         } catch (Exception e) {
             log.error("unInstallFront error", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void installI8n(PlugInfo plugInfo) {
+        try {
+            log.info("安装插件{}的i18n", plugInfo.getName());
+            String plugPath = plugInfo.getPlugPath();
+            String i18nPath = plugPath + File.separator + "i18n";
+            if (new File(i18nPath).exists()) {
+                String code = plugInfo.getName();
+                if (plugInfo.getPlugInfoYml() != null) {
+                    if (plugInfo.getPlugInfoYml().getShowNameI18nCode() != null) {
+                        code = plugInfo.getPlugInfoYml().getShowNameI18nCode();
+                    } else {
+                        code = plugInfo.getPlugInfoYml().getShowName();
+                    }
+                }
+
+                i18nInit.scanPluginI18n(plugInfo.getName(), code, i18nPath);
+            }
+        } catch (Exception e) {
+            log.error("installI18n error", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void unInstallI8n(PlugInfo plugInfo) {
+        try {
+            log.info("卸载插件{}的i18n", plugInfo.getName());
+            i18nInit.deletePluginI18n(plugInfo.getName());
+        } catch (Exception e) {
+            log.error("installI18n error", e);
             throw new RuntimeException(e);
         }
     }
@@ -1096,11 +1178,13 @@ public class PluginManager implements EnvironmentAware {
                     }
                 }
 
+                if (isInstallStepFlag(plugInfo, "swagger")) {
+                    uninstallSwagger(plugInfo);
+                }
+
                 plugInfo.setInstallStatus(PlugInfo.STATUS_NOT_INSTALL);
                 cleanInstallStepFlag(plugInfo);
                 moveInstalledToTemp(plugInfo);
-
-                I18nUtils.removePluginMessageSource(plugInfo.getName());
             } else {
                 log.error("plugin check uninstall error, result:{}", checkMsg.get() != null ? checkMsg.get() : "");
                 uninstallSuccess.set(false);

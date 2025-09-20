@@ -16,7 +16,6 @@ import com.codahale.metrics.Counter;
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Snapshot;
-import com.google.common.collect.Lists;
 import com.supos.adapter.mqtt.dto.FieldErrMsg;
 import com.supos.adapter.mqtt.dto.LastMessage;
 import com.supos.adapter.mqtt.dto.TopicMessage;
@@ -1022,8 +1021,21 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
     @EventListener(classes = RemoveTopicsEvent.class)
     @Order(100)
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
+        if (!CollectionUtils.isEmpty(event.folders)) {
+            for (CreateTopicDto dto : event.folders) {
+                Long id = dto.getId();
+                uds.getTopicDefinitionMap().remove(id);
+            }
+        }
+        if (!CollectionUtils.isEmpty(event.templates)) {
+            for (CreateTopicDto dto : event.templates) {
+                Long id = dto.getId();
+                uds.getTopicDefinitionMap().remove(id);
+            }
+        }
         if (!CollectionUtils.isEmpty(event.topics)) {
-            for (Long id : event.topics.keySet()) {
+            for (CreateTopicDto dto : event.topics) {
+                Long id = dto.getId();
                 TopicDefinition definition = uds.getTopicDefinitionMap().remove(id);
                 if (definition != null) {
                     int dataType = definition.getDataType();

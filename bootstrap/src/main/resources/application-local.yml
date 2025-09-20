@@ -95,6 +95,8 @@ minio:
   endpoint: ${MINIO_ENDPOINT:http://office.unibutton.com:11490}
   accessKey: ${MINIO_ACCESSKEY:admin}
   secreKey: ${MINIO_SECREKEY:adminpassword}
+
+i18nVersion: 202509121523
 #camunda:
 #  bpm:
 #    database:

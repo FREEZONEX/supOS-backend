@@ -188,18 +188,16 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
     @EventListener(classes = RemoveTDengineEvent.class)
     @Order(5)
     void onRemoveTopicsEvent(RemoveTDengineEvent event) {
-        if (SrcJdbcType.TdEngine == event.jdbcType && event.getSource() != this) {
-            Map<String, SimpleUnsInstance> tableInstances = new LinkedHashMap<>(event.topics.size());
-            for (SimpleUnsInstance ins : event.topics.values()) {
-                if (ins.isRemoveTableWhenDeleteInstance()) {
-                    tableInstances.put(ins.getTableName(), ins);
-                }
+        if (event.getSource() != this) {
+            Map<String, CreateTopicDto> tableInstances = new LinkedHashMap<>(event.topics.size());
+            for (CreateTopicDto ins : event.topics) {
+                tableInstances.put(ins.getTableName(), ins);
             }
             if (!CollectionUtils.isEmpty(tableInstances)) {
                 ArrayList<String> dropTableSQLs = new ArrayList<>(tableInstances.size());
-                for (Map.Entry<String, SimpleUnsInstance> entry : tableInstances.entrySet()) {
+                for (Map.Entry<String, CreateTopicDto> entry : tableInstances.entrySet()) {
                     String table = entry.getKey();
-                    SimpleUnsInstance ins = entry.getValue();
+                    CreateTopicDto ins = entry.getValue();
                     String[] dbTab = getDbAndTable(table);
                     String dbName = dbTab[0];
                     int dataType = ins.getDataType();
@@ -211,14 +209,14 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
                 log.debug("TdEngine 删除：{}", dropTableSQLs);
                 jdbcTemplate.batchUpdate(dropTableSQLs.toArray(new String[dropTableSQLs.size()]));
             }
-            if (!CollectionUtils.isEmpty(event.modelTopics)) {
-                ArrayList<String> dropSQLs = new ArrayList<>(event.modelTopics.size());
-                for (String topic : event.modelTopics) {
-                    dropSQLs.add("drop table if exists `" + dbName + "`.`" + topic + '`');
-                }
-                jdbcTemplate.batchUpdate(dropSQLs.toArray(new String[0]));
-                log.debug("TdEngine 删除模型：{}", dropSQLs);
-            }
+//            if (!CollectionUtils.isEmpty(event.modelTopics)) {
+//                ArrayList<String> dropSQLs = new ArrayList<>(event.modelTopics.size());
+//                for (String topic : event.modelTopics) {
+//                    dropSQLs.add("drop table if exists `" + dbName + "`.`" + topic + '`');
+//                }
+//                jdbcTemplate.batchUpdate(dropSQLs.toArray(new String[0]));
+//                log.debug("TdEngine 删除模型：{}", dropSQLs);
+//            }
         }
     }
 

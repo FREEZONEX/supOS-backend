@@ -1,15 +1,14 @@
 package com.supos.common.event;
 
-import com.supos.common.SrcJdbcType;
-import com.supos.common.dto.SimpleUnsInstance;
-import org.springframework.context.ApplicationEvent;
+import com.supos.common.dto.CreateTopicDto;
 
 import java.util.Collection;
-import java.util.Map;
+import java.util.Date;
 
 public class RemoveTDengineEvent extends RemoveTopicsEvent {
 
-    public RemoveTDengineEvent(Object source, SrcJdbcType jdbcType, Map<Long, SimpleUnsInstance> topics, boolean withFlow, boolean withDashboard, Collection<String> modelTopics) {
-        super(source, jdbcType, topics, withFlow, withDashboard, modelTopics);
+    public RemoveTDengineEvent(Object source, Collection<CreateTopicDto> topics, boolean withFlow, boolean withDashboard) {
+        super(source, new Date(), withFlow, withDashboard, topics, null, null);
     }
+
 }

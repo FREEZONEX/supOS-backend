@@ -2,11 +2,9 @@ package com.supos.uns.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
-import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
@@ -14,11 +12,11 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
+import com.supos.common.RunningStatus;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.*;
@@ -30,19 +28,14 @@ import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.service.IUnsDefinitionService;
-import com.supos.common.utils.FuxaUtils;
-import com.supos.common.utils.GrafanaUtils;
-import com.supos.common.utils.I18nUtils;
-import com.supos.uns.bo.RunningStatus;
+import com.supos.common.utils.*;
 import com.supos.uns.dao.mapper.DashboardMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.DashboardPo;
-import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.service.exportimport.core.DashboardExportContext;
 import com.supos.uns.service.exportimport.core.DashboardImportContext;
 import com.supos.uns.service.exportimport.json.DashboardDataExporter;
 import com.supos.uns.service.exportimport.json.DashboardDataImporter;
-import com.supos.uns.util.FileUtils;
 import com.supos.uns.util.UnsFlags;
 import com.supos.uns.vo.DashboardExportParam;
 import lombok.extern.slf4j.Slf4j;
@@ -168,13 +161,10 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
 
     @EventListener(classes = RemoveTopicsEvent.class)
     public void onRemoveTopics(RemoveTopicsEvent event) {
-        if (CollectionUtil.isEmpty(event.topics) || !event.withDashboard ||event.jdbcType==null||event.jdbcType==SrcJdbcType.None) {
-            return;
-        }
         long t0 = System.currentTimeMillis();
-        Collection<String> aliasList = event.topics.values().stream()
-                .filter(SimpleUnsInstance::isRemoveDashboard)
-                .map(SimpleUnsInstance::getAlias).collect(Collectors.toSet());
+        Collection<String> aliasList = event.topics.stream()
+                .filter(t -> Constants.withDashBoard(IntegerUtils.getInt(t.getFlags(), 0)))
+                .map(CreateTopicDto::getAlias).collect(Collectors.toSet());
         List<String> ids = aliasList.stream().map(alias -> {
             //tableName = alias
             return GrafanaUtils.getDashboardUuidByAlias(alias);
@@ -184,7 +174,7 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
             dashboardMapper.deleteBatchIds(idList);
         }
         long t1 = System.currentTimeMillis();
-        log.info("Dashboard删除耗时 : {} ms, size={}", t1-t0, ids.size());
+        log.info("Dashboard删除耗时 : {} ms, size={}", t1 - t0, ids.size());
     }
 
 
@@ -289,8 +279,8 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
                         .setProgress(100.0);
                 runningStatus.setTotalCount(context.getTotal());
                 runningStatus.setErrorCount(context.getCheckErrorMap().keySet().size());
-                runningStatus.setSuccessCount(runningStatus.getTotalCount()-runningStatus.getErrorCount());
-                if(Objects.equals(runningStatus.getSuccessCount(),0)){
+                runningStatus.setSuccessCount(runningStatus.getTotalCount() - runningStatus.getErrorCount());
+                if (Objects.equals(runningStatus.getSuccessCount(), 0)) {
                     runningStatus.setMsg(I18nUtils.getMessage("global.import.rs.allErr"));
                 }
                 consumer.accept(runningStatus);
@@ -371,8 +361,8 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
         String table = alias;
         String tagNameCondition = "";
         if (StringUtils.isNotBlank(uns.getTbFieldName())) {
-            table = uns.getTableName();
-            tagNameCondition =   " and " + Constants.SYSTEM_SEQ_TAG + "='" + uns.getId() + "' ";
+            table = uns.getTable();
+            tagNameCondition = " and " + Constants.SYSTEM_SEQ_TAG + "='" + uns.getId() + "' ";
         }
         log.debug(">>>>>> create grafana dashboard columns:{},title:{},schema:{},table:{},tagNameCondition:{}", columns, title, schema, table, tagNameCondition);
         int dot = table.indexOf('.');

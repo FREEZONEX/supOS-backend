@@ -1,6 +1,7 @@
 package com.supos.adpter.pg;
 
 import cn.hutool.core.lang.Pair;
+import cn.hutool.system.SystemUtil;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
@@ -8,13 +9,17 @@ import com.supos.common.adpater.StreamHandler;
 import com.supos.common.adpater.TimeSequenceDataStorageAdapter;
 import com.supos.common.adpater.historyquery.*;
 import com.supos.common.annotation.Description;
-import com.supos.common.dto.*;
+import com.supos.common.dto.CreateTopicDto;
+import com.supos.common.dto.FieldDefine;
+import com.supos.common.dto.SaveDataDto;
+import com.supos.common.dto.SimpleUnsInfo;
 import com.supos.common.event.*;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.DbTableNameUtils;
 import com.supos.common.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
+import org.postgresql.core.BaseConnection;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DuplicateKeyException;
@@ -22,9 +27,13 @@ import org.springframework.jdbc.core.ColumnMapRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.CollectionUtils;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 
 import static com.supos.adpter.pg.PostgresqlEventHandler.*;
 
@@ -34,6 +43,7 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
 
     public TimeScaleDbEventHandler(JdbcTemplate jdbcTemplate, IUnsDefinitionService unsDefinitionService) {
         super(jdbcTemplate);
+        log.info("sinkVersion: {}", sinkVersion);
         defaultHistoryQueryService = new DefaultHistoryQueryService(jdbcTemplate, unsDefinitionService, name()) {
             @Override
             protected String escape(String name) {
@@ -199,16 +209,16 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
     void onRemoveTopicsEvent(RemoveTimeScaleTopicsEvent event) {
         List<String> sqls = new ArrayList<>();
         if (!CollectionUtils.isEmpty(event.getStandard())) {
-            for (SimpleUnsInstance simpleUns : event.getStandard()) {
+            for (SimpleUnsInfo simpleUns : event.getStandard()) {
                 StringBuilder sql = new StringBuilder("delete from ");
                 sql.append(simpleUns.getTableName()).append(" where ").append(Constants.SYSTEM_SEQ_TAG).append("=").append(simpleUns.getId());
                 sqls.add(sql.toString());
             }
         }
         if (!CollectionUtils.isEmpty(event.getNonStandard())) {
-            for (SimpleUnsInstance simpleUns : event.getNonStandard()) {
+            for (SimpleUnsInfo simpleUns : event.getNonStandard()) {
 //                String table = DbTableNameUtils.getFullTableName(simpleUns.getTableName());
-                String sql = String.format("drop table if exists %s.\"%s\"", currentSchema, simpleUns.getTableName());
+                String sql = String.format("drop table if exists %s.\"%s\"", currentSchema, simpleUns.getAlias());
                 sqls.add(sql);
             }
         }
@@ -218,48 +228,80 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
         }
     }
 
+    private static final int sinkVersion = SystemUtil.getInt("sink_version", 1);
+
     @EventListener(classes = SaveDataEvent.class)
     @Order(9)
     void onSaveData(SaveDataEvent event) {
         if (SrcJdbcType.TimeScaleDB == event.jdbcType && ArrayUtils.isNotEmpty(event.topicData) && event.getSource() != this) {
-            ArrayList<Pair<SaveDataDto, String>> SQLs = new ArrayList<>(2 * event.topicData.length);
-            try {
-                for (SaveDataDto dto : event.topicData) {
-                    String table = DbTableNameUtils.getFullTableName(dto.getTable());
+            switch (sinkVersion) {
+                case 1:
+                    saveBatchV1(event);
+                    break;
+                case 2:
+                    saveBatchV2(event);
+                    break;
+            }
+        }
+    }
 
-                    List<List<Map<String, Object>>> listList = Lists.partition(dto.getList(), 1000);
-                    for (List<Map<String, Object>> list : listList) {
-                        String saveOrUpdateSQL = getInsertSQL(list, table, dto, event.duplicateIgnore);
-                        SQLs.add(Pair.of(dto, saveOrUpdateSQL));
+    private void saveBatchV2(SaveDataEvent event) {
+        try (Connection connection = jdbcTemplate.getDataSource().getConnection()) {
+            BaseConnection pgConn = (BaseConnection) connection.unwrap(Connection.class);
+            for (SaveDataDto dto : event.topicData) {
+                //受限于SQL 1M 的限制, 1万一批；实际可以10万~50万一批写入csv文件
+                List<List<Map<String, Object>>> listList = Lists.partition(dto.getList(), 10000);
+                for (List<Map<String, Object>> list : listList) {
+                    try {
+                        saveByCsvCopy(pgConn, dto.getCreateTopicDto(), list);
+                    } catch (Exception e) {
+                        log.warn("saveBatchV2 Fail: {} {}", dto.getTable(), e.getMessage());
                     }
                 }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-            } catch (Throwable ex) {
-                log.error("tsdb onSaveData SQLErr", ex);
+    private void saveBatchV1(SaveDataEvent event) {
+        ArrayList<Pair<SaveDataDto, String>> SQLs = new ArrayList<>(2 * event.topicData.length);
+        try {
+            for (SaveDataDto dto : event.topicData) {
+                String table = DbTableNameUtils.getFullTableName(dto.getTable());
+
+                List<List<Map<String, Object>>> listList = Lists.partition(dto.getList(), 1000);
+                for (List<Map<String, Object>> list : listList) {
+                    String saveOrUpdateSQL = getInsertSQL(list, table, dto, event.duplicateIgnore);
+                    SQLs.add(Pair.of(dto, saveOrUpdateSQL));
+                }
             }
 
-            List<List<Pair<SaveDataDto, String>>> segments = Lists.partition(SQLs, Constants.SQL_BATCH_SIZE);
-            for (List<Pair<SaveDataDto, String>> sqlPairList : segments) {
-                String[] sqlArray = new String[sqlPairList.size()];
-                for (int i = 0; i < sqlPairList.size(); i++) {
-                    sqlArray[i] = sqlPairList.get(i).getValue();
-                }
-                try {
-                    jdbcTemplate.batchUpdate(sqlArray);
-                } catch (DuplicateKeyException e1) {
-                    // 使用 on conflict update重试
-                    log.warn("PgTimeScale 写入失败, 主键冲突， 使用on conflict update重试: {}", e1.getMessage());
-                    try {
-                        List<String> retrySqlList = buildRetrySqlArray(sqlPairList);
-                        jdbcTemplate.batchUpdate(retrySqlList.toArray(new String[0]));
-                        log.info("PgTimeScale retry success!");
-                    } catch (Exception rex) {
-                        log.error("PgTimeScale写入 重试失败:", rex);
-                    }
+        } catch (Throwable ex) {
+            log.error("tsdb onSaveData SQLErr", ex);
+        }
 
-                } catch (Exception ex) {
-                    log.error("PgTimeScale 写入失败", ex);
+        List<List<Pair<SaveDataDto, String>>> segments = Lists.partition(SQLs, Constants.SQL_BATCH_SIZE);
+        for (List<Pair<SaveDataDto, String>> sqlPairList : segments) {
+            String[] sqlArray = new String[sqlPairList.size()];
+            for (int i = 0; i < sqlPairList.size(); i++) {
+                sqlArray[i] = sqlPairList.get(i).getValue();
+            }
+            try {
+                jdbcTemplate.batchUpdate(sqlArray);
+            } catch (DuplicateKeyException e1) {
+                // 使用 on conflict update重试
+                log.warn("PgTimeScale 写入失败, 主键冲突， 使用on conflict update重试: {}", e1.getMessage());
+                try {
+                    List<String> retrySqlList = buildRetrySqlArray(sqlPairList);
+                    jdbcTemplate.batchUpdate(retrySqlList.toArray(new String[0]));
+                    log.info("PgTimeScale retry success!");
+                } catch (Exception rex) {
+                    log.error("PgTimeScale写入 重试失败:", rex);
                 }
+
+            } catch (Exception ex) {
+                log.error("PgTimeScale 写入失败", ex);
             }
         }
     }
@@ -267,7 +309,7 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
     private List<String> buildRetrySqlArray(List<Pair<SaveDataDto, String>> sqlPairList) {
         List<String> sqlList = new ArrayList<>();
         for (Pair<SaveDataDto, String> pair : sqlPairList) {
-            String table = DbTableNameUtils.getFullTableName(pair.getKey().getCreateTopicDto().getTableName());
+            String table = DbTableNameUtils.getFullTableName(pair.getKey().getCreateTopicDto().getTable());
             String[] pks = pair.getKey().getCreateTopicDto().getPrimaryField();
             StringBuilder builder = new StringBuilder(pair.getValue());
             FieldDefine[] columns = pair.getKey().getCreateTopicDto().getFields();

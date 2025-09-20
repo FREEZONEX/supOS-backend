@@ -1,0 +1,15 @@
+FROM ibm-semeru-runtimes:open-17-jdk
+
+RUN mkdir -p /data/apps /data/resource/i18n /arthas
+
+COPY bootstrap.jar /app.jar
+# COPY entrypoint.sh /entrypoint.sh
+COPY arthas/ /arthas
+
+# RUN chmod +x /entrypoint.sh
+
+# copy i18n properties to /data/resource/i18n
+RUN cd /tmp/ && jar -xf /app.jar && cp /tmp/BOOT-INF/classes/i18n/*.properties /data/resource/i18n
+
+EXPOSE 8080 19099 8000
+ENTRYPOINT ["./entrypoint.sh"]

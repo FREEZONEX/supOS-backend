@@ -24,7 +24,7 @@ public class PluginController {
     PluginManager pluginManager;
 
     /**
-     * 列出已安装插件列表
+     * 列出插件列表
      *
      * @return
      */
@@ -82,7 +82,7 @@ public class PluginController {
         return new JsonResult<>(0, null, pluginManager.getPluginDetail(name));
     }
 
-    @PostMapping(value = {"/inter-api/supos/plugin/uploadPlugin", "/open-api/supos/plugin/uploadPlugin"})
+    @PostMapping(value = {"/inter-api/supos/plugin/uploadPlugin", "/open-api/plugin/uploadPlugin"})
     public void uploadPlugin(@RequestBody PlugInfo plugInfo) throws Exception {
         pluginManager.putPlugin(plugInfo);
     }

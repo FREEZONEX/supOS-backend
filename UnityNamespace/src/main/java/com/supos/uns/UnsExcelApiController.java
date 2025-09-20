@@ -1,5 +1,6 @@
 package com.supos.uns;
 
+import com.supos.common.LogWrapperConsumer;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.utils.UserContext;
 import com.supos.uns.service.UnsExcelService;
@@ -110,9 +111,9 @@ public class UnsExcelApiController {
     @PostMapping("/data/import/test")
     public void dataImport(@RequestParam("path") String path) {
         //path = "./export/xx.json";
-        path = "d:/err_namespace-20250826103216.xlsx";
+        path = "d:/namespace-20250903070142.xlsx";
         //path = "d:/all-namespace.json";
-        unsExcelService.asyncImport(new File(path), new UnsExcelService.LogWrapperConsumer(runningStatus -> {
+        unsExcelService.asyncImport(new File(path), new LogWrapperConsumer(runningStatus -> {
         }), false, "zh");
     }
 }

@@ -23,7 +23,7 @@ import static com.supos.common.Constants.*;
 @Slf4j
 public class FieldUtils {
 
-    private static final Pattern FIELD_NAME_PATTERN = Pattern.compile("^[A-Za-z][A-Za-z0-9_]*$");
+    public static final Pattern FIELD_NAME_PATTERN = Pattern.compile("^[A-Za-z][A-Za-z0-9_]*$");
 
     private static final String[] extendField = new String[]{"unit", "upperLimit", "lowerLimit", "decimal"};
     private static final int[] extendFlags = new int[]{1 << 0, 1 << 1, 1 << 2, 1 << 3};
@@ -132,7 +132,7 @@ public class FieldUtils {
         } else {
             boolean hasId = false;
             ArrayList<FieldDefine> fNews = new ArrayList<>(Math.max(fields.length + 4, 16));
-            fNews.add(new FieldDefine(Constants.SYS_FIELD_CREATE_TIME, FieldType.DATETIME, true));
+            fNews.add(new FieldDefine(Constants.SYS_FIELD_CREATE_TIME, FieldType.DATETIME));
             for (FieldDefine f : fields) {
                 String name = f.getName();
                 if (!Constants.systemFields.contains(name)) {

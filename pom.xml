@@ -44,6 +44,7 @@
     <module>adpter-minio</module>
     <module>adpter-eventflow</module>
     <module>supos-websocket</module>
+    <module>i18n-service</module>
   </modules>
 
   <dependencyManagement>

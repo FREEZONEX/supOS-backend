@@ -1,14 +1,26 @@
 package com.supos.uns;
 
+import cn.hutool.cache.impl.TimedCache;
+import cn.hutool.jwt.JWT;
+import com.alibaba.fastjson.JSONObject;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.supos.common.Constants;
+import com.supos.common.utils.UserContext;
+import com.supos.common.vo.UserInfoVo;
+import com.supos.uns.i18n.I18nResourceManager;
 import com.supos.uns.service.WebsocketService;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.context.i18n.SimpleLocaleContext;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
+import org.springframework.web.util.UriComponents;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.util.Locale;
 
 @Component
 @Slf4j
@@ -18,6 +30,15 @@ public class UnsWebsocketHandler implements WebSocketHandler {
 
     @Autowired
     private WebsocketService websocketService;
+
+    @Autowired
+    private I18nResourceManager i18nResourceManager;
+
+    @Resource
+    private TimedCache<String, JSONObject> tokenCache;
+
+    @Resource
+    private TimedCache<String, UserInfoVo> userInfoCache;
 
 
     @Override
@@ -36,6 +57,10 @@ public class UnsWebsocketHandler implements WebSocketHandler {
             }
             websocketService.addSession(session);
         }
+        // 设置用户上下文
+        UserInfoVo userInfoVo = parserUserFromToken(session);
+        // 设置国际化上下文
+        parserI18n(userInfoVo != null ? userInfoVo.getSub() : null);
         websocketService.handleSessionConnected(session);
     }
 
@@ -96,4 +121,29 @@ public class UnsWebsocketHandler implements WebSocketHandler {
     }
 
 
+    private UserInfoVo parserUserFromToken(WebSocketSession session) {
+        UriComponents components = UriComponentsBuilder.fromUri(session.getUri()).build();
+        String token = components.getQueryParams().getFirst("token");
+
+        if (null != token) {
+            JSONObject tokenObj = tokenCache.get(token);
+            if (null != token) {
+                String accessToken = tokenObj.getString("access_token");
+                JWT jwt = JWT.of(accessToken);
+                String sub = jwt.getPayloads().getStr("sub");
+                UserInfoVo userInfoVo = userInfoCache.get(sub);
+                UserContext.set(userInfoVo);
+                log.debug("set user content success!");
+            }
+        }
+        return UserContext.get();
+    }
+
+    private void parserI18n(String userId) {
+        String mainLanguage = i18nResourceManager.getMainLanguage(userId);
+        log.info("mainLanguage: {}", mainLanguage);
+        if (mainLanguage != null) {
+            LocaleContextHolder.setLocaleContext(new SimpleLocaleContext(new Locale(mainLanguage)),  true);
+        }
+    }
 }

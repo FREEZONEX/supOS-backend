@@ -1,6 +1,7 @@
 package com.supos.uns.bo;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.supos.common.RunningStatus;
 import lombok.Getter;
 import lombok.Setter;
 

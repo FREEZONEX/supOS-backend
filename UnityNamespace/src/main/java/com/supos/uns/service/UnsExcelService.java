@@ -7,7 +7,6 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.IoUtil;
 import cn.hutool.core.net.URLDecoder;
 import cn.hutool.core.thread.ThreadUtil;
-import cn.hutool.core.util.IdUtil;
 import cn.hutool.poi.excel.ExcelReader;
 import cn.hutool.poi.excel.ExcelUtil;
 import com.alibaba.excel.EasyExcel;
@@ -19,12 +18,14 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
+import com.supos.common.LogWrapperConsumer;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.exception.BuzException;
+import com.supos.common.utils.FileUtils;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.SuposIdUtil;
-import com.supos.uns.bo.RunningStatus;
+import com.supos.common.RunningStatus;
 import com.supos.uns.dao.mapper.UnsExportRecordMapper;
 import com.supos.uns.dao.po.UnsExportRecordPo;
 import com.supos.uns.dao.po.UnsLabelPo;
@@ -38,7 +39,6 @@ import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import com.supos.uns.service.exportimport.core.ExportImportHelper;
 import com.supos.uns.service.exportimport.excel.ExcelDataExporter;
 import com.supos.uns.service.exportimport.excel.ExcelDataImporter;
-import com.supos.uns.util.FileUtils;
 import com.supos.uns.vo.ExportParam;
 import com.supos.uns.vo.UnsExportRecordConfirmReq;
 import com.supos.uns.vo.UnsExportRecordVo;
@@ -190,32 +190,6 @@ public class UnsExcelService {
         }
     }
 
-    public static class LogWrapperConsumer implements Consumer<RunningStatus> {
-        final Consumer<RunningStatus> target;
-        Boolean finished;
-        String lastTask;
-        Double lastProgress;
-
-        public LogWrapperConsumer(Consumer<RunningStatus> target) {
-            this.target = target;
-        }
-
-        @Override
-        public void accept(RunningStatus runningStatus) {
-            log.info("** status: {}", JSON.toJSONString(runningStatus));
-            finished = runningStatus.getFinished();
-            String task = runningStatus.getTask();
-            if (task != null) {
-                lastTask = task;
-            }
-            Double progress = runningStatus.getProgress();
-            if (progress != null) {
-                lastProgress = progress;
-            }
-            target.accept(runningStatus);
-        }
-    }
-
     public void asyncImport(File file, Consumer<RunningStatus> consumer, boolean isAsync, String language) {
         if (isAsync) {
             ThreadUtil.newThread(() -> {
@@ -272,8 +246,8 @@ public class UnsExcelService {
                 String finalTask = I18nUtils.getMessage("uns.create.task.name.final");
 
                 if (ex != null) {
-                    String lastTask = wrapperConsumer.lastTask;
-                    Double lastProgress = wrapperConsumer.lastProgress;
+                    String lastTask = wrapperConsumer.getLastTask();
+                    Double lastProgress = wrapperConsumer.getLastProgress();
                     log.error("UnsImportErr:{} lastTask={}", excelFilePath, lastTask, ex);
                     Throwable cause = ex.getCause();
                     String errMsg;

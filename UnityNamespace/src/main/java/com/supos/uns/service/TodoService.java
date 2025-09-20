@@ -221,16 +221,16 @@ public class TodoService extends ServiceImpl<TodoMapper, TodoPo> {
     public ResultVO handler(HandleTodoDto handleTodoDto) {
         TodoPo todoPo = todoMapper.selectById(handleTodoDto.getId());
         if (todoPo == null) {
-            return ResultVO.fail("对应的待办不存在");
+            return ResultVO.fail(I18nUtils.getMessage("todo.null"));
         }
 
         if (todoPo.getStatus() == 1){
-            return ResultVO.fail("此待办已处理完成，不允许再次被处理");
+            return ResultVO.fail(I18nUtils.getMessage("todo.done"));
         }
 
         UserManageVo user = userManageMapper.getByUsername(handleTodoDto.getUsername());
         if (user == null) {
-            return ResultVO.fail("用户信息不存在");
+            return ResultVO.fail(I18nUtils.getMessage("user.not.exist"));
         }
         todoPo.setStatus(1);
         todoPo.setHandlerUsername(user.getPreferredUsername());
@@ -266,7 +266,7 @@ public class TodoService extends ServiceImpl<TodoMapper, TodoPo> {
         String username = createTodoVo.getUsername();
         UserManageVo user = userManageMapper.getByUsername(username);
         if (user == null) {
-            return ResultVO.fail("用户信息不存在");
+            return ResultVO.fail(I18nUtils.getMessage("user.not.exist"));
         }
         TodoPo todoPo = new TodoPo();
         todoPo.setUsername(user.getPreferredUsername());

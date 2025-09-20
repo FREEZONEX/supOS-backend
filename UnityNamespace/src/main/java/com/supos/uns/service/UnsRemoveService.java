@@ -7,8 +7,10 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
-import com.supos.common.SrcJdbcType;
-import com.supos.common.dto.*;
+import com.supos.common.dto.AlarmRuleDefine;
+import com.supos.common.dto.BatchRemoveUnsDto;
+import com.supos.common.dto.CreateTopicDto;
+import com.supos.common.dto.InstanceField;
 import com.supos.common.dto.mqtt.TopicDefinition;
 import com.supos.common.enums.ActionEnum;
 import com.supos.common.enums.EventMetaEnum;
@@ -16,6 +18,7 @@ import com.supos.common.enums.ServiceEnum;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.event.SysEvent;
+import com.supos.common.event.UpdateInstanceEvent;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.I18nUtils;
 import com.supos.uns.dao.mapper.AlarmMapper;
@@ -23,12 +26,11 @@ import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.AlarmPo;
 import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.dto.WebhookDataDTO;
+import com.supos.uns.util.UnsConverter;
 import com.supos.uns.util.WebhookUtils;
 import com.supos.uns.vo.RemoveResult;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -36,6 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.supos.uns.service.UnsQueryService.EXTERNAL_TOPIC_CACHE;
 
@@ -66,6 +70,21 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
             removeModelOrInstance(unsPo, batchRemoveUnsDto.getWithFlow(), batchRemoveUnsDto.getWithDashboard(), batchRemoveUnsDto.getRemoveRefer());
         }
         return ResponseEntity.ok(new RemoveResult(0, "ok"));
+    }
+
+    @Transactional(rollbackFor = Throwable.class, timeout = 300)
+    public RemoveResult removeInstances(Collection<String> aliases, boolean withFlow, boolean withDashboard, Boolean removeRefer) {
+        QueryWrapper<UnsPo> queryWrapper = new QueryWrapper<UnsPo>().in("path_type", 2);
+        queryWrapper = queryWrapper.in("alias", aliases);
+
+        List<UnsPo> unsPos = this.list(queryWrapper);
+        RemoveResult removeResult = getRemoveResult(withFlow, withDashboard, removeRefer, unsPos.stream().map(po -> UnsConverter.po2dto(po, false)).toList());
+        // webhook send
+//        List<WebhookDataDTO> webhookData = WebhookUtils.transfer(unsPos);
+//        if (!webhookData.isEmpty()) {
+////            webhookDataPusher.push(WebhookSubscribeEvent.INSTANCE_DELETE, webhookData, false);
+//        }
+        return removeResult;
     }
 
     public RemoveResult removeModelOrInstance(UnsPo tar, boolean withFlow, boolean withDashboard, Boolean removeRefer) {
@@ -120,20 +139,12 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
             return rs;
         }
         List<Long> unbindIds = new ArrayList<>();
-        HashMap<SrcJdbcType, TopicBaseInfoList> typeListMap = new HashMap<>();
         HashMap<Long, CreateTopicDto> calcIds = new HashMap<>();
         HashSet<Long> allIds = new HashSet<>(unsPos.size());
         ArrayList<Long> alarmIds = new ArrayList<>();
         Iterator<CreateTopicDto> itr = unsPos.iterator();
-        Map<SrcJdbcType, LinkedList<String>> modelTopics = new HashMap<>();
         while (itr.hasNext()) {
             CreateTopicDto po = itr.next();
-            if (po.getPathType() == 1) {
-                SrcJdbcType jdbcType = po.getDataSrcId();
-                String topicPath = po.getPath();
-                modelTopics.computeIfAbsent(jdbcType, k -> new LinkedList<>()).add(topicPath);
-            }
-            addPo4Remove(typeListMap, po);
             allIds.add(po.getId());
             if (po.getRefers() != null) {
                 calcIds.put(po.getId(), po);
@@ -142,7 +153,8 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                 alarmIds.add(po.getId());
             }
         }
-        List<Long> incQueryCalcTopics = Collections.emptyList();
+        List<CreateTopicDto> calcList = Collections.emptyList();
+        Map<Long, Set<Long>> calcRefmap = new TreeMap<>();
         if (removeRefer == null) {
             for (CreateTopicDto po : unsPos) {
                 Map<Long, Integer> referUns = po.getRefUns();
@@ -158,7 +170,7 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                 }
             }
         } else if (removeRefer) {//需要删除引用文件
-            incQueryCalcTopics = new ArrayList<>(unsPos.size());
+            calcList = new ArrayList<>(unsPos.size());
             for (CreateTopicDto po : unsPos) {
 
                 Map<Long, Integer> referUns = po.getRefUns();
@@ -166,7 +178,11 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                     for (Long id : referUns.keySet()) {
                         if (!calcIds.containsKey(id)) {
                             if (referUns.get(id) != Constants.CITING_TYPE) {//排除引用类型，引用类型无需删除，解除引用关系
-                                incQueryCalcTopics.add(id);
+                                CreateTopicDto dto = unsDefinitionService.getDefinitionById(id);
+                                if (dto != null) {
+                                    calcList.add(dto);
+                                    addRefer(allIds, calcRefmap, dto);
+                                }
                             } else {
                                 unbindIds.add(id);
                             }
@@ -174,50 +190,55 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                     }
                 }
             }
-            if (!incQueryCalcTopics.isEmpty()) {
-                List<Pair<Long, Long>> unRefList = new ArrayList<>();
-                for (Long pId : incQueryCalcTopics) {
-                    CreateTopicDto dto = unsDefinitionService.getDefinitionById(pId);
-                    if (dto != null) {
-                        addPo4Remove(typeListMap, dto);
-                        addRefer(allIds, unRefList, dto);
-                    }
-                }
-                if (!unRefList.isEmpty()) {
-                    removeCalcRef(unRefList);
-                }
-            }
         }
         // 删除计算实例本身，对引用的实例解除引用
-        List<Pair<Long, Long>> unRefList = new ArrayList<>();
         for (CreateTopicDto calcPo : calcIds.values()) {
-            addRefer(allIds, unRefList, calcPo);
+            addRefer(allIds, calcRefmap, calcPo);
         }
-        if (!unRefList.isEmpty()) {
-            removeCalcRef(unRefList);
-        }
-        if (!typeListMap.isEmpty()) {
-            long t0 = System.currentTimeMillis();
-            for (Map.Entry<SrcJdbcType, TopicBaseInfoList> entry : typeListMap.entrySet()) {
-                SrcJdbcType srcJdbcType = entry.getKey();
-                TopicBaseInfoList v = entry.getValue();
-                LinkedList<String> mps = modelTopics.get(srcJdbcType);
-                RemoveTopicsEvent event = new RemoveTopicsEvent(this, srcJdbcType, v.topics, withFlow, withDashboard, mps);
-                EventBus.publishEvent(event);
+        List<CreateTopicDto> forUpdates = null;
+        Date updateTime = new Date();
+        if (!calcRefmap.isEmpty()) {
+
+            this.removeCalcRef(calcRefmap, updateTime);
+
+            List<UnsPo> indirectUpdates;// 因 refer 间接更新的文件
+            if (calcRefmap.size() <= 1000) {
+                indirectUpdates = listByIds(calcRefmap.keySet());
+            } else {
+                indirectUpdates = new ArrayList<>(calcRefmap.size() + unbindIds.size());
+                for (List<Long> partIds : Lists.partition(new ArrayList<>(calcRefmap.keySet()), 1000)) {
+                    indirectUpdates.addAll(listByIds(partIds));
+                }
             }
-            long t1 = System.currentTimeMillis();
-            log.info("删除File事件耗时: {} ms", t1 - t0);
+            forUpdates = indirectUpdates.stream().map(p -> UnsConverter.po2dto(p, false)).collect(Collectors.toList());
         }
-        if (!modelTopics.isEmpty()) {
-            long t0 = System.currentTimeMillis();
-            for (Map.Entry<SrcJdbcType, LinkedList<String>> entry : modelTopics.entrySet()) {
-                SrcJdbcType srcJdbcType = entry.getKey();
-                LinkedList<String> mps = entry.getValue();
-                RemoveTopicsEvent event = new RemoveTopicsEvent(this, srcJdbcType, Collections.emptyMap(), withFlow, withDashboard, mps);
-                EventBus.publishEvent(event);
+        //引用类型解除绑定关系
+        if (!CollectionUtils.isEmpty(unbindIds)) {
+            if (forUpdates == null) {
+                forUpdates = new ArrayList<>(unbindIds.size());
             }
-            long t1 = System.currentTimeMillis();
-            log.info("删除Model事件耗时: {} ms", t1 - t0);
+            InstanceField[] emptyRefers = new InstanceField[0];
+            for (List<Long> segment : Lists.partition(unbindIds, 1000)) {
+                LambdaUpdateWrapper<UnsPo> unbindWrapper = new LambdaUpdateWrapper<>();
+                unbindWrapper.in(UnsPo::getId, segment);
+                unbindWrapper.set(UnsPo::getRefers, emptyRefers);
+                unbindWrapper.set(UnsPo::getUpdateAt, updateTime);
+                this.update(unbindWrapper);
+                for (Long id : segment) {
+                    CreateTopicDto dto = unsDefinitionService.getDefinitionById(id);
+                    if (dto == null) {
+                        UnsPo po = getById(id);
+                        if (po != null) {
+                            dto = UnsConverter.po2dto(po, false);
+                        }
+                    }
+                    if (dto != null) {
+                        dto.setRefers(emptyRefers);
+                        dto.setUpdateAt(updateTime);
+                        forUpdates.add(dto);
+                    }
+                }
+            }
         }
         if (!alarmIds.isEmpty()) {
             for (List<Long> alarmUnsId : Lists.partition(alarmIds, Constants.SQL_BATCH_SIZE)) {
@@ -226,45 +247,56 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
             }
         }
         unsAttachmentService.deleteByUns(unsPos);
-        //引用类型解除绑定关系
-        if (!CollectionUtils.isEmpty(unbindIds)) {
-            LambdaUpdateWrapper<UnsPo> unbindWrapper = new LambdaUpdateWrapper<>();
-            unbindWrapper.in(UnsPo::getId, unbindIds);
-            unbindWrapper.set(UnsPo::getRefers, null);
-            this.update(unbindWrapper);
+        if (!CollectionUtils.isEmpty(forUpdates)) {
+            long t0 = System.currentTimeMillis();
+            UpdateInstanceEvent event = new UpdateInstanceEvent(this, forUpdates);
+            EventBus.publishEvent(event);
+            long t1 = System.currentTimeMillis();
+            log.info("删除伴随的更新耗时：{} ms, 更新: {} 条", t1 - t0, forUpdates.size());
         }
-
         long t0 = System.currentTimeMillis();
-        for (List<Long> segment : Lists.partition(unsPos.stream().map(CreateTopicDto::getId).toList(), 1000)) {
-            this.removeBatchByIds(segment);
+        List<List<CreateTopicDto>> parts = Lists.partition(Stream.concat(unsPos.stream(), calcList.stream()).toList(), 1000);
+        final int TOTAL = unsPos.size() + calcList.size();
+        for (List<CreateTopicDto> list : parts) {
+            Date delTime = new Date();
+            this.removeBatchByIds(list.stream().map(CreateTopicDto::getId).toList());
+            Map<Integer, List<CreateTopicDto>> groups = list.stream().collect(Collectors.groupingBy(CreateTopicDto::getPathType));
+            RemoveTopicsEvent event = new RemoveTopicsEvent(this, delTime, withFlow, withDashboard,
+                    groups.get(Constants.PATH_TYPE_FILE), groups.get(Constants.PATH_TYPE_TEMPLATE), groups.get(Constants.PATH_TYPE_DIR));
+            EventBus.publishEvent(event);
         }
-        if (!incQueryCalcTopics.isEmpty()) {
-            for (List<Long> segment : Lists.partition(incQueryCalcTopics, 1000)) {
-                this.removeBatchByIds(segment);
-            }
-        }
+        //TODO 发送删除事件
         long t1 = System.currentTimeMillis();
-        log.info("删除的 SQL 耗时: {} ms", t1 - t0);
+        log.info("删除的 SQL 耗时: {} ms, delSize={}", t1 - t0, TOTAL);
         return rs;
     }
 
-    @Transactional(rollbackFor = Throwable.class, timeout = 300)
-    public RemoveResult removeInstances(Collection<String> aliases, boolean withFlow, boolean withDashboard, Boolean removeRefer) {
-        QueryWrapper<UnsPo> queryWrapper = new QueryWrapper<UnsPo>().in("path_type", 2);
-        QueryWrapper<UnsPo> removeQuery = new QueryWrapper<>();
-        removeQuery.in("alias", aliases);
-        queryWrapper = queryWrapper.in("alias", aliases);
-
-        List<UnsPo> unsPos = this.list(queryWrapper);
-        RemoveResult removeResult = getRemoveResult(withFlow, withDashboard, removeRefer, removeQuery, unsPos);
-        // webhook send
-        List<WebhookDataDTO> webhookData = WebhookUtils.transfer(unsPos);
-        if (!webhookData.isEmpty()) {
-//            webhookDataPusher.push(WebhookSubscribeEvent.INSTANCE_DELETE, webhookData, false);
-        }
-        return removeResult;
+    private void removeCalcRef(Map<Long, Set<Long>> calcRefmap, Date updateAt) {
+        this.executeBatch(calcRefmap.entrySet(), (session, entry) -> {
+            UnsMapper mapper = session.getMapper(UnsMapper.class);
+            Long id = entry.getKey();
+            Set<Long> calcIds = entry.getValue();
+            mapper.removeRefUns(id, calcIds, updateAt);
+        });
     }
 
+//    @Transactional(rollbackFor = Throwable.class, timeout = 300)
+//    public RemoveResult removeInstances(Collection<String> aliases, boolean withFlow, boolean withDashboard, Boolean removeRefer) {
+//        QueryWrapper<UnsPo> queryWrapper = new QueryWrapper<UnsPo>().in("path_type", 2);
+//        QueryWrapper<UnsPo> removeQuery = new QueryWrapper<>();
+//        removeQuery.in("alias", aliases);
+//        queryWrapper = queryWrapper.in("alias", aliases);
+//
+//        List<UnsPo> unsPos = this.list(queryWrapper);
+//        RemoveResult removeResult = getRemoveResult(withFlow, withDashboard, removeRefer, removeQuery, unsPos);
+//        // webhook send
+//        List<WebhookDataDTO> webhookData = WebhookUtils.transfer(unsPos);
+//        if (!webhookData.isEmpty()) {
+
+    /// /            webhookDataPusher.push(WebhookSubscribeEvent.INSTANCE_DELETE, webhookData, false);
+//        }
+//        return removeResult;
+//    }
     public RemoveResult detectRefers(Long id) {
         RemoveResult rs = new RemoveResult();
         UnsPo tar = this.baseMapper.getById(id);
@@ -303,122 +335,7 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
         return new RemoveResult(200, "ok");
     }
 
-    public RemoveResult getRemoveResult(boolean withFlow, boolean withDashboard, Boolean removeRefer, QueryWrapper<UnsPo> removeQuery, List<UnsPo> unsPos) {
-        RemoveResult rs = new RemoveResult();
-        if (!CollectionUtils.isEmpty(unsPos)) {
-            HashMap<SrcJdbcType, TopicBaseInfoList> typeListMap = new HashMap<>();
-            HashMap<Long, UnsPo> calcIds = new HashMap<>();
-            HashSet<Long> allIds = new HashSet<>(unsPos.size());
-            ArrayList<Long> alarmIds = new ArrayList<>();
-            Iterator<UnsPo> itr = unsPos.iterator();
-            Map<SrcJdbcType, LinkedList<String>> modelTopics = new HashMap<>();
-            List<String> aliases = new ArrayList<>(unsPos.size());
-            while (itr.hasNext()) {
-                UnsPo po = itr.next();
-                if (po.getPathType() == 1) {
-                    SrcJdbcType jdbcType = SrcJdbcType.getById(po.getDataSrcId());
-                    String topicPath = po.getPath();
-                    modelTopics.computeIfAbsent(jdbcType, k -> new LinkedList<>()).add(topicPath);
-                    itr.remove();
-                    continue;
-                }
-                addPo4Remove(typeListMap, po);
-                allIds.add(po.getId());
-                aliases.add(po.getAlias());
-                if (po.getRefers() != null) {
-                    calcIds.put(po.getId(), po);
-                }
-                if (ObjectUtil.equal(po.getDataType(), Constants.ALARM_RULE_TYPE)) {
-                    alarmIds.add(po.getId());
-                }
-            }
-            if (removeRefer == null) {
-                for (UnsPo po : unsPos) {
-                    Map<Long, Integer> referUns = po.getRefUns();
-                    if (!CollectionUtils.isEmpty(referUns)) {
-                        for (Long id : referUns.keySet()) {
-                            if (!calcIds.containsKey(id)) {
-                                RemoveResult.RemoveTip tip = new RemoveResult.RemoveTip();
-                                tip.setRefs(referUns.size());
-                                rs.setData(tip);
-                                return rs;
-                            }
-                        }
-                    }
-                }
-            } else if (removeRefer) {
-                List<Long> incQueryCalcTopics = new ArrayList<>(unsPos.size());
-                for (UnsPo po : unsPos) {
-
-                    Map<Long, Integer> referUns = po.getRefUns();
-                    if (!CollectionUtils.isEmpty(referUns)) {
-                        for (Long id : referUns.keySet()) {
-                            if (!calcIds.containsKey(id)) {
-                                incQueryCalcTopics.add(id);
-                            }
-                        }
-                    }
-                }
-                if (!incQueryCalcTopics.isEmpty()) {
-                    List<UnsPo> list = this.listByIds(incQueryCalcTopics);
-                    List<Pair<Long, Long>> unRefList = new ArrayList<>();
-                    for (UnsPo po : list) {
-                        addPo4Remove(typeListMap, po);
-                        addRefer(allIds, unRefList, po);
-                    }
-                    if (!unRefList.isEmpty()) {
-                        removeCalcRef(unRefList);
-                    }
-                    removeQuery.or(p -> p.in("id", incQueryCalcTopics));
-                }
-            }
-            // 删除计算实例本身，对引用的实例解除引用
-            List<Pair<Long, Long>> unRefList = new ArrayList<>();
-            for (UnsPo calcPo : calcIds.values()) {
-                addRefer(allIds, unRefList, calcPo);
-            }
-            if (!unRefList.isEmpty()) {
-                removeCalcRef(unRefList);
-            }
-            if (!typeListMap.isEmpty()) {
-                long t0 = System.currentTimeMillis();
-                for (Map.Entry<SrcJdbcType, TopicBaseInfoList> entry : typeListMap.entrySet()) {
-                    SrcJdbcType srcJdbcType = entry.getKey();
-                    TopicBaseInfoList v = entry.getValue();
-                    LinkedList<String> mps = modelTopics.get(srcJdbcType);
-                    RemoveTopicsEvent event = new RemoveTopicsEvent(this, srcJdbcType, v.topics, withFlow, withDashboard, mps);
-                    EventBus.publishEvent(event);
-                }
-                long t1 = System.currentTimeMillis();
-                log.info("删除File事件耗时: {} ms", t1 - t0);
-            }
-            if (!modelTopics.isEmpty()) {
-                long t0 = System.currentTimeMillis();
-                for (Map.Entry<SrcJdbcType, LinkedList<String>> entry : modelTopics.entrySet()) {
-                    SrcJdbcType srcJdbcType = entry.getKey();
-                    LinkedList<String> mps = entry.getValue();
-                    RemoveTopicsEvent event = new RemoveTopicsEvent(this, srcJdbcType, Collections.emptyMap(), withFlow, withDashboard, mps);
-                    EventBus.publishEvent(event);
-                }
-                long t1 = System.currentTimeMillis();
-                log.info("删除Model事件耗时: {} ms", t1 - t0);
-            }
-            if (!alarmIds.isEmpty()) {
-                for (List<Long> alarmUnsId : Lists.partition(alarmIds, Constants.SQL_BATCH_SIZE)) {
-                    log.info("删除告警数据：topic = {}", alarmUnsId);
-                    alarmMapper.delete(new QueryWrapper<AlarmPo>().in(AlarmRuleDefine.FIELD_UNS_ID, alarmUnsId));
-                }
-            }
-            unsAttachmentService.delete(aliases);
-        }
-        long t0 = System.currentTimeMillis();
-        this.remove(removeQuery);
-        long t1 = System.currentTimeMillis();
-        log.info("删除的 SQL 耗时: {} ms", t1 - t0);
-        return rs;
-    }
-
-    private void addRefer(HashSet<Long> allIds, List<Pair<Long, Long>> unRefList, CreateTopicDto po) {
+    private void addRefer(HashSet<Long> allIds, Map<Long, Set<Long>> calcRefmap, CreateTopicDto po) {
         InstanceField[] refs = po.getRefers();
         Long calcId = po.getId();
         for (InstanceField rf : refs) {
@@ -426,81 +343,10 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                 Long ref = rf.getId();
                 if (!allIds.contains(ref)) {
                     // 要删除的计算实例 引用的其他范围的实例，需要解除到计算实例的引用
-                    unRefList.add(Pair.of(ref, calcId));
+                    calcRefmap.computeIfAbsent(ref, k -> new TreeSet<>()).add(calcId);
                 }
             }
         }
-    }
-
-    private void addRefer(HashSet<Long> allIds, List<Pair<Long, Long>> unRefList, UnsPo po) {
-        InstanceField[] refs = po.getRefers();
-        Long calcId = po.getId();
-        for (InstanceField rf : refs) {
-            if (rf != null) {
-                Long ref = rf.getId();
-                if (!allIds.contains(ref)) {
-                    // 要删除的计算实例 引用的其他范围的实例，需要解除到计算实例的引用
-                    unRefList.add(Pair.of(ref, calcId));
-                }
-            }
-        }
-    }
-
-    private void removeCalcRef(List<Pair<Long, Long>> unRefList) {
-        this.executeBatch(unRefList, (session, pair) -> {
-            UnsMapper mapper = session.getMapper(UnsMapper.class);
-            Long id = pair.getLeft();
-            Long calcId = pair.getRight();
-            mapper.removeRefUns(id, Collections.singletonList(calcId));
-        });
-    }
-
-    private void addPo4Remove(HashMap<SrcJdbcType, TopicBaseInfoList> typeListMap, UnsPo po) {
-        SrcJdbcType jdbcType = SrcJdbcType.getById(po.getDataSrcId());
-        TopicBaseInfoList list = typeListMap.computeIfAbsent(jdbcType, k -> new TopicBaseInfoList());
-        Integer fl = po.getWithFlags();
-        int flags = fl != null ? fl : 0;
-        SimpleUnsInstance instance = new SimpleUnsInstance(
-                po.getId(),
-                po.getPath(),
-                po.getAlias(),
-                po.getTableName(),
-                po.getDataType(),
-                po.getParentId(),
-                StringUtils.isEmpty(po.getTableName()) && !Constants.withRetainTableWhenDeleteInstance(flags),
-                Constants.withDashBoard(flags),
-                po.getFields(),
-                po.getName());
-        instance.setFlags(po.getWithFlags());
-        TreeMap<Long, String> labelIds = po.getLabelIds();
-        instance.setLabelIds(labelIds != null && !labelIds.isEmpty() ? labelIds.keySet() : null);
-        list.topics.put(instance.getId(), instance);
-    }
-
-    private void addPo4Remove(HashMap<SrcJdbcType, TopicBaseInfoList> typeListMap, CreateTopicDto po) {
-        SrcJdbcType jdbcType = po.getDataSrcId();
-        TopicBaseInfoList list = typeListMap.computeIfAbsent(jdbcType, k -> new TopicBaseInfoList());
-        Integer fl = po.getFlags();
-        int flags = fl != null ? fl : 0;
-        SimpleUnsInstance instance = new SimpleUnsInstance(
-                po.getId(),
-                po.getPath(),
-                po.getAlias(),
-                po.getTableName(),
-                po.getDataType(),
-                po.getParentId(),
-                StringUtils.isEmpty(po.getTableName()) && !Constants.withRetainTableWhenDeleteInstance(flags),
-                Constants.withDashBoard(flags),
-                po.getFields(),
-                po.getName());
-        instance.setFlags(po.getFlags());
-        TreeMap<Long, String> labelIds = po.getLabelIds();
-        instance.setLabelIds(labelIds != null && !labelIds.isEmpty() ? labelIds.keySet() : null);
-        list.topics.put(instance.getId(), instance);
-    }
-
-    static class TopicBaseInfoList {
-        Map<Long, SimpleUnsInstance> topics = new LinkedHashMap<>();
     }
 
     public static void batchRemoveExternalTopic(Collection<CreateTopicDto[]> topics) {

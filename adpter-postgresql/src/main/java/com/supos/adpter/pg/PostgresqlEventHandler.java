@@ -1,7 +1,6 @@
 package com.supos.adpter.pg;
 
 import cn.hutool.core.lang.Pair;
-import cn.hutool.core.util.IdUtil;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
@@ -27,8 +26,6 @@ import org.springframework.util.CollectionUtils;
 import java.sql.Timestamp;
 import java.util.*;
 import java.util.stream.Collectors;
-
-import static com.supos.common.utils.DateTimeUtils.getDateTimeStr;
 
 @Slf4j
 public class PostgresqlEventHandler extends PostgresqlBase implements DataStorageAdapter {
@@ -75,11 +72,10 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
     @EventListener(classes = RemoveTopicsEvent.class)
     @Order(7)
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
-        if (event.jdbcType != SrcJdbcType.Postgresql) {
-            return;
-        }
         List<String> sqls = Collections.EMPTY_LIST;
-        Collection<String> tables = event.topics.values().stream().filter(ins -> ins.isRemoveTableWhenDeleteInstance()).map(in -> in.getTableName()).collect(Collectors.toSet());
+        Collection<String> tables = event.topics.stream().filter(ins -> ins.getDataSrcId() == SrcJdbcType.Postgresql && ins.getFlags() != null
+                        && !Constants.withRetainTableWhenDeleteInstance(ins.getFlags()))
+                .map(CreateTopicDto::getTable).collect(Collectors.toSet());
         if (!CollectionUtils.isEmpty(tables)) {
             sqls = new ArrayList<>(tables.size());
             for (String table : tables) {
@@ -419,19 +415,6 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
         }
         String insertSQL = builder.toString();
         return insertSQL;
-    }
-
-    static Object getFieldValue(FieldType fieldType, Object val) {
-        if (val == null) {
-            return val;
-        }
-        if (fieldType == FieldType.DATETIME && val instanceof Long) {
-            val = getDateTimeStr(val);
-        } else if (fieldType == FieldType.STRING) {
-            // postgresql 的单引号处理方式：特殊语法，双单引号代替单个单引号
-            val = val.toString().replace("'", "''");
-        }
-        return val;
     }
 
 

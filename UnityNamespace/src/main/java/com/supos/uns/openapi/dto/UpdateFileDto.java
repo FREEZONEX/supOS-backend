@@ -1,11 +1,13 @@
 package com.supos.uns.openapi.dto;
 
+
+import com.supos.common.Constants;
 import com.supos.common.annotation.StreamTimeValidator;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.InstanceField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,8 +19,8 @@ import java.util.LinkedHashMap;
 public class UpdateFileDto {
 
     @Schema(description = "*文件名称，和文件夹显示名一致。支持修改。")
-    @NotEmpty(message = "uns.name.empty")
     @Size(max = 63, message = "uns.external.name.length.limit.exceed")
+    @Pattern(regexp = Constants.NAME_REG, message = "uns.name.format.error")
     private String name;
 
     @Schema(description = "*文件显示名。支持修改和重名。最大长度128字符")

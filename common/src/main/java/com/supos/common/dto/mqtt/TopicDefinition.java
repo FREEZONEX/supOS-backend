@@ -6,6 +6,7 @@ import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.dto.*;
 import com.supos.common.enums.FieldType;
+import com.supos.common.utils.ExpressionFunctions;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -67,6 +68,10 @@ public class TopicDefinition {
     }
 
     public Object getCompileExpression() {
+        String calculationExpr = createTopicDto.getExpression();
+        if (calculationExpr != null && !calculationExpr.isEmpty() && createTopicDto.getCompileExpression() == null) {
+            createTopicDto.setCompileExpression(ExpressionFunctions.compileExpression(calculationExpr));
+        }
         return createTopicDto.getCompileExpression();
     }
 

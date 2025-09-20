@@ -26,25 +26,25 @@ public class TodoOpenApi {
     private TodoService todoService;
 
     @Operation(summary = "分页查询待办信息", tags = "待办中心", description = "(OPEN-API)")
-    @GetMapping({"/open-api/supos/todo"})
-    public PageResultDTO<TodoVo> pageListByOpen(@ParameterObject TodoOpenQueryDto params) {
+    @GetMapping({"/open-api/todo"})
+    public PageResultDTO<TodoVo> pageListByOpen(@Valid @ParameterObject TodoOpenQueryDto params) {
         return todoService.pageListByOpen(params);
     }
 
     @Operation(summary = "获取待办的模块列表", tags = "待办中心", description = "(OPEN-API)")
-    @GetMapping({"/open-api/supos/todo/moduleList"})
+    @GetMapping({"/open-api/todo/moduleList"})
     public ResultVO<SysModuleDto> getModuleList() {
         return todoService.getModuleList();
     }
 
     @Operation(summary = "创建待办", tags = "待办中心")
-    @PostMapping({"/open-api/supos/todo/create"})
+    @PostMapping({"/open-api/todo/create"})
     public ResultVO createTodo(@Valid @RequestBody CreateTodoVo createTodoVo) {
         return todoService.createTodo(createTodoVo);
     }
 
     @Operation(summary = "处理待办", tags = "待办中心", description = "(OPEN-API)")
-    @PostMapping({"/open-api/supos/todo/handle"})
+    @PostMapping({"/open-api/todo/handle"})
     public ResultVO handle(@Valid @RequestBody HandleTodoDto handleTodoDto) {
         return todoService.handler(handleTodoDto);
     }

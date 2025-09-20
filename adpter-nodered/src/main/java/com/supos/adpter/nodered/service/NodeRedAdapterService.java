@@ -207,10 +207,10 @@ public class NodeRedAdapterService {
         }
         // 拆分流程节点和全局节点
         JSONArray globalNodes = filterGlobalNodes(nodes);
-        // 更新部署
-        deployToNodeRed(flowId, nodeFlow.getFlowName(), nodeFlow.getDescription(), nodes);
-
+        // 先部署全局节点
         deployGlobalNodesToNodeRed(globalNodes);
+        // 再更新部署流程节点
+        deployToNodeRed(flowId, nodeFlow.getFlowName(), nodeFlow.getDescription(), nodes);
 
         // 更新节点的z属性（流程ID）
         for (int i = 0; i < nodes.size(); i++) {

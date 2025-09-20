@@ -3,7 +3,6 @@ package com.supos.uns.service;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.date.DateUtil;
-import cn.hutool.core.lang.Snowflake;
 import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.ObjectUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -20,7 +19,7 @@ import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.service.IUnsManagerService;
 import com.supos.common.utils.*;
 import com.supos.uns.bo.CreateModelInstancesArgs;
-import com.supos.uns.bo.RunningStatus;
+import com.supos.common.RunningStatus;
 import com.supos.uns.bo.UnsPoLabels;
 import com.supos.uns.dao.mapper.UnsHistoryDeleteJobMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
@@ -70,8 +69,6 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     UnsLabelService unsLabelService;
     @Autowired
     UnsCalcService unsCalcService;
-    @Autowired
-    UnsConverter unsConverter;
     @Autowired
     UnsHistoryDeleteJobMapper unsHistoryDeleteJobMapper;
     @Autowired
@@ -451,8 +448,13 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             }
             return unsPo;
         };
-        unsCalcService.tryUpdateCalcRefUns(errTipMap, paramFiles, allIdUns);
-
+        final Date createTime = new Date();
+        List<UnsPo> refUpdates = unsCalcService.tryUpdateCalcRefUns(errTipMap, paramFiles, allIdUns, dbFiles::get, createTime);
+        if (refUpdates != null) {
+            for (UnsPo refUpdate : refUpdates) {
+                dbFiles.put(refUpdate.getId(), refUpdate);
+            }
+        }
         if (!args.fromImport && !errTipMap.isEmpty() && addFiles.isEmpty()) {
             log.warn("Won't save when errTips: {}", errTipMap);
             return errTipMap;
@@ -465,7 +467,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         ArrayList<CreateTopicDto> createList = new ArrayList<>(addFiles.size());
         ArrayList<CreateTopicDto> dtoUpdateList = new ArrayList<>(addFiles.size());
         for (UnsPo file : addFiles.values()) {
-            CreateTopicDto createTopicDto = unsConverter.po2dto(file);
+            CreateTopicDto createTopicDto = UnsConverter.po2dto(file);
             UnsPo dbF = dbFiles.get(file.getId());
             if (dbF == null) {
                 dbF = existsUns.get(file.getAlias());
@@ -483,7 +485,22 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                 createList.add(createTopicDto);
             }
         }
-
+        for (UnsPo po : rs.updateList) {
+            Long id = po.getId();
+            if (!addFiles.containsKey(id)) {
+                dtoUpdateList.add(UnsConverter.po2dto(po, false));
+            }
+        }
+        if (refUpdates != null && !refUpdates.isEmpty()) {
+            for (UnsPo refPo : refUpdates) {
+                Long id = refPo.getId();
+                UnsPo po = dbFiles.get(id);
+                rs.updateList.add(po);
+                if (!addFiles.containsKey(id)) {
+                    dtoUpdateList.add(UnsConverter.po2dto(po, false));
+                }
+            }
+        }
         this.saveBatchAndSendEvent(args, rs.insertList, rs.updateList, createList, dtoUpdateList, unsPoLabels.values());
 
         return errTipMap;
@@ -680,6 +697,11 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                 return null;
             }
         }
+        if (bo.getDataType() == Constants.CITING_TYPE && bo.getFields() != null) {
+            FieldDefine[] EMPTY = new FieldDefine[0];
+            bo.setFields(EMPTY);
+            newUns.setFields(EMPTY);
+        }
 
         if (dbPo != null) {
             UnsPo tar = dbPo.clone();
@@ -688,7 +710,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             boolean expChanged = (expression != null && !expression.equals(dbPo.getExpression()));
             boolean hasRefer = bo.getRefers() != null || bo.getReferIds() != null;
             if (expChanged || hasRefer) {
-                bo = unsConverter.po2dto(tar, false);
+                bo = UnsConverter.po2dto(tar, false);
                 if (hasRefer) {
                     String err = UnsCalcService.checkRefers(bo);
                     if (err != null) {
@@ -1177,6 +1199,8 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                 dto.setFrequencySeconds(getFrequencySeconds(frequency));
             }
             paramFiles.put(alias, dto);
+        }else {
+            dto.setDataType(0);
         }
     }
 
@@ -1218,19 +1242,19 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         Long dbSize = baseMapper.selectCount(new QueryWrapper<>());
         if (dbSize != null && dbSize.intValue() != cacheSize) {
             log.info("尝试重新同步缓存...");
+            HashMap<SrcJdbcType, List<CreateTopicDto>> typeListMap = new HashMap<>();
             Constants.readOnlyMode.set(true);
             unsDefinitionService.getTopicDefinitionMap().clear();
             unsDefinitionService.getAliasMap().clear();
             unsDefinitionService.getPathMap().clear();
             List<UnsPo> instances = baseMapper.selectList(new QueryWrapper<>());
             if (!CollectionUtils.isEmpty(instances)) {
-                HashMap<SrcJdbcType, List<CreateTopicDto>> typeListMap = new HashMap<>();
                 for (UnsPo p : instances) {
-                    CreateTopicDto dto = unsConverter.po2dto(p);
+                    CreateTopicDto dto = UnsConverter.po2dto(p);
                     typeListMap.computeIfAbsent(dto.getDataSrcId(), k -> new LinkedList<>()).add(dto);
                 }
-                EventBus.publishEvent(new InitTopicsEvent(this, typeListMap));
             }
+            EventBus.publishEvent(new InitTopicsEvent(this, typeListMap));
             log.info("重新同步缓存完毕.");
         }
     }

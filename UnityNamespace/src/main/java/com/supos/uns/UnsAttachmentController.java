@@ -71,11 +71,15 @@ public class UnsAttachmentController {
     @GetMapping("/inter-api/supos/uns/attachment/preview")
     public void attachmentPreview(@RequestParam("objectName") String objectName, HttpServletResponse response) {
         try {
-            Pair<String, InputStream> objectPiar = unsAttachmentService.download(objectName);
+            Pair<String, InputStream> objectPair = unsAttachmentService.download(objectName);
+            String fileName = objectPair.getLeft();
+            if (fileName.endsWith(".svg")) {
+                response.setContentType("image/svg+xml;charset=UTF-8");
+            }
 /*            response.setHeader("Content-Disposition", "attachment;filename=" + UriUtils.encode(objectPiar.getLeft(), "UTF-8"));
             response.setContentType("application/force-download");*/
             response.setCharacterEncoding("UTF-8");
-            IOUtils.copy(objectPiar.getRight(), response.getOutputStream());
+            IOUtils.copy(objectPair.getRight(), response.getOutputStream());
         } catch (Exception e) {
             log.error("下载失败", e);
         }

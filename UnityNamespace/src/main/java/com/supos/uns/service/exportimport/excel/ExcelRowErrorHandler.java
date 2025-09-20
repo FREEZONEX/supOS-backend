@@ -9,6 +9,7 @@ import com.alibaba.excel.read.metadata.holder.ReadHolder;
 import com.alibaba.excel.read.metadata.holder.ReadSheetHolder;
 import com.alibaba.excel.write.metadata.WriteSheet;
 import com.supos.common.enums.ExcelTypeEnum;
+import com.supos.common.utils.I18nUtils;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import com.supos.uns.service.exportimport.core.ExportImportHelper;
 import lombok.extern.slf4j.Slf4j;
@@ -113,7 +114,7 @@ public class ExcelRowErrorHandler implements ReadListener<Map<Integer, String>> 
                     data.put(i, "");
                 }
             }
-            data.put(ExportImportHelper.errorIndex(excelType), String.format("Import Error:%s", error));
+            data.put(ExportImportHelper.errorIndex(excelType), String.format("%s:%s", I18nUtils.getMessage("uns.import.error"), error));
             context.setActiveExcelType(excelType);
         } else {
             int errorIndex = ExportImportHelper.errorIndex(excelType);

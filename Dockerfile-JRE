@@ -1,0 +1,16 @@
+FROM eclipse-temurin:17-jre-alpine
+
+RUN mkdir -p /data/apps /data/resource/i18n /arthas
+
+COPY bootstrap.jar /app.jar
+# COPY entrypoint.sh /entrypoint.sh
+COPY arthas/ /arthas
+RUN apk update && apk add --no-cache p7zip
+
+# RUN chmod +x /entrypoint.sh
+
+# copy i18n properties to /data/resource/i18n
+RUN 7z e /app.jar "BOOT-INF/classes/i18n/*.properties" -o/data/resource/i18n
+
+EXPOSE 8080 19099 8000
+ENTRYPOINT ["./entrypoint.sh"]

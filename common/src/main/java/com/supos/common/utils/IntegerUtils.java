@@ -12,6 +12,14 @@ public class IntegerUtils {
         return parseInt(s, 10, null);
     }
 
+    public static int getInt(Integer num) {
+        return num != null ? num : 0;
+    }
+
+    public static int getInt(Integer num, int def) {
+        return num != null ? num : def;
+    }
+
     /**
      * 不抛出异常的数字转换
      *

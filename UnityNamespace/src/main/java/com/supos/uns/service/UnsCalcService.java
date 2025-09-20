@@ -190,28 +190,37 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
         return null;
     }
 
-    public void tryUpdateCalcRefUns(Map<String, String> errTipMap, Map<String, CreateTopicDto> paramInstances, Function<Long, UnsPo> existsPos) {
+    public List<UnsPo> tryUpdateCalcRefUns(Map<String, String> errTipMap, Map<String, CreateTopicDto> paramInstances,
+                                           Function<Long, UnsPo> allPos,
+                                           Function<Long, UnsPo> dbExistsPos,
+                                           Date updateAt) {
         Map<Long, Set<CreateTopicDto>> topicIdRefMap = Collections.EMPTY_MAP;
         Map<Long, CreateTopicDto> calcTopics = Collections.EMPTY_MAP;
         Iterator<Map.Entry<String, CreateTopicDto>> itr = paramInstances.entrySet().iterator();
         final int SIZE = paramInstances.size();
         while (itr.hasNext()) {
             CreateTopicDto bo = itr.next().getValue();
+            Integer dataType = bo.getDataType();
             InstanceField[] refers = bo.getRefers();
             if (ArrayUtil.isEmpty(refers)) {
+                if (dataType == Constants.CITING_TYPE) {
+                    if (calcTopics == Collections.EMPTY_MAP) {
+                        calcTopics = new HashMap<>(Math.max(16, SIZE));
+                    }
+                    calcTopics.put(bo.getId(), bo);
+                }
                 continue;
             }
             String batchIndex = bo.gainBatchIndex();
             if (topicIdRefMap == Collections.EMPTY_MAP) {
                 topicIdRefMap = new HashMap<>(8);
             }
-            Integer dataType = bo.getDataType();
             HashMap<Long, Set<String>> refFields = new HashMap<>();
             boolean next = true;
             for (InstanceField f : refers) {
                 if (f != null) {
                     Long refId = f.getId();
-                    UnsPo po = existsPos.apply(refId);
+                    UnsPo po = allPos.apply(refId);
                     if (po == null) {
                         errTipMap.put(batchIndex, I18nUtils.getMessage("uns.topic.calc.expression.topic.ref.notFound", bo.getAlias()));
                         itr.remove();
@@ -222,6 +231,12 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
                     if (refDataType != Constants.TIME_SEQUENCE_TYPE && refDataType != Constants.RELATION_TYPE && dataType.intValue() == refDataType) {
                         String t1 = I18nUtils.getMessage("uns.dataType." + dataType);
                         errTipMap.put(batchIndex, I18nUtils.getMessage("uns.ref.invalid.dataType", bo.getAlias(), t1, t1));
+                        paramInstances.remove(bo.getAlias());
+                        next = false;
+                        break;
+                    }
+                    if (po.getAlias().equals(bo.getAlias())) {
+                        errTipMap.put(batchIndex, I18nUtils.getMessage("uns.topic.calc.variable.itself.error"));
                         itr.remove();
                         next = false;
                         break;
@@ -241,13 +256,13 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
                 bo.setRefTopicFields(refFields);
             }
         }
-        if (topicIdRefMap.isEmpty()) {
-            return;
+        if (topicIdRefMap.isEmpty() && calcTopics.isEmpty()) {
+            return null;
         }
         for (Map.Entry<Long, Set<CreateTopicDto>> e : topicIdRefMap.entrySet()) {
             Long id = e.getKey();
             Set<CreateTopicDto> bos = e.getValue();
-            UnsPo po = existsPos.apply(id);
+            UnsPo po = allPos.apply(id);
             String alias = po.getAlias();
 
             FieldDefine[] defines = po.getFields();
@@ -312,13 +327,13 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
             if (!paramInstances.containsKey(bo.getAlias())) {
                 continue;// 新增计算实例校验不通过的情况
             }
-            UnsPo po = existsPos.apply(calcId);
+            UnsPo po = dbExistsPos.apply(calcId);
             InstanceField[] newRefs = bo.getRefers();
             Integer dataType = bo.getDataType();
-            Set<Long> newRefTopics = Arrays.stream(newRefs).filter(f -> f != null).map(InstanceField::getId).collect(Collectors.toSet());
+            Set<Long> newRefTopics = Arrays.stream(newRefs).filter(Objects::nonNull).map(InstanceField::getId).collect(Collectors.toSet());
             if (po != null) {
                 InstanceField[] oldRefs = ArrayUtil.isNotEmpty(po.getRefers()) ? po.getRefers() : new InstanceField[0];
-                Set<Long> oldRefTopics = Arrays.stream(oldRefs).filter(f -> f != null).map(InstanceField::getId).collect(Collectors.toSet());
+                Set<Long> oldRefTopics = Arrays.stream(oldRefs).filter(Objects::nonNull).map(InstanceField::getId).collect(Collectors.toSet());
                 for (Long oldRef : oldRefTopics) {
                     if (!newRefTopics.contains(oldRef)) {
                         topicRemoveRefMap.computeIfAbsent(oldRef, k -> new HashMap<>()).put(calcId, dataType);
@@ -329,7 +344,8 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
                 topicUpdateRefMap.computeIfAbsent(ref, k -> new HashMap<>()).put(calcId, dataType);
             }
         }
-        if (topicRemoveRefMap.size() + topicUpdateRefMap.size() > 0) {
+        final int updateSize = topicRemoveRefMap.size() + topicUpdateRefMap.size();
+        if (updateSize > 0) {
             List<RefUnsUpdateInfo> refUnsList = new ArrayList<>();
             addRefUns2List(topicRemoveRefMap, refUnsList);
             final int removeIndex = refUnsList.size();
@@ -338,24 +354,34 @@ public class UnsCalcService extends ServiceImpl<UnsMapper, UnsPo> {
                 UnsMapper unsMapper = session.getMapper(UnsMapper.class);
                 if (info.i <= removeIndex) {
                     if (info.refIds.size() < 500) {
-                        unsMapper.removeRefUns(info.id, info.refIds.keySet());
+                        unsMapper.removeRefUns(info.id, info.refIds.keySet(), updateAt);
                     } else {
                         List<Long> ids = new ArrayList<>(info.refIds.keySet());
                         for (List<Long> refIds : Lists.partition(ids, 500)) {
-                            unsMapper.removeRefUns(info.id, refIds);
+                            unsMapper.removeRefUns(info.id, refIds, updateAt);
                         }
                     }
                 } else {
                     if (info.refIds.size() < 200) {
-                        unsMapper.updateRefUns(info.id, info.refIds);
+                        unsMapper.updateRefUns(info.id, info.refIds, updateAt);
                     } else {
                         List<Map<Long, Integer>> rs = MapSplitter.splitMap(info.refIds, 200);
                         for (Map<Long, Integer> refIds : rs) {
-                            unsMapper.updateRefUns(info.id, refIds);
+                            unsMapper.updateRefUns(info.id, refIds, updateAt);
                         }
                     }
                 }
             });
+            ArrayList<UnsPo> updatePos = new ArrayList<>(updateSize);
+            ArrayList<Long> updateIds = new ArrayList<>(updateSize);
+            updateIds.addAll(topicRemoveRefMap.keySet());
+            updateIds.addAll(topicUpdateRefMap.keySet());
+            for (List<Long> ids : Lists.partition(updateIds, 1000)) {
+                updatePos.addAll(listByIds(ids));
+            }
+            return updatePos;
+        } else {
+            return null;
         }
     }
 

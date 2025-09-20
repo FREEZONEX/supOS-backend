@@ -1,6 +1,7 @@
 package com.supos.uns.bo;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.supos.common.RunningStatus;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.utils.JsonUtil;
 import lombok.Data;

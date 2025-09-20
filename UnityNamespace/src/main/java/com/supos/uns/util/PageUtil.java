@@ -12,7 +12,7 @@ public class PageUtil {
 
     public static <T> PageResultDTO<T> build(IPage<T> iPage) {
         PageResultDTO.PageResultDTOBuilder<T> pageBuilder = PageResultDTO.<T>builder()
-                .code(0)
+                .code(200)
                 .total(iPage.getTotal())
                 .pageNo(iPage.getPages())
                 .pageSize(iPage.getSize())
@@ -22,7 +22,7 @@ public class PageUtil {
 
     public static <K, T> PageResultDTO<K> build(IPage<T> iPage, List<K> records) {
         PageResultDTO.PageResultDTOBuilder<K> pageBuilder = PageResultDTO.<K>builder()
-                .code(0)
+                .code(200)
                 .total(iPage.getTotal())
                 .pageNo(iPage.getCurrent())
                 .pageSize(iPage.getSize())
@@ -32,7 +32,7 @@ public class PageUtil {
 
     public static <K, T> PageResultDTO<K> empty(Page page) {
         PageResultDTO.PageResultDTOBuilder<K> pageBuilder = PageResultDTO.<K>builder()
-                .code(0)
+                .code(200)
                 .total(0)
                 .pageNo(page.getCurrent())
                 .pageSize(page.getSize())

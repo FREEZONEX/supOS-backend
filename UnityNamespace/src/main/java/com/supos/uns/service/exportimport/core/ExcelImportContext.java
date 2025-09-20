@@ -3,7 +3,7 @@ package com.supos.uns.service.exportimport.core;
 import com.supos.common.Constants;
 import com.supos.common.dto.excel.ExcelUnsWrapDto;
 import com.supos.common.enums.ExcelTypeEnum;
-import com.supos.uns.bo.RunningStatus;
+import com.supos.common.RunningStatus;
 import com.supos.uns.vo.CreateTemplateVo;
 import lombok.Getter;
 

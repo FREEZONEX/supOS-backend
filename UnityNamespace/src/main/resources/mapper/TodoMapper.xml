@@ -17,16 +17,16 @@
         <if test="params.todoMsg != null and params.todoMsg !=''">
             AND a.todo_msg ILIKE CONCAT('%', #{params.todoMsg}, '%')
         </if>
-        <if test="params.myTodo != null and params.myTodo == true and params.handlerUsername != ''">
-            AND a.handler_username = #{params.handlerUsername}
+        <if test="params.handlerUsername != null and params.handlerUsername != ''">
+            AND a.handler_username ILIKE CONCAT('%', #{params.handlerUsername}, '%')
         </if>
         <if test="params.username != null and params.username !=''">
             AND a.username = #{params.username}
         </if>
-        <if test="params.startTime != null">
+        <if test="params.startTime != null and params.startTime !=''">
             AND a.create_at &gt;= #{params.startTime}::timestamp
         </if>
-        <if test="params.endTime != null">
+        <if test="params.endTime != null and params.endTime !=''">
             AND a.create_at &lt; #{params.endTime}::timestamp
         </if>
         ORDER BY

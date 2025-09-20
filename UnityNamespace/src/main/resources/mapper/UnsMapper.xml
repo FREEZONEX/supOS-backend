@@ -118,8 +118,8 @@
         <if test="params.templateName != null and params.templateName != ''">
             AND (a.path_type = 1 AND a.path = #{params.templateName})
         </if>
-        <if test="params.templateAlias != null and params.templateAlias != ''">
-            AND (t.alias = #{params.templateAlias})
+        <if test="params.templateId != null">
+            AND (a.model_id = #{params.templateId})
         </if>
         <if test="params.updateStartTime != null">
             AND a.update_at &gt;= #{params.updateStartTime}::timestamp

@@ -109,7 +109,7 @@ public class KeycloakUtil {
         String url = keyCloakConfig.getIssuerUri() + "/realms/master/protocol/openid-connect/token";
         Map<String, Object> params = new HashMap<>();
         params.put("username", "admin");
-        params.put("password", "Supos1304@");
+        params.put("password", "supos");
         params.put("grant_type", "password");
         params.put("client_id", "admin-cli");
         log.debug(">>>>>>>>>>>>Keycloak getAdminToken URL：{},params:{}", url, JSON.toJSON(params));

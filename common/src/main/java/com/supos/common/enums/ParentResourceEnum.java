@@ -12,11 +12,8 @@ public enum ParentResourceEnum {
     NAV_APPSPACE(4L,"menu.tag.appspace","应用集", 1),
     NAV_DEVTOOLS(50L,"menu.tag.devtools", "工具集",1),
     NAV_SYSTEM(60L,"menu.tag.system", "系统管理",1),
+    NAV_UNS(60L,"menu.tag.uns", "数据管理",1),
 
-    MENU_UNS(1L,"menu.tag.uns.svg","数据管理", 2),
-    MENU_DEVTOOLS(2L,"menu.tag.devtools.svg", "工具集",2),
-    MENU_SYSTEM(3L,"menu.tag.system.svg", "系统管理",2),
-    MENU_APPSPACE(90L,"menu.tag.appspace.svg", "应用集",2),
     ;
 
     private Long id;

@@ -22,7 +22,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(websocketHandler,
                         "/inter-api/supos/uns/ws",
-                        "/open-api/supos/uns/ws")
+                        "/open-api/uns/ws")
                 .setAllowedOriginPatterns("*")
                 .addInterceptors(new HttpSessionHandshakeInterceptor());
     }

@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 @Service("relationalParser")
 public class RelationalParser extends ParserApi {
 
-    private String tplGmqttFile = "/relational-gmatt.json.tpl";
+    private String tplGmqttFile = "/relational-gmqtt.json.tpl";
     private String tplEmqxFile = "/relational-emqx.json.tpl";
 
     @Override

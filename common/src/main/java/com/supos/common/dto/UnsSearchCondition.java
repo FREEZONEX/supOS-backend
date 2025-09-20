@@ -105,6 +105,9 @@ public class UnsSearchCondition extends PaginationDTO{
     @Schema(description = "模板别名")
     private String templateAlias;
 
+    @Schema(description = "模板Id")
+    private Long templateId;
+
     /**
      * 0--保留（模板），1--时序，2--关系，3--计算型, 5--告警
      */

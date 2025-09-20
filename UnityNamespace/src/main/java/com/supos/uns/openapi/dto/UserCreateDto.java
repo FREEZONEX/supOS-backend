@@ -4,7 +4,6 @@ import com.supos.common.annotation.UserNameConstraint;
 import com.supos.common.annotation.UserNameValidator;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 
 import java.io.Serializable;

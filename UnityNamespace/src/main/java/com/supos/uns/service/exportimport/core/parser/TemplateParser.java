@@ -69,7 +69,7 @@ public class TemplateParser extends AbstractParser {
 
         if (context.containTemplateAliasInImportFile(templateVo.getAlias())) {
             // excel 中存在重复的topic
-            log.warn(I18nUtils.getMessage("uns.excel.duplicate.item", String.format("%s|%s", ExcelTypeEnum.Template.getCode(), templateDto.getName())));
+            context.addError(flagNo, I18nUtils.getMessage("uns.excel.duplicate.item", templateVo.getAlias()));
             return null;
         }
 

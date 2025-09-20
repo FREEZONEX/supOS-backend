@@ -3,7 +3,7 @@ package com.supos.uns.util;
 import cn.hutool.core.thread.ThreadUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.supos.common.dto.SimpleUnsInstance;
+import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.UnsCountDTO;
 import com.supos.common.event.NamespaceChangeEvent;
 import com.supos.common.event.RemoveTopicsEvent;
@@ -44,7 +44,7 @@ public class UnsCountCache {
     @EventListener(classes = RemoveTopicsEvent.class)
     public void onRemoveTopics(RemoveTopicsEvent event) {
         ThreadUtil.execAsync(() -> {
-            Set<Long> parentIdSet = event.topics.values().stream().map(SimpleUnsInstance::getParentId).filter(Objects::nonNull).collect(Collectors.toSet());
+            Set<Long> parentIdSet = event.topics.stream().map(CreateTopicDto::getParentId).filter(Objects::nonNull).collect(Collectors.toSet());
             for (Long parentId : parentIdSet) {
                 this.evict(parentId);
             }

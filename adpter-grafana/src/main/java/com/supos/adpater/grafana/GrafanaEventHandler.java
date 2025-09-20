@@ -15,7 +15,6 @@ import com.supos.common.adpater.DataStorageAdapter;
 import com.supos.common.annotation.Description;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.CreateTopicDto;
-import com.supos.common.dto.SimpleUnsInstance;
 import com.supos.common.event.BatchCreateTableEvent;
 import com.supos.common.event.CreateDashboardEvent;
 import com.supos.common.event.EventBus;
@@ -69,13 +68,13 @@ public class GrafanaEventHandler {
             log.debug(">>>>>>>>>当前系统未启用grafana服务，不执行批量删除grafana dashboard");
             return;
         }
-        if (CollectionUtil.isEmpty(event.topics) || event.jdbcType == null || event.jdbcType == SrcJdbcType.None) {
+        if (CollectionUtil.isEmpty(event.topics)) {
             return;
         }
         ThreadUtil.execute(() -> {
             try {
                 //table = alias
-                event.topics.values().stream().filter(SimpleUnsInstance::isRemoveTableWhenDeleteInstance).map(SimpleUnsInstance::getTableName).collect(Collectors.toSet()).forEach(table -> {
+                event.topics.stream().filter(t -> t.getPathType() == Constants.PATH_TYPE_FILE && t.getFlags() != null && !Constants.withRetainTableWhenDeleteInstance(t.getFlags())).map(CreateTopicDto::getTable).collect(Collectors.toSet()).forEach(table -> {
                     String uid = GrafanaUtils.getDashboardUuidByAlias(table);
                     if (event.withDashboard) {
                         GrafanaUtils.deleteDashboard(uid);

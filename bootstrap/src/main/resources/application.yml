@@ -1,8 +1,3 @@
-springdoc:
-  swagger-ui:
-    path: /swagger-ui
-  api-docs:
-    path: /swagger-ui/v3/api-docs
 grpc:
   server:
     port: 19099
@@ -111,6 +106,9 @@ minio:
 
 chat2db:
   enable: ${ENABLE_CHAT2DB:true}
+  address: http://chat2db:10824
+
+i18nVersion: 202509181700
 #camunda:
 #  bpm:
 #    database:

@@ -8,7 +8,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.Set;
 
 @Data
-public class SimpleUnsInstance {
+public class SimpleUnsInstance implements SimpleUnsInfo {
     Long id;
     String name;
     String path;

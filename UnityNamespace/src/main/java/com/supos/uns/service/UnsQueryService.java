@@ -309,9 +309,24 @@ public class UnsQueryService implements UnsQueryApi {
                 ArrayList<TimeseriesInstanceSearchResult> rs = new ArrayList<>(list.size());
                 for (UnsPo po : list) {
                     FieldDefine[] fs = po.getFields();
-                    List<FieldDefineVo> fields = Arrays.stream(fs)
-                            .filter(f -> (f.getType().isNumber) && !f.getName().startsWith(Constants.SYSTEM_FIELD_PREV))
-                            .map(f -> new FieldDefineVo(f.getName(), f.getType().name)).collect(Collectors.toList());
+
+                    LinkedList<FieldDefine> fsList = new LinkedList<>(Arrays.asList(fs));
+                    Iterator<FieldDefine> itr = fsList.iterator();
+                    CreateTopicDto dtp = UnsConverter.po2dto(po);
+                    String tbF = dtp.getTbFieldName();
+                    if (tbF != null) {
+                        FieldDefine dvf = dtp.getFieldDefines().getFieldsMap().get(tbF);
+                        FieldDefine vf = dtp.getFieldDefines().getFieldsMap().get(Constants.SYSTEM_SEQ_VALUE);
+                        vf.setName(dvf.getTbValueName());
+                    }
+                    while (itr.hasNext()) {
+                        FieldDefine fd = itr.next();
+                        String name = fd.getName();
+                        if (name.startsWith(Constants.SYSTEM_FIELD_PREV) || fd.getTbValueName() != null || name.startsWith(Constants.SYS_FIELD_CREATE_TIME)) {
+                            itr.remove();
+                        }
+                    }
+                    List<FieldDefine> fields = List.of(fsList.toArray(new FieldDefine[0]));
                     if (fields.size() > 0) {
                         TimeseriesInstanceSearchResult srs = new TimeseriesInstanceSearchResult();
                         srs.setId(po.getId().toString());
@@ -610,9 +625,6 @@ public class UnsQueryService implements UnsQueryApi {
         return result;
     }
 
-    @Autowired
-    UnsConverter unsConverter;
-
     @NotNull
     public TopicTreeResult unsPoTrans2TreeResult(UnsPo uns) {
         return unsPoTrans2TreeResult(uns, false);
@@ -734,7 +746,7 @@ public class UnsQueryService implements UnsQueryApi {
             if (dataType == Constants.TIME_SEQUENCE_TYPE || dataType == Constants.CALCULATION_REAL_TYPE) {
                 LinkedList<FieldDefine> fsList = new LinkedList<>(Arrays.asList(fields));
                 Iterator<FieldDefine> itr = fsList.iterator();
-                CreateTopicDto dtp = unsConverter.po2dto(unsPo);
+                CreateTopicDto dtp = UnsConverter.po2dto(unsPo);
                 String tbF = dtp.getTbFieldName();
                 if (tbF != null) {
                     FieldDefine dvf = dtp.getFieldDefines().getFieldsMap().get(tbF);
@@ -969,10 +981,15 @@ public class UnsQueryService implements UnsQueryApi {
             jsonObject.put("updateTime", lastUpdateTime);
             jsonObject.put("msg", err);
             if (data != null) {
-                jsonObject.put("data", data);
+//                jsonObject.put("data", data);
                 JSONObject dataJsonObj = jsonObject.getJSONObject("data");
+                if (dataJsonObj == null) {
+                    dataJsonObj = new JSONObject();
+                }
                 dataJsonObj.remove(Constants.SYSTEM_SEQ_TAG);
                 dataJsonObj.remove(Constants.MERGE_FLAG);
+                dataJsonObj.putAll(data);
+                jsonObject.put("data", dataJsonObj);
                 jsonObject.put("dt", dt);
                 jsonObject.put("payload", dataJsonObj.toJSONString());
             } else {
@@ -1001,7 +1018,7 @@ public class UnsQueryService implements UnsQueryApi {
     @EventListener(classes = RemoveTopicsEvent.class)
     @Order(90)
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
-        for (SimpleUnsInstance ins : event.topics.values()) {
+        for (CreateTopicDto ins : event.topics) {
             topicLastMessages.remove(ins.getId());
         }
     }
@@ -1566,8 +1583,14 @@ public class UnsQueryService implements UnsQueryApi {
         if (CollectionUtils.isEmpty(aliasList)) {
             return ResponseEntity.status(400).body(ResultVO.fail("别名集合为空"));
         }
+        List<String> notExists = new ArrayList<>();
         JSONObject resultData = new JSONObject();
         for (String alias : aliasList) {
+            CreateTopicDto dto = unsDefinitionService.getDefinitionByAlias(alias);
+            if (dto == null) {
+                notExists.add(alias);
+                continue;
+            }
             String msgInfo = getLastMsgByAlias(alias, true).getData();
             JSONObject msg = JSON.parseObject(msgInfo);
             JSONObject data;
@@ -1597,6 +1620,14 @@ public class UnsQueryService implements UnsQueryApi {
                 data = DataUtils.transEmptyValue(uns, true);
             }
             resultData.put(alias, data);
+        }
+        if (!CollectionUtils.isEmpty(notExists)) {
+            ResultVO resultVO = new ResultVO();
+            resultVO.setCode(206);
+            UnsDataResponseVo res = new UnsDataResponseVo();
+            res.setNotExists(notExists);
+            resultVO.setData(res);
+            return ResponseEntity.ok(resultVO);
         }
         return ResponseEntity.ok(ResultVO.successWithData("ok", resultData));
     }

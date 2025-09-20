@@ -1,6 +1,6 @@
 {
-  "name": "File",
-  "description": "UNS file",
+  "name": "Topic",
+  "description": "UNS topic",
   "versions": {
     "v1alpha1": {
       "schema": {
@@ -162,7 +162,7 @@
     }
   },
   "$metadata": {
-    "name": "file.uns.supos.com",
+    "name": "topic.uns.supos.com",
     "creationTimestamp": "2025-07-09T06:21:57Z",
     "modifiedTimestamp": "2025-07-09T06:31:08Z"
   }

@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class CreateTopicDto {
+public class CreateTopicDto implements SimpleUnsInfo {
 
     @Hidden
     Long id;
@@ -115,7 +115,8 @@ public class CreateTopicDto {
     Long[] referIds;// 聚合的其他多个实例主题IDs
     @Hidden
     Map<Long, Integer> refUns;
-    @Hidden String layRec;
+    @Hidden
+    String layRec;
     String referTable;
 
     @Schema(description = "流引用表的字段定义")
@@ -192,6 +193,11 @@ public class CreateTopicDto {
     @Schema(description = "计算表达式")
     String expression;// 计算表达式
 
+    public void setExpression(String expression) {
+        this.expression = expression;
+        this.compileExpression = null;
+    }
+
     @JsonIgnore
     @JSONField(deserialize = false, serialize = false)
     @com.alibaba.fastjson2.annotation.JSONField(deserialize = false, serialize = false)
@@ -265,6 +271,8 @@ public class CreateTopicDto {
 
     @Hidden
     Boolean fieldsChanged;// Update时字段有没有修改
+
+    Date updateAt;
 
     public void setFrequency(String frequency) {
         this.frequency = frequency;

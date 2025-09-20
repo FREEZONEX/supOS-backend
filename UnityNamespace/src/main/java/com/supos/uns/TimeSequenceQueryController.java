@@ -17,7 +17,7 @@ public class TimeSequenceQueryController {
     @Autowired
     UnsDataService unsDataService;
 
-    @PostMapping("/open-api/supos/rest/sql")
+    @PostMapping("/open-api/rest/sql")
     @ResponseBody
     @Hidden
     public String executeSql(@RequestParam(value = "tz", required = false) String tz, @RequestParam(value = "req_id", required = false) String reqId,

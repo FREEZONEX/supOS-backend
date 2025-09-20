@@ -13,24 +13,18 @@ import com.supos.common.enums.TimeUnits;
 import com.supos.common.utils.ExpressionFunctions;
 import com.supos.common.utils.JsonUtil;
 import com.supos.common.utils.PathUtil;
-import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.vo.TopicTreeResult;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 
-@Service
 public class UnsConverter {
-    @Autowired
-    UnsMapper unsMapper;
 
-    public CreateTopicDto po2dto(UnsPo p) {
+    public static CreateTopicDto po2dto(UnsPo p) {
         return po2dto(p, true);
     }
 
-    final CopyOptions copyOptions = new CopyOptions().ignoreNullValue().ignoreError();
+    static final CopyOptions copyOptions = new CopyOptions().ignoreNullValue().ignoreError();
 
-    public CreateTopicDto po2dto(UnsPo p, boolean compileExpression) {
+    public static CreateTopicDto po2dto(UnsPo p, boolean compileExpression) {
         CreateTopicDto dto = new CreateTopicDto();
         BeanUtil.copyProperties(p, dto, copyOptions);
         Integer withFlags = p.getWithFlags();
@@ -95,7 +89,7 @@ public class UnsConverter {
         return null;
     }
 
-    public TopicTreeResult dto2TreeResult(CreateTopicDto dto){
+    public static TopicTreeResult dto2TreeResult(CreateTopicDto dto){
         TopicTreeResult result = new TopicTreeResult();
         result.setId(dto.getId().toString());
         result.setAlias(dto.getAlias());

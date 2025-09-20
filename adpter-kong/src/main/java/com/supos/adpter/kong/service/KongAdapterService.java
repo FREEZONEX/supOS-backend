@@ -9,10 +9,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.google.common.collect.Lists;
 import com.supos.adpter.kong.listener.KongAdapterCommandRunner;
-import com.supos.adpter.kong.vo.MarkRouteRequestVO;
-import com.supos.adpter.kong.vo.RoutResponseVO;
-import com.supos.adpter.kong.vo.RouteVO;
-import com.supos.adpter.kong.vo.ServiceResponseVO;
+import com.supos.adpter.kong.vo.*;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.protocol.KeyValuePair;
 import com.supos.common.utils.I18nUtils;
@@ -82,6 +79,29 @@ public class KongAdapterService {
                     rvo.setMenu(new RouteVO.MenuVO(kongVO.getPaths().get(0)));
                 }
                 routes.add(rvo);
+            }
+        }
+        return routes;
+    }
+
+    public List<SimpleRouteVo> routeList() {
+        String url = String.format("http://%s:%s/%s", host, port, GET_KONG_ROUTE);
+        HttpRequest request = HttpUtil.createGet(url);
+        HttpResponse response = request.execute();
+        List<SimpleRouteVo> routes = new ArrayList<>();
+        if (response.getStatus() != 200) {
+            log.error("request kong failed, response: {}", response.body());
+            return routes;
+        }
+        InternalKongResponseVO internalKongResponse = JSON.parseObject(response.body(), InternalKongResponseVO.class);
+        for (InternalKongVO route : internalKongResponse.data) {
+            SimpleRouteVo vo = new SimpleRouteVo();
+            vo.setId(route.getId());
+            vo.setName(route.getName());
+            List<String> paths = route.getPaths();
+            for (String path : paths) {
+                vo.setUrl(path);
+                routes.add(vo);
             }
         }
         return routes;

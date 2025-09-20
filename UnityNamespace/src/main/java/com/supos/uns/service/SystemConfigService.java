@@ -1,6 +1,7 @@
 package com.supos.uns.service;
 
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.ObjectUtil;
@@ -13,20 +14,20 @@ import com.supos.common.config.ContainerInfo;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.enums.ContainerEnvEnum;
 import com.supos.common.exception.vo.ResultVO;
-import com.supos.common.utils.I18nUtils;
-import com.supos.common.utils.JsonUtil;
-import com.supos.common.utils.KeycloakUtil;
-import com.supos.common.utils.RuntimeUtil;
-import com.supos.uns.util.FileUtils;
+import com.supos.common.utils.*;
+import com.supos.i18n.init.DatabaseMessageSource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.yaml.snakeyaml.Yaml;
@@ -34,6 +35,7 @@ import org.yaml.snakeyaml.Yaml;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -47,6 +49,31 @@ public class SystemConfigService {
 
     @Autowired
     private KeycloakUtil keycloakUtil;
+
+    /**
+     * 创建默认的消息源（作为父消息源）
+     */
+    @Bean
+    public MessageSource defaultMessageSource() {
+        ResourceBundleMessageSource messageSource = new ResourceBundleMessageSource();
+        messageSource.setBasenames("i18n/messages");
+        messageSource.setDefaultEncoding("UTF-8");
+        messageSource.setUseCodeAsDefaultMessage(true);
+        return messageSource;
+    }
+
+    /**
+     * 主消息源（使用自定义的数据库消息源）
+     */
+    @Bean
+    @Primary
+    public MessageSource messageSource() {
+        // 设置父消息源
+        DatabaseMessageSource messageSource = new DatabaseMessageSource();
+        messageSource.setParentMessageSource(defaultMessageSource());
+        messageSource.setUseCodeAsDefaultMessage(true);
+        return messageSource;
+    }
 
     @Bean("i18nUtils")
     public I18nUtils i18nUtils(MessageSource messageSource) {
@@ -74,7 +101,23 @@ public class SystemConfigService {
     private static final String ACTIVE_SERVICES_FILE = "active-services.txt";
 
     public ResultVO<SystemConfig> getSystemConfig() {
-        return ResultVO.successWithData(systemConfig);
+        SystemConfig config = BeanUtil.copyProperties(systemConfig, SystemConfig.class, "containerMap");
+        Map<String, ContainerInfo> oldContainerMap = systemConfig.getContainerMap();
+        if (MapUtils.isNotEmpty(oldContainerMap)) {
+            Map<String, ContainerInfo> containerMap = new HashMap<>();
+            for (Map.Entry<String, ContainerInfo> e : oldContainerMap.entrySet()) {
+                ContainerInfo oldContainerInfo = e.getValue();
+                ContainerInfo containerInfo = BeanUtil.copyProperties(oldContainerInfo, ContainerInfo.class, "envMap");
+                containerInfo.setDescription(!StrUtil.equalsIgnoreCase(oldContainerInfo.getDescription(),"null") ? I18nUtils.getMessage(oldContainerInfo.getDescription()) : "");
+                containerInfo.setEnvMap(oldContainerInfo.getEnvMap());
+                containerMap.put(e.getKey(), containerInfo);
+            }
+            config.setContainerMap(containerMap);
+        } else {
+            config.setContainerMap(new HashMap<>());
+        }
+
+        return ResultVO.successWithData(config);
     }
 
     private static Map<String, ContainerInfo> getSystemContainerMap() throws IOException {
@@ -113,8 +156,11 @@ public class SystemConfigService {
                 containerInfo.setName(containerName);
                 containerInfo.setVersion(StrUtil.subAfter(service.getString("image"), ":", true));
                 containerInfo.setEnvMap(envMap);
-                containerInfo.setDescription(I18nUtils.getMessage(StrUtil.toString((envMap.get(ContainerEnvEnum.SERVICE_DESCRIPTION.getName())))));
+                containerInfo.setDescription(StrUtil.toString((envMap.get(ContainerEnvEnum.SERVICE_DESCRIPTION.getName()))));
                 containerMap.put(containerName, containerInfo);
+                if ("fuxa".equals(containerName)) {
+                    containerInfo.setVersion("latest");
+                }
             }
 
             //gmqtt 特殊处理   emqx 和gmqtt只会存在一个
@@ -124,7 +170,7 @@ public class SystemConfigService {
                 containerInfo.setName("gmqtt");
                 containerInfo.setVersion(StrUtil.subAfter(service.getString("image"), ":", true));
                 containerInfo.setEnvMap(envMap);
-                containerInfo.setDescription(I18nUtils.getMessage(StrUtil.toString((envMap.get(ContainerEnvEnum.SERVICE_DESCRIPTION.getName())))));
+                containerInfo.setDescription(StrUtil.toString((envMap.get(ContainerEnvEnum.SERVICE_DESCRIPTION.getName()))));
                 containerMap.put("gmqtt", containerInfo);
             }
 

@@ -1,5 +1,7 @@
 package com.supos.uns.schdule;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
@@ -7,12 +9,13 @@ import com.supos.common.config.ContainerInfo;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
-import com.supos.common.dto.SimpleUnsInstance;
+import com.supos.common.dto.SimpleUnsInfo;
 import com.supos.common.event.*;
 import com.supos.uns.dao.mapper.UnsHistoryDeleteJobMapper;
 import com.supos.uns.dao.po.UnsHistoryDeleteJobPo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -30,6 +33,14 @@ public class UnsHistoryDeleteJob {
     @Autowired
     private SystemConfig systemConfig;
 
+    boolean usTsdb;
+
+    @EventListener(classes = ContextRefreshedEvent.class)
+    void init() {
+        ContainerInfo tsdbContainer = systemConfig.getContainerMap().get("tsdb");
+        usTsdb = tsdbContainer != null;
+    }
+
     /**
      * 每天晚上11点执行，检查是否超期要删除的uns时序数据
      */
@@ -41,41 +52,42 @@ public class UnsHistoryDeleteJob {
         }
         // 筛选出VQT数据
         List<List<UnsHistoryDeleteJobPo>> batches = Lists.partition(jobs, 200);
-        for (int i = 0; i < batches.size(); i++) {
-            log.info("==>触发删除超期历史时序数据：{}, 批次：{}", batches.get(i), i);
+
+        int i = 0;
+        for (List<UnsHistoryDeleteJobPo> part : batches) {
+            log.info("==>触发删除超期历史时序数据：{}, 批次：{}", part, i++);
             // 判断安装TDENGINE还是Timescale
-            ContainerInfo tsdbContainer = systemConfig.getContainerMap().get("tsdb");
-            if (tsdbContainer != null) {
-                List<SimpleUnsInstance> standardList = new ArrayList<>();
-                List<SimpleUnsInstance> nonStandardList = new ArrayList<>();
-                fillList(batches.get(i), standardList, nonStandardList);
-                EventBus.publishEvent(new RemoveTimeScaleTopicsEvent(this, standardList, nonStandardList));
+            if (usTsdb) {
+                sendTsdbRemoveEvent(part);
             } else {
-                EventBus.publishEvent(buildRemoveTDengineEvent(batches.get(i)));
+                EventBus.publishEvent(buildRemoveTDengineEvent(part));
             }
-            List<String> aliasList = batches.get(i).stream().map(UnsHistoryDeleteJobPo::getAlias).toList();
+            List<String> aliasList = part.stream().map(UnsHistoryDeleteJobPo::getAlias).toList();
             // 删除数据库存档
             unsHistoryDeleteJobMapper.deleteByAliases(aliasList);
         }
 
     }
 
+    private void sendTsdbRemoveEvent(List<? extends SimpleUnsInfo> part) {
+        List<SimpleUnsInfo> standardList = new ArrayList<>();
+        List<SimpleUnsInfo> nonStandardList = new ArrayList<>();
+        fillList(part, standardList, nonStandardList);
+        EventBus.publishEvent(new RemoveTimeScaleTopicsEvent(this, standardList, nonStandardList));
+    }
+
+    static final CopyOptions copyOptions = new CopyOptions().ignoreNullValue().ignoreError();
+
     private RemoveTDengineEvent buildRemoveTDengineEvent(List<UnsHistoryDeleteJobPo> deleteUnsJobs) {
-        Map<Long, SimpleUnsInstance> topics = new HashMap<>();
-        Collection<String> aliasList = new ArrayList<>();
+        ArrayList<CreateTopicDto> topics = new ArrayList<>(deleteUnsJobs.size());
         for (UnsHistoryDeleteJobPo job : deleteUnsJobs) {
-            SimpleUnsInstance sui = new SimpleUnsInstance();
-            sui.setTableName(job.getTableName());
-            sui.setAlias(job.getAlias());
-            sui.setName(job.getName());
-            sui.setFields(job.getFields());
-            sui.setDataType(job.getDataType());
-            sui.setPath(job.getPath());
+            CreateTopicDto dto = new CreateTopicDto();
+            BeanUtil.copyProperties(job, dto, copyOptions);
+            dto.setDataSrcId(SrcJdbcType.TdEngine);
             // 此ID非uns的数据ID
-            topics.put(job.getId(), sui);
-            aliasList.add(job.getAlias());
+            topics.add(dto);
         }
-        return new RemoveTDengineEvent(this, SrcJdbcType.TdEngine, topics, false, false, aliasList);
+        return new RemoveTDengineEvent(this, topics, false, false);
     }
 
     /**
@@ -147,13 +159,20 @@ public class UnsHistoryDeleteJob {
     @EventListener(RemoveTopicsEvent.class)
     @Order(1000)
     public void saveToHistoryDelete(RemoveTopicsEvent event) {
-        if (event.jdbcType == null || event.jdbcType.typeCode != Constants.TIME_SEQUENCE_TYPE) {
-            return;
-        }
         long t0 = System.currentTimeMillis();
-        Collection<SimpleUnsInstance> simpleUnsList = event.topics.values().stream().filter(t -> Constants.withHasData(t.getFlags())).toList();
+        Collection<CreateTopicDto> simpleUnsList = new LinkedList<>();
+        ArrayList<CreateTopicDto> noDataList = new ArrayList<>(event.topics.size());
+        for (CreateTopicDto t : event.topics) {
+            if (t.getDataSrcId() != null && t.getDataSrcId().typeCode == Constants.TIME_SEQUENCE_TYPE) {
+                if (Constants.withHasData(t.getFlags())) {
+                    simpleUnsList.add(t);
+                } else {
+                    noDataList.add(t);
+                }
+            }
+        }
         List<UnsHistoryDeleteJobPo> deleteUns = new ArrayList<>();
-        for (SimpleUnsInstance simpleUns : simpleUnsList) {
+        for (CreateTopicDto simpleUns : simpleUnsList) {
             log.debug("simpleUns==> {}", simpleUns);
             UnsHistoryDeleteJobPo po = new UnsHistoryDeleteJobPo();
 //            long id = IdUtil.getSnowflakeNextId();
@@ -164,7 +183,7 @@ public class UnsHistoryDeleteJob {
             po.setPathType(Constants.PATH_TYPE_FILE);
             po.setAlias(simpleUns.getAlias());
             po.setDataType(simpleUns.getDataType());
-            po.setTableName(simpleUns.getTableNameOnly());
+            po.setTableName(simpleUns.getTableName());
             deleteUns.add(po);
             if (deleteUns.size() >= 500) {
                 unsHistoryDeleteJobMapper.batchInsert(deleteUns);
@@ -175,23 +194,25 @@ public class UnsHistoryDeleteJob {
             unsHistoryDeleteJobMapper.batchInsert(deleteUns);
             deleteUns.clear();
         }
+        if (!noDataList.isEmpty()) {
+            for (List<CreateTopicDto> part : Lists.partition(noDataList, 500)) {
+                if (usTsdb) {
+                    sendTsdbRemoveEvent(part);
+                } else {
+                    EventBus.publishEvent(new RemoveTDengineEvent(this, part, false, false));
+                }
+            }
+        }
         long t1 = System.currentTimeMillis();
-        log.info("历史保存删除耗时 : {} ms, size={} of {}", t1 - t0, simpleUnsList.size(), event.topics.size());
+        log.info("历史保存删除耗时 : {} ms, size={}, noDataSize={}", t1 - t0, simpleUnsList.size(), noDataList.size());
     }
 
-    private void fillList(List<UnsHistoryDeleteJobPo> jobs, List<SimpleUnsInstance> standardList, List<SimpleUnsInstance> nonStandardList) {
-        for (UnsHistoryDeleteJobPo job : jobs) {
+    private void fillList(List<? extends SimpleUnsInfo> jobs, List<SimpleUnsInfo> standardList, List<SimpleUnsInfo> nonStandardList) {
+        for (SimpleUnsInfo job : jobs) {
             if (StringUtils.hasText(job.getTableName())) {
-                SimpleUnsInstance simpleUns = new SimpleUnsInstance();
-                simpleUns.setAlias(job.getAlias());
-                simpleUns.setTableName(job.getTableName());
-                simpleUns.setId(job.getId());
-                standardList.add(simpleUns);
+                standardList.add(job);
             } else {
-                SimpleUnsInstance simpleUns = new SimpleUnsInstance();
-                simpleUns.setAlias(job.getAlias());
-                simpleUns.setTableName(job.getAlias());
-                nonStandardList.add(simpleUns);
+                nonStandardList.add(job);
             }
         }
     }

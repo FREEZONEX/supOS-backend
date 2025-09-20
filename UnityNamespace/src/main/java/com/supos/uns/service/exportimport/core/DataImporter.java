@@ -354,8 +354,10 @@ public abstract class DataImporter {
                             ExcelUnsWrapDto parentWrap = context.getFolderMap().get(parentPath);
                             if (parentWrap != null) {
                                 if (!parentWrap.isCheckSuccess()) {
-                                    wrapDto.setCheckSuccess(false);
-                                    context.addError(wrapDto.getFlagNo(), I18nUtils.getMessage("uns.folder.parent.not.found"));
+                                    // 父级文件夹未通过, 再看数据库里有没有
+                                    parentMap.put(wrapDto, parentPath);
+                                    //wrapDto.setCheckSuccess(false);
+                                    //context.addError(wrapDto.getFlagNo(), I18nUtils.getMessage("uns.folder.parent.not.found"));
                                 } else {
                                     uns.setParentAlias(parentWrap.getUns().getAlias());
                                 }

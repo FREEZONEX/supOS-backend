@@ -44,7 +44,7 @@ public class MenuController {
      * @return
      */
     @Operation(summary = "保存菜单",tags = "openapi.tag.menu.management")
-    @PostMapping("/open-api/supos/menu")
+    @PostMapping("/open-api/menu")
     public ResultVO saveMenu(@Parameter(description = "服务名", example = "serviceName") @ServiceNameValidator @RequestParam(name = "serviceName", required = false) String serviceName,
                              @Parameter(description = "名称，唯一标识一个菜单", example = "name") @MenuNameValidator @NotBlank(message = "menu.name.null") @RequestParam(name = "name") String name,
                              @Parameter(description = "显示名",example = "showName") @NotBlank(message = "menu.showname.null") @Size(max = 64, message = "menu.showname.length") @RequestParam(name = "showName") String showName,

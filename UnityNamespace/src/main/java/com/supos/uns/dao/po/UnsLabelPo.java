@@ -28,4 +28,9 @@ public class UnsLabelPo {
     public UnsLabelPo(String labelName) {
         this.labelName = labelName;
     }
+
+    public UnsLabelPo(Long id, String labelName) {
+        this.id = id;
+        this.labelName = labelName;
+    }
 }

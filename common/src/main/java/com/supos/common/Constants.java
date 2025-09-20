@@ -194,6 +194,8 @@ public class Constants {
     public final static String JSON_OUT_PATH = "/export/all-namespace.json";
     public final static String EXCEL_OUT_TEMP_PATH = "/export/temp-namespace.xlsx";
 
+    public final static String I18N_EXCEL_OUT_PATH = "/export/i18n_languageCode.xlsx";
+
     public static final String BLOB_PATH = "/data/uns";
 
     public static final String ACCESS_TOKEN_KEY = "supos_community_token";
@@ -275,4 +277,10 @@ public class Constants {
     public static final String GLOBAL_EXPORT_EVENT_FLOW = "event_flow.json";
     public static final String GLOBAL_EXPORT_DASHBOARD = "dashboard.json";
 
+    public static final String PLUG_PREFIX = "PLUGIN";
+    public static final String APP_PREFIX = "APP";
+
+    public static String generateCodeByPrefix(String prefix, String code) {
+        return prefix + "#" + code;
+    }
 }

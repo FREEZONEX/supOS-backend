@@ -8,15 +8,11 @@ import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.InstanceField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 
 @NoArgsConstructor
 @Data
@@ -25,6 +21,7 @@ public class CreateFileDto {
     @Schema(description = "*文件名称，和文件夹显示名一致。支持修改。")
     @NotEmpty(message = "uns.name.empty")
     @Size(max = 63, message = "uns.external.name.length.limit.exceed")
+    @Pattern(regexp = Constants.NAME_REG, message = "uns.name.format.error")
     private String name;
 
     @Schema(description = "文件别名。最大长度63字符，允许字符包括英文、数字、下划线。为空则系统自动生成")

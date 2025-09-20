@@ -29,7 +29,6 @@ This project follows a multi-module architecture, including the following submod
 | app-manager           | Application management module |
 | adpter-kong           | Kong API gateway adapter |
 | adpter-nodered        | Node-RED adapter |
-| adpter-hasura         | Hasura adapter |
 | gateway               | Gateway service |
 | adpter-elasticsearch  | Elasticsearch adapter |
 | adpter-minio          | Minio storage adapter |

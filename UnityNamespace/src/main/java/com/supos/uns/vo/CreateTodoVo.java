@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 public class CreateTodoVo {
 
     @Schema(description = "用户名")
-    @NotBlank(message = "用户名不可为空")
+    @NotBlank(message = "user.username.null")
     private String username;
     /**
      * 模块编码
@@ -23,21 +23,21 @@ public class CreateTodoVo {
      * @see com.supos.common.enums.SysModuleEnum
      */
     @Schema(description = "模块编码")
-    @NotBlank(message = "模块编码不可为空")
-    @Size(max = 32, message = "模块编码长度不能超过32")
+    @NotBlank(message = "todo.moduleCode.null")
+    @Size(max = 32, message = "todo.moduleCode.length.error")
     private String moduleCode;
 
     @Schema(description = "模块名称")
-    @NotBlank(message = "模块名称不可为空")
-    @Size(max = 32, message = "模块名称长度不能超过32")
+    @NotBlank(message = "todo.moduleName.null")
+    @Size(max = 32, message = "todo.moduleName.length.error")
     private String moduleName;
 
     /**
      * 事项信息
      */
     @Schema(description = "事项信息")
-    @NotBlank(message = "事项信息不可为空")
-    @Size(max = 256, message = "事项信息长度不能超过256")
+    @NotBlank(message = "todo.todoMsg.null")
+    @Size(max = 256, message = "todo.todoMsg.length.error")
     private String todoMsg;
 
     /**

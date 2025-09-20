@@ -38,14 +38,14 @@ public class CreateTemplateVo {
     /**
      * 模板名称
      */
-    @NotEmpty(message = "模板名称不可为空")
+    @NotEmpty(message = "uns.template.name.not.empty")
     @Size(max = 63 , message = "uns.template.name.length")
     @Schema(description = "模板名称")
     String name;
     /**
      * 字段定义
      */
-    @NotEmpty(message = "字段定义不可为空")
+    @NotEmpty(message = "uns.field.empty")
     @Schema(description = "字段定义")
     @JsonAlias({"fields","definition"})
     FieldDefine[] fields;

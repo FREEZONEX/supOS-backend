@@ -7,7 +7,6 @@ import com.supos.common.SrcJdbcType;
 import com.supos.common.annotation.Description;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
-import com.supos.common.dto.SimpleUnsInstance;
 import com.supos.common.enums.FieldType;
 import com.supos.common.enums.IOTProtocol;
 import com.supos.common.event.BatchCreateTableEvent;
@@ -112,7 +111,7 @@ public class ImportNodeFlowController {
     @Order(1000)
     void onBatchDeleteFlow(RemoveTopicsEvent event) {
         log.info("==>trigger delete flow event 开始批量删除流程...");
-        if (!event.withFlow || event.jdbcType == null || event.jdbcType == SrcJdbcType.None) {
+        if (!event.withFlow) {
             log.info("<==skip delete flows, because withFlow is false");
             return;
         }
@@ -120,10 +119,11 @@ public class ImportNodeFlowController {
             log.info("<==skip delete flows, because topics is empty");
             return;
         }
-        List<String> alias = event.topics.values().stream().filter(SimpleUnsInstance::isRemoveTableWhenDeleteInstance).map(SimpleUnsInstance::getAlias).collect(Collectors.toList());
+        int size = 0;
+        List<String> alias = event.topics.stream().map(CreateTopicDto::getAlias).collect(Collectors.toList());
         importNodeRedFlowService.deleteFlows(alias);
-        log.info("<== 批量删除成功 {}", alias.size());
-
+        size += alias.size();
+        log.info("<== 批量删除成功 {}", size);
     }
 
     private String genMockData(FieldDefine[] fields) {

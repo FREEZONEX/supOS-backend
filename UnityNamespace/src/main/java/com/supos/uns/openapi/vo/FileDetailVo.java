@@ -1,18 +1,16 @@
 package com.supos.uns.openapi.vo;
 
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.supos.common.dto.FieldDefine;
-import com.supos.common.dto.InstanceField;
 import com.supos.uns.vo.InstanceFieldVo;
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 @NoArgsConstructor
@@ -56,17 +54,14 @@ public class FileDetailVo {
     @Schema(description = "是否持久化 默认false")
     private Boolean persistence = false;
 
-    @Schema(description = "是否生成仪表盘默认false")
-    private Boolean dashBoard = false;
-
-    @Schema(description = "是否模拟数据 默认false")
-    private Boolean addFlow = false;
-
     @Schema(description = "引用对象 当dataType为计算、聚合、引用时必填")
     private InstanceFieldVo[] refers;
 
     @Schema(description = "当dataType=3时可指定表达式，a1表示refers中第一个，a2表示第二个，以此类推。允许为空或无该字段，表示暂无表达式，此时可按照1-时序的特性来处理。")
     private String expression;
+
+    @Schema(description = "用于展示的表达式，引用用 path")
+    String showExpression;
 
     @Schema(description = "聚合计算频率：当聚合类型时(dataType=6)的计算时间间隔，单位支持：秒:s 分钟:m 小时：h；如三分钟：3m")
     private String frequency;

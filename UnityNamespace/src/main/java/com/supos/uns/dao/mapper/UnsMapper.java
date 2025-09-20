@@ -31,7 +31,7 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
     List<UnsPo> listByAlias(@Param("alias") Collection<String> alias);
 
 
-    @Select("select alias from " +  UnsPo.TABLE_NAME + " where path = #{path}")
+    @Select("select alias from " + UnsPo.TABLE_NAME + " where path = #{path}")
     String selectAliasByPath(@Param("path") String path);
 
     @Select("select * from " + UnsPo.TABLE_NAME + " where path_type=2 and data_type !=" + Constants.CALCULATION_HIST_TYPE +
@@ -92,7 +92,7 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
     UnsPo getByAlias(@Param("alias") String alias);
 
     @Update("update " + UnsPo.TABLE_NAME + " set table_name=#{tb}, fields=#{fields,typeHandler=com.supos.uns.config.FieldsTypeHandler}, number_fields=#{numberCount}, update_at=#{updateAt} where id=#{id}")
-    int updateModelFieldsById(@Param("id") Long id, @Param("tb")String tableName, @Param("fields") FieldDefine[] fields, @Param("numberCount") int numberCount, Date updateAt);
+    int updateModelFieldsById(@Param("id") Long id, @Param("tb") String tableName, @Param("fields") FieldDefine[] fields, @Param("numberCount") int numberCount, Date updateAt);
 
     @Update("<script> update " + UnsPo.TABLE_NAME + " set fields=#{fields,typeHandler=com.supos.uns.config.FieldsTypeHandler}, number_fields=#{numberCount}, update_at=now() where id in " +
             "  <foreach collection=\"ids\" item=\"id\" index=\"index\" open=\"(\" close=\")\" separator=\",\"> " +
@@ -156,14 +156,14 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
     ArrayList<UnsPo> listAlarmRules(@Param("k") String key, @Param("offset") int offset, @Param("size") int size);
 
     @UpdateProvider(type = UnsRefUpdateProvider.class, method = "updateRefUns")
-    void updateRefUns(@Param("id") Long id, @Param("ids") Map<Long, Integer> calcIds);
+    void updateRefUns(@Param("id") Long id, @Param("ids") Map<Long, Integer> calcIds, @Param("ut") Date updateAt);
 
     @UpdateProvider(type = UnsRefUpdateProvider.class, method = "removeRefUns")
-    void removeRefUns(@Param("id") Long id, @Param("ids") Collection<Long> calcIds);
+    void removeRefUns(@Param("id") Long id, @Param("ids") Collection<Long> calcIds, @Param("ut") Date updateAt);
 
     @Select("<script> select a.* , " +
             "(SELECT COUNT(*) FROM uns_namespace c WHERE c.parent_id = a.id) AS count_direct_children" +
-            " from " + UnsPo.TABLE_NAME + " a "+
+            " from " + UnsPo.TABLE_NAME + " a " +
             " where a.id in " +
             "  <foreach collection=\"ids\" item=\"id\" index=\"index\" open=\"(\" close=\")\" separator=\",\"> " +
             "      #{id}" +
@@ -213,9 +213,9 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
     void updateUnsLabelNames(@Param("labelId") Long labelId, @Param("labelName") String labelName);
 
     class UnsRefUpdateProvider {
-        public static String updateRefUns(@Param("id") Long id, @Param("ids") Map<Long, Integer> idDataTypes) {
+        public static String updateRefUns(@Param("id") Long id, @Param("ids") Map<Long, Integer> idDataTypes, @Param("ut") Date updateAt) {
             StringBuilder sql = new StringBuilder(128 + idDataTypes.size());
-            sql.append("UPDATE ").append(UnsPo.TABLE_NAME).append(" SET ref_uns = ");
+            sql.append("UPDATE ").append(UnsPo.TABLE_NAME).append(" SET update_at=#{ut}, ref_uns = ");
             for (int i = 0, sz = idDataTypes.size(); i < sz; i++) {
                 sql.append("jsonb_set(");
             }
@@ -229,9 +229,9 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
             return sql.toString();
         }
 
-        public static String removeRefUns(@Param("id") Long id, @Param("ids") Collection<Long> calcIds) {
+        public static String removeRefUns(@Param("id") Long id, @Param("ids") Collection<Long> calcIds, @Param("ut") Date updateAt) {
             StringBuilder sql = new StringBuilder(128 + calcIds.size());
-            sql.append("UPDATE ").append(UnsPo.TABLE_NAME).append(" SET ref_uns = ");
+            sql.append("UPDATE ").append(UnsPo.TABLE_NAME).append(" SET update_at=#{ut}, ref_uns = ");
             for (int i = 0, sz = calcIds.size(); i < sz; i++) {
                 sql.append("jsonb_set_lax(");
             }

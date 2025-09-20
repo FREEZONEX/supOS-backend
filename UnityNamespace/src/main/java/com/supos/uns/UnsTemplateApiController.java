@@ -71,7 +71,7 @@ public class UnsTemplateApiController {
     @PutMapping(path = {"/inter-api/supos/uns/model"})
     @Valid
     public ResultVO updateFieldAndDesc(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "模板字段定义") UpdateModeRequestVo dto) throws Exception {
-        if (dto.getFields() != null && dto.getFields().length > 0) {
+        if (dto.getFields() != null) {
             return unsTemplateService.updateFields(dto.getAlias(), dto.getFields());
         } else {
             return unsTemplateService.updateDescription(dto.getAlias(), dto.getModelDescription());

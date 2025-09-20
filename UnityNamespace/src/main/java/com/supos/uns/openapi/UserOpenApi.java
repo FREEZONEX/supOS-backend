@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -24,15 +25,15 @@ public class UserOpenApi {
     private UserOpenapiService userOpenapiService;
 
     @Operation(summary = "用户列表",tags = "openapi.tag.user.management")
-    @GetMapping({"/open-api/supos/user/pageList"})
+    @GetMapping({"/open-api/user/pageList"})
     public PageResultDTO<UserDetailVo> openUserPageList(
-            @ParameterObject UserPageQueryDto params){
+            @Validated @ParameterObject UserPageQueryDto params){
         return userOpenapiService.userManageList(params);
     }
 
 
     @Operation(summary = "用户详情",tags = "openapi.tag.user.management")
-    @GetMapping({"/open-api/supos/user/{username}"})
+    @GetMapping({"/open-api/user/{username}"})
     public ResultVO<UserDetailVo> userDetail(@PathVariable @Parameter(description = "用户名") String username){
         UserPageQueryDto queryDto = new UserPageQueryDto();
         queryDto.setUsername(username);

@@ -28,7 +28,7 @@ public class SystemConfigController {
      * 获取系统配置
      */
     @Operation(summary = "获取系统配置")
-    @GetMapping(path = {"/inter-api/supos/systemConfig","/open-api/supos/systemConfig"})
+    @GetMapping(path = {"/inter-api/supos/systemConfig","/open-api/systemConfig"})
     public ResultVO<SystemConfig> systemConfig(){
         return systemConfigService.getSystemConfig();
     }

@@ -12,6 +12,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
 import java.util.regex.Pattern;
 
 /**
@@ -301,5 +302,35 @@ public class PathUtil {
         }
 
         return parts[parts.length - 1];
+    }
+
+    public static String generateUniqueName(String baseName, List<String> all) {
+        int maxSuffix = -1;
+
+        if (!all.contains(baseName)) {
+            return baseName;
+        }
+
+        for (String name : all) {
+
+            if (name.equals(baseName)) {
+                // 说明原始名字已被占用
+                maxSuffix = Math.max(maxSuffix, 0);
+            } else if (name.startsWith(baseName + "-")) {
+                // 提取后缀数字
+                String suffixStr = name.substring(baseName.length() + 1);
+                if (suffixStr.matches("\\d+")) {
+                    int suffix = Integer.parseInt(suffixStr);
+                    maxSuffix = Math.max(maxSuffix, suffix);
+                }
+            }
+        }
+
+        if (maxSuffix == -1) {
+            // 没有重复
+            return baseName;
+        } else {
+            return baseName + "-" + (maxSuffix + 1);
+        }
     }
 }

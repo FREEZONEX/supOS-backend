@@ -34,8 +34,6 @@ public class UnsTreeService {
     @Autowired
     UnsDefinitionService unsDefinitionService;
     @Autowired
-    UnsConverter unsConverter;
-    @Autowired
     UnsLabelMapper unsLabelMapper;
 
     public PageResultDTO<TopicTreeResult> tree(UnsTreeCondition params) {
@@ -91,9 +89,9 @@ public class UnsTreeService {
                 return matchParentId && matchKeyword && matchDataType && matchPathType;
             }).collect(Collectors.toList());
         } else if (params.getSearchType() == 2) {
-            allMatches = unsLabelMapper.getUnsByKeyword(params.getKeyword()).stream().map(uns -> unsConverter.po2dto(uns)).collect(Collectors.toList());
+            allMatches = unsLabelMapper.getUnsByKeyword(params.getKeyword()).stream().map(uns -> UnsConverter.po2dto(uns)).collect(Collectors.toList());
         } else if (params.getSearchType() == 3) {
-            allMatches = unsMapper.listInTemplate(params.getKeyword()).stream().map(uns -> unsConverter.po2dto(uns)).collect(Collectors.toList());
+            allMatches = unsMapper.listInTemplate(params.getKeyword()).stream().map(uns -> UnsConverter.po2dto(uns)).collect(Collectors.toList());
         }
         return new UnsResultDto(allDefinitions, allMatches);
     }
@@ -113,7 +111,7 @@ public class UnsTreeService {
 
         //转换
         List<TopicTreeResult> treeResults = pageResult.stream().map(dto -> {
-            TopicTreeResult topicTreeResult = unsConverter.dto2TreeResult(dto);
+            TopicTreeResult topicTreeResult = UnsConverter.dto2TreeResult(dto);
             if (Constants.PATH_TYPE_DIR == dto.getPathType()) {
                 String layRec = dto.getLayRec();
                 if (layRec != null) {
@@ -157,6 +155,8 @@ public class UnsTreeService {
             parent = unsMapper.selectById(params.getParentId());
             if (parent != null) {
                 parentLayRec = parent.getLayRec();
+            } else {
+                return PageUtil.empty(Page.of(pageNo, pageSize));
             }
         }
         //对比父级和当前节点的layRec ，获取父级节点的下一级节点layRec，如父级为空，则返回父级layRec
@@ -180,7 +180,7 @@ public class UnsTreeService {
         //手动分页
         List<CreateTopicDto> pageResult = ListUtil.page(pageNo.intValue() - 1, pageSize.intValue(), filtered);
         List<TopicTreeResult> treeResultList = pageResult.stream().map(dto -> {
-            TopicTreeResult result = unsConverter.dto2TreeResult(dto);
+            TopicTreeResult result = UnsConverter.dto2TreeResult(dto);
             // 使用 nextNodeMap 中的 children
             List<CreateTopicDto> children = nextNodeMap.getOrDefault(dto.getId(), Collections.emptyList());
             // 分组统计各类型数量

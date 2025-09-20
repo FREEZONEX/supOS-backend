@@ -26,13 +26,13 @@ public class UnsDataController {
     private UnsDataService unsDataService;
 
     @Operation(summary = "批量修改文件值", tags = "openapi.tag.folder.management")
-    @PostMapping(path = {"/open-api/supos/uns/file/batchUpdate"})
+    @PostMapping(path = {"/open-api/uns/file/batchUpdate"})
     public ResultVO batchUpdateFile(@RequestBody List<UpdateFileDTO> list) {
         return unsDataService.batchUpdateFile(list);
     }
 
     @Operation(summary = "批量查询文件实时值", tags = "openapi.tag.template.management")
-    @GetMapping(path = {"/open-api/supos/uns/file/batchQuery"})
+    @GetMapping(path = {"/open-api/uns/file/batchQuery"})
     public ResultVO batchQueryFile(@RequestParam(name = "alias", required = false) @Parameter(description = "别名") List<String> alias,
                                    @RequestParam(name = "path", required = false) @Parameter(description = "文件路径") List<String> path
     ) {
@@ -40,7 +40,7 @@ public class UnsDataController {
     }
 
     @Operation(summary = "获取文件BLOB类型的值", tags = "openapi.tag.template.management")
-    @PostMapping(path = {"/open-api/supos/uns/file/blob"})
+    @PostMapping(path = {"/open-api/uns/file/blob"})
     public ResultVO batchQueryFile(@RequestBody FileBlobDataQueryDto query) {
         return ResultVO.successWithData(unsDataService.queryBlobValue(query));
     }

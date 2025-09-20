@@ -10,7 +10,7 @@ import com.supos.common.Constants;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.exception.BuzException;
 import com.supos.common.utils.I18nUtils;
-import com.supos.uns.bo.RunningStatus;
+import com.supos.common.RunningStatus;
 import com.supos.uns.service.UnsAddService;
 import com.supos.uns.service.UnsLabelService;
 import com.supos.uns.service.UnsManagerService;
@@ -19,13 +19,11 @@ import com.supos.uns.service.exportimport.core.DataImporter;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.core.io.ClassPathResource;
 
 import java.io.File;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -53,12 +51,6 @@ public class ExcelDataImporter extends DataImporter {
     public void writeError(File srcfile, File outFile) {
         try {
             String templatePath = Constants.EXCEL_TEMPLATE_PATH;
-            String language = getContext().getLanguage();
-            if (language != null) {
-                if (StringUtils.containsIgnoreCase(language, "zh")) {
-                    templatePath = Constants.EXCEL_TEMPLATE_ZH_PATH;
-                }
-            }
             ExcelWriter excelWriter = EasyExcel.write(outFile).withTemplate(new ClassPathResource(templatePath).getInputStream()).build();
 
             com.alibaba.excel.ExcelReader excelReader =EasyExcel.read(srcfile).ignoreEmptyRow(false).build();

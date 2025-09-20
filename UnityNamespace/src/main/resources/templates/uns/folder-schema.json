@@ -1,6 +1,6 @@
 {
-  "name": "Folder",
-  "description": "UNS folder",
+  "name": "Path",
+  "description": "UNS path",
   "versions": {
     "v1alpha1": {
       "schema": {
@@ -128,7 +128,7 @@
     }
   },
   "$metadata": {
-    "name": "folder.uns.supos.com",
+    "name": "path.uns.supos.com",
     "creationTimestamp": "2025-07-09T06:21:57Z",
     "modifiedTimestamp": "2025-07-09T06:31:09Z"
   }
