@@ -38,7 +38,7 @@ public class TodoOpenApi {
     }
 
     @Operation(summary = "创建待办", tags = "待办中心")
-    @PostMapping({"/open-api/todo/create"})
+    @PostMapping({"/open-api/todo"})
     public ResultVO createTodo(@Valid @RequestBody CreateTodoVo createTodoVo) {
         return todoService.createTodo(createTodoVo);
     }

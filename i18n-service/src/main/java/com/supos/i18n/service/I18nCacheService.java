@@ -93,15 +93,17 @@ public class I18nCacheService {
      * @param key
      */
     public void refreshResource(String key) {
-        for (LoadingCache<String, Optional<String>> resourceCache : cacheMap.values()) {
-            resourceCache.invalidate(key);
+        for (Map.Entry<String, LoadingCache<String, Optional<String>>> e : cacheMap.entrySet()) {
+            String languageCode = e.getKey();
+            LoadingCache<String, Optional<String>> cache = e.getValue();
+            cache.invalidate(String.format("%s--%s--%s", languageCode, null, key));
         }
     }
 
     private LoadingCache<String, Optional<String>> createResourceCache() {
         return CacheBuilder.newBuilder()
                 .maximumSize(10000)
-                .expireAfterWrite(1, TimeUnit.MINUTES)
+                .expireAfterAccess(1, TimeUnit.MINUTES)
                 .build(new CacheLoader<String, Optional<String>>() {
                     @Override
                     public Optional<String> load(String key) throws Exception {
