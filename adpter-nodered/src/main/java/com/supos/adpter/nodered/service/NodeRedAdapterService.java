@@ -512,13 +512,26 @@ public class NodeRedAdapterService {
         nodes.add(labelNode);
     }
 
-    private void deployGlobalNodesToNodeRed(JSONArray globalNodes) {
-        if (globalNodes == null || globalNodes.isEmpty()) {
+    private void deployGlobalNodesToNodeRed(JSONArray newGlobalNodes) {
+        if (newGlobalNodes == null || newGlobalNodes.isEmpty()) {
             return;
         }
+        Map<String, JSONObject> map = new HashMap<>();
+        JSONArray globalNodes = retrieveGlobalNodeFromNodeRed();
+        if (globalNodes != null) {
+            for (int i = 0; i < globalNodes.size(); i++) {
+                String id = globalNodes.getJSONObject(i).getString("id");
+                map.put(id, globalNodes.getJSONObject(i));
+            }
+        }
+        for (int j = 0; j < newGlobalNodes.size(); j++) {
+            String id = newGlobalNodes.getJSONObject(j).getString("id");
+            map.put(id, newGlobalNodes.getJSONObject(j));
+        }
+
         JSONObject requestBody = new JSONObject();
         requestBody.put("id", "global");
-        requestBody.put("configs", globalNodes);
+        requestBody.put("configs", map.values());
 
         String url = String.format("http://%s:%s/flow/global", nodeRedHost, nodeRedPort);
         HttpRequest httpClient = HttpUtil.createRequest(Method.PUT, url);
