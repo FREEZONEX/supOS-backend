@@ -62,7 +62,7 @@ public class ExcelDataExporter extends DataExporter {
 
             ExcelWriter excelWriter = EasyExcel.write(targetPath).withTemplate(new ClassPathResource(templatePath).getInputStream()).build();
             //  写说明页
-            unsExcelService.writeExplanationRow(excelWriter);
+            //unsExcelService.writeExplanationRow(excelWriter);
 
             ExcelTypeEnum activeExcelType = ExcelTypeEnum.Explanation;
             // 导出模板

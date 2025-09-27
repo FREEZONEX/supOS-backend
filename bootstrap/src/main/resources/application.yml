@@ -108,7 +108,7 @@ chat2db:
   enable: ${ENABLE_CHAT2DB:true}
   address: http://chat2db:10824
 
-i18nVersion: 202509181700
+i18nVersion: 202509261600
 #camunda:
 #  bpm:
 #    database:

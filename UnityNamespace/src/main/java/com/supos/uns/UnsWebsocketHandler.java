@@ -127,7 +127,7 @@ public class UnsWebsocketHandler implements WebSocketHandler {
 
         if (null != token) {
             JSONObject tokenObj = tokenCache.get(token);
-            if (null != token) {
+            if (null != token && tokenObj != null) {
                 String accessToken = tokenObj.getString("access_token");
                 JWT jwt = JWT.of(accessToken);
                 String sub = jwt.getPayloads().getStr("sub");

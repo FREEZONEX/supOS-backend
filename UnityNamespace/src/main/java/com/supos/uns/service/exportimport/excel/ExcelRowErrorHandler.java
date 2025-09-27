@@ -73,10 +73,10 @@ public class ExcelRowErrorHandler implements ReadListener<Map<Integer, String>> 
             ExcelTypeEnum excelType = ExcelTypeEnum.valueOfIndex(sheetNo);
             switch (excelType) {
                 case Explanation:
-                    dataList.add(data);
+/*                    dataList.add(data);
                     if (dataList.size() % 500 == 0) {
                         write();
-                    }
+                    }*/
                     break;
                 case Template:
                 case Label:

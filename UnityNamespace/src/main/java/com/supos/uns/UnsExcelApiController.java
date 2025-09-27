@@ -111,7 +111,7 @@ public class UnsExcelApiController {
     @PostMapping("/data/import/test")
     public void dataImport(@RequestParam("path") String path) {
         //path = "./export/xx.json";
-        path = "d:/namespace-20250903070142.xlsx";
+        path = "d:/namespace-20250926143245.xlsx";
         //path = "d:/all-namespace.json";
         unsExcelService.asyncImport(new File(path), new LogWrapperConsumer(runningStatus -> {
         }), false, "zh");

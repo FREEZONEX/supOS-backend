@@ -130,7 +130,7 @@ public class UnsExcelService {
                 }
             }
             ExcelWriter excelWriter = EasyExcel.write(targetPath).withTemplate(new ClassPathResource(templatePath).getInputStream()).build();
-            writeExplanationRow(excelWriter);
+            //writeExplanationRow(excelWriter);
             excelWriter.finish();
 
             targetInputStream = FileUtil.getInputStream(targetPath);
