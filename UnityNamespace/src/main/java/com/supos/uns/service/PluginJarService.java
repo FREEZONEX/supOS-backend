@@ -14,7 +14,6 @@ import com.supos.uns.bo.PlugInfo;
 import com.supos.uns.util.BootJarToLibJar;
 import com.supos.uns.util.LongestCommonPrefix;
 import com.supos.uns.util.YamlToProperties;
-import io.swagger.v3.oas.models.OpenAPI;
 import jakarta.servlet.Filter;
 import jakarta.servlet.ServletContext;
 import lombok.extern.slf4j.Slf4j;
@@ -33,11 +32,6 @@ import org.jetbrains.annotations.NotNull;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.mybatis.spring.mapper.ClassPathMapperScanner;
 import org.mybatis.spring.mapper.MapperFactoryBean;
-import org.springdoc.api.AbstractOpenApiResource;
-import org.springdoc.core.providers.SpringWebProvider;
-import org.springdoc.core.service.OpenAPIService;
-import org.springdoc.webmvc.api.MultipleOpenApiResource;
-import org.springdoc.webmvc.api.OpenApiResource;
 import org.springframework.aop.framework.AopProxyUtils;
 import org.springframework.aop.framework.ProxyProcessorSupport;
 import org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator;
@@ -52,6 +46,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.beans.factory.config.DestructionAwareBeanPostProcessor;
 import org.springframework.beans.factory.parsing.PassThroughSourceExtractor;
 import org.springframework.beans.factory.support.*;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -82,6 +77,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.stereotype.Service;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.handler.AbstractHandlerMethodMapping;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -104,6 +100,7 @@ import java.net.URLClassLoader;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -126,7 +123,7 @@ public class PluginJarService {
     //    private String bootBeanName;
     private String CONFIGURATION_CLASS_ATTRIBUTE;
 
-//    @Autowired
+    //    @Autowired
 //    MultipleOpenApiResource openApi;
 //    @Autowired
 //    SpringWebProvider springWebProvider;
@@ -143,6 +140,7 @@ public class PluginJarService {
     private ServletContext servletContext;
     private org.apache.catalina.core.ApplicationContext origAppContext;
     private StandardContext origServletContext;
+    Set<String> loadedResources;
 
     @Order(1001)
     @EventListener(classes = ContextRefreshedEvent.class)
@@ -184,6 +182,10 @@ public class PluginJarService {
                 }
             }
         }
+        Configuration configuration = getConfiguration(sqlSessionTemplate);
+        Field loadedResourcesF = Configuration.class.getDeclaredField("loadedResources");
+        loadedResourcesF.setAccessible(true);
+        loadedResources = (Set<String>) loadedResourcesF.get(configuration);
     }
 
     public void setPlugName(File pluginJar, PlugInfo plugInfo) throws IOException {
@@ -395,10 +397,12 @@ public class PluginJarService {
         DefaultResourceLoader resourceLoader = new DefaultResourceLoader(classLoader);
         BeanDefinitionRegistry beanDefinitionRegistry = (BeanDefinitionRegistry) beanFactory;
         // 创建 @Mapper 扫描器
-        String[] mapperNames, pkgBeanNames;
+        String[] mapperNames, pkgBeanNames, xmlResources;
         try {
-            mapperNames = this.scanPluginMappers(beanDefinitionRegistry, resourceLoader, classLoader, basePackage);
-            log.info("{}：{} 扫描Mapper：{}", plugInfo.getName(), plugInfo.getBasePackage(), Arrays.toString(mapperNames));
+            AtomicReference<String[]> xmlResourcesHd = new AtomicReference<>();
+            mapperNames = this.scanPluginMappers(beanDefinitionRegistry, resourceLoader, classLoader, basePackage, xmlResourcesHd);
+            xmlResources = xmlResourcesHd.get();
+            log.info("{}：{} 扫描Mapper：{}, xmlResources: {}", plugInfo.getName(), plugInfo.getBasePackage(), Arrays.toString(mapperNames), Arrays.toString(xmlResources));
             // 扫描Bean
             pkgBeanNames = this.scanPluginBeans(classLoader, resourceLoader, basePackage);
         } catch (Exception ex) {
@@ -410,7 +414,7 @@ public class PluginJarService {
         Method processCandidateBean = AbstractHandlerMethodMapping.class.getDeclaredMethod("processCandidateBean", String.class);
         processCandidateBean.setAccessible(true);
 
-        plugInfo.setBaseInfo(pluginJar.getAbsolutePath(), classLoader, basePackage, pkgBeanNames, mapperNames);
+        plugInfo.setBaseInfo(pluginJar.getAbsolutePath(), classLoader, basePackage, pkgBeanNames, mapperNames, xmlResources);
         log.info("setBaseInfo: {}", plugInfo);
 
         AbstractBeanFactory abstractBeanFactory = (AbstractBeanFactory) beanFactory.getAutowireCapableBeanFactory();
@@ -722,7 +726,7 @@ public class PluginJarService {
         }
     }
 
-    private @NotNull String[] scanPluginMappers(BeanDefinitionRegistry beanDefinitionRegistry, ResourceLoader resourceLoader, ClassLoader classLoader, String basePackage) {
+    private @NotNull String[] scanPluginMappers(BeanDefinitionRegistry beanDefinitionRegistry, ResourceLoader resourceLoader, ClassLoader classLoader, String basePackage, AtomicReference<String[]> xmlResources) {
         String[] mapperNames = new String[0];
         if (sqlSessionTemplate != null) {
             ClassPathMapperScanner mapperScanner = new ClassPathMapperScanner(beanDefinitionRegistry);
@@ -785,7 +789,10 @@ public class PluginJarService {
                         throw lex;
                     }
                 }
-                tryMapperXml(resourceLoader, sqlSessionTemplate);
+                List<String> resList = tryMapperXml(resourceLoader, sqlSessionTemplate);
+                if (resList != null && !resList.isEmpty()) {
+                    xmlResources.set(resList.toArray(new String[0]));
+                }
             } finally {
                 configurableBeanFactory.setTypeConverter(origCvt);// 还原 TypeConverter
                 Resources.setDefaultClassLoader(origClassLoader);// 还原 classLoader
@@ -794,7 +801,8 @@ public class PluginJarService {
         return mapperNames;
     }
 
-    private void tryMapperXml(ResourceLoader resourceLoader, SqlSessionTemplate sqlSessionTemplate) {
+    private List<String> tryMapperXml(ResourceLoader resourceLoader, SqlSessionTemplate sqlSessionTemplate) {
+        List<String> xmlResources = new ArrayList<>();
         try {
             Field fieldProperties = MybatisPlusAutoConfiguration.class.getDeclaredField("properties");
             fieldProperties.setAccessible(true);
@@ -804,20 +812,19 @@ public class PluginJarService {
             fieldMapperLocations.setAccessible(true);
             String[] mapperLocations = (String[]) fieldMapperLocations.get(properties);
 
-            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver(resourceLoader);
-            Resource[] mapperXmls = Stream.of(Optional.ofNullable(mapperLocations).orElse(new String[0])).flatMap(location -> Stream.of(getResources(resolver, location))).toArray(Resource[]::new);
-            SqlSessionFactory sessionFactory = sqlSessionTemplate.getSqlSessionFactory();
-            DefaultSqlSessionFactory defaultSqlSessionFactory = (DefaultSqlSessionFactory) sessionFactory;
-            Field fConfiguration = DefaultSqlSessionFactory.class.getDeclaredField("configuration");
-            fConfiguration.setAccessible(true);
-            Configuration configuration = (Configuration) fConfiguration.get(defaultSqlSessionFactory);
+            PathMatchingResourcePatternResolver resolver = new JarLocalPathMatchingResourcePatternResolver(resourceLoader);
+            Resource[] mapperXmls = Stream.of(mapperLocations).flatMap(location -> Stream.of(getResources(resolver, location))).toArray(Resource[]::new);
+            log.info("tryMapperXml: mapperXmls={}, mapperLocations={}", Arrays.toString(mapperXmls), Arrays.toString(mapperLocations));
+            Configuration configuration = getConfiguration(sqlSessionTemplate);
 
             for (Resource mapperLocation : mapperXmls) {
-                if (mapperLocation == null || !mapperLocation.toString().startsWith("URL")) {
+                if (mapperLocation == null) {
                     continue;
                 }
                 try {
-                    MybatisXMLMapperBuilder xmlMapperBuilder = new MybatisXMLMapperBuilder(mapperLocation.getInputStream(), configuration, mapperLocation.toString(), configuration.getSqlFragments());
+                    String res = mapperLocation.toString();
+                    xmlResources.add(res);
+                    MybatisXMLMapperBuilder xmlMapperBuilder = new MybatisXMLMapperBuilder(mapperLocation.getInputStream(), configuration, res, configuration.getSqlFragments());
                     xmlMapperBuilder.parse();
                 } catch (Exception e) {
                     throw new IOException("Failed to parse mapping resource: '" + mapperLocation + "'", e);
@@ -829,6 +836,16 @@ public class PluginJarService {
         } catch (Exception ex) {
             log.error("MappXml 读取失败", ex);
         }
+        return xmlResources;
+    }
+
+    private static Configuration getConfiguration(SqlSessionTemplate sqlSessionTemplate) throws NoSuchFieldException, IllegalAccessException {
+        SqlSessionFactory sessionFactory = sqlSessionTemplate.getSqlSessionFactory();
+        DefaultSqlSessionFactory defaultSqlSessionFactory = (DefaultSqlSessionFactory) sessionFactory;
+        Field fConfiguration = DefaultSqlSessionFactory.class.getDeclaredField("configuration");
+        fConfiguration.setAccessible(true);
+        Configuration configuration = (Configuration) fConfiguration.get(defaultSqlSessionFactory);
+        return configuration;
     }
 
     private Resource[] getResources(ResourcePatternResolver resolver, String location) {
@@ -836,6 +853,26 @@ public class PluginJarService {
             return resolver.getResources(location);
         } catch (IOException e) {
             return new Resource[0];
+        }
+    }
+
+    static class JarLocalPathMatchingResourcePatternResolver extends PathMatchingResourcePatternResolver {
+        public JarLocalPathMatchingResourcePatternResolver(ResourceLoader loader) {
+            super(loader);
+        }
+
+        protected Set<Resource> doFindAllClassPathResources(String path) throws IOException {
+            Set<Resource> result = new LinkedHashSet<>(16);
+            URLClassLoader cl = (URLClassLoader) getClassLoader();
+            Enumeration<URL> resourceUrls = cl.findResources(path);//只扫描当前jar包
+            while (resourceUrls.hasMoreElements()) {
+                URL url = resourceUrls.nextElement();
+                result.add(convertClassLoaderURL(url));
+            }
+            if (!StringUtils.hasLength(path)) {
+                addAllClassLoaderJarRoots(cl, result);
+            }
+            return result;
         }
     }
 
@@ -1020,6 +1057,12 @@ public class PluginJarService {
         } catch (BeansException ex) {
             log.error("Map获取失败", ex);
         }
+        String[] xmlResources = plugInfo.getXmlResources();
+        if (ArrayUtil.isNotEmpty(xmlResources)) {
+            for (String xmlRes : xmlResources) {
+                loadedResources.remove(xmlRes);
+            }
+        }
         // 删除 @Mapper BeanDefinition
         String[] mapperNames = plugInfo.getMapperNames();
         if (ArrayUtil.isNotEmpty(mapperNames)) {
@@ -1076,6 +1119,18 @@ public class PluginJarService {
 //    }
 
     private Class<?> removeBean(PlugInfo plugInfo, String beanName, DefaultListableBeanFactory factory) {
+        try {
+            Object bean = beanFactory.getBean(beanName);
+            AbstractBeanFactory bfc = (AbstractBeanFactory) beanFactory.getAutowireCapableBeanFactory();
+            List<BeanPostProcessor> processors = bfc.getBeanPostProcessors();
+            for (BeanPostProcessor processor : processors) {
+                if (processor instanceof DestructionAwareBeanPostProcessor dap) {
+                    dap.postProcessBeforeDestruction(bean, beanName);
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("removeBean:" + beanName, ex);
+        }
         Class<?> beanClass = null;
         try {
             if (factory.getBeanDefinition(beanName) instanceof ScannedGenericBeanDefinition scd) {
@@ -1111,6 +1166,16 @@ public class PluginJarService {
             super(name, urls, PluginJarService.class.getClassLoader());
             this.basePackage = basePackage;
             this.depends = depends != null ? depends : new PackageClassLoaderInfo[0];
+        }
+
+        @Override
+        public URL findResource(String name) {
+            return super.findResource(name);
+        }
+
+        @Override
+        public Enumeration<URL> findResources(String name) throws IOException {
+            return super.findResources(name);
         }
 
         @Override

@@ -33,7 +33,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
-import org.springframework.context.support.ReloadableResourceBundleMessageSource;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.Environment;
@@ -133,6 +132,7 @@ public class PluginManager implements EnvironmentAware {
 // 优先级排到最后
     void init(ContextRefreshedEvent event) {
         if (RuntimeUtil.isLocalProfile()) {
+            init();
             return;
         }
         ThreadUtil.execute(() -> {
@@ -602,11 +602,12 @@ public class PluginManager implements EnvironmentAware {
                 }
             }
             addInstallStepFlag(plugInfo, "backend");
-            // 安装前端
-            installFront(plugInfo);
-
-            // 注册路由
-            saveRoute(plugInfo);
+            if(!RuntimeUtil.isLocalRuntime()){
+                // 安装前端
+                installFront(plugInfo);
+                // 注册路由
+                saveRoute(plugInfo);
+            }
             installI8n(plugInfo);
 
             plugInfo.setInstallStatus(PlugInfo.STATUS_INSTALLED);

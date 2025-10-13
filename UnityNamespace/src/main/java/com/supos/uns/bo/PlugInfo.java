@@ -69,6 +69,7 @@ public class PlugInfo {
     String[] beanNames;
     String[] mapperNames;
     String[] controllerNames;
+    String[] xmlResources;
     @Hidden
     @JsonSerialize(using = ToStringSerializer.class)
     @JsonAdapter(ToStringSerializer.class)
@@ -93,12 +94,13 @@ public class PlugInfo {
     }
 
     public void setBaseInfo(String filePath, URLClassLoader classLoader,
-                            String basePackage, String[] beanNames, String[] mapperNames) {
+                            String basePackage, String[] beanNames, String[] mapperNames, String[] xmlResources) {
         this.filePath = filePath;
         this.classLoader = classLoader;
         this.basePackage = basePackage;
         this.beanNames = beanNames;
         this.mapperNames = mapperNames;
+        this.xmlResources = xmlResources;
         createTime = System.currentTimeMillis();
     }
 
