@@ -1,8 +1,0 @@
-package com.supos.adpter.eventflow.service.enums;
-
-import com.supos.common.dto.protocol.BaseConfigDTO;
-
-public abstract class AbstractIdentifiers implements IdentifiersInterface<BaseConfigDTO> {
-
-
-}

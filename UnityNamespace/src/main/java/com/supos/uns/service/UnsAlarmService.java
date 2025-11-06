@@ -89,11 +89,11 @@ public class UnsAlarmService extends ServiceImpl<UnsMapper, UnsPo> {
         createTopicDto.setIndex(1);
         createTopicDto.setModelId(ALARM_MODEL_ID);
         createTopicDto.setParentDataType(FolderDataType.METRICS.getTypeIndex());
-        JsonResult<Map<String, String>> rs = unsAddService.createCategoryModelInstance(createTopicDto);
+        JsonResult<String> rs = unsAddService.createModelInstance(createTopicDto);
 
         //16人员  32工作流
         if (rs.getData() != null && Constants.UNS_FLAG_ALARM_ACCEPT_PERSON == vo.getWithFlags()) {
-            String id = rs.getData().get("id");
+            String id = rs.getData();
             alarmService.createAlarmHandler(Long.valueOf(id), vo.getUserList());
         }
         //工作流只保存ext字段  工作流流程ID

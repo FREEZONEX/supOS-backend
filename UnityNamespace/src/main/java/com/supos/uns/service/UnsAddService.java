@@ -720,7 +720,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         Iterator<CreateTopicDto> iterator = newTopicDtos.iterator();
         while(iterator.hasNext()) {
             CreateTopicDto topicDto = iterator.next();
-            if (topicDto.getPathType() == Constants.PATH_TYPE_FILE) {
+            if (topicDto.getPathType() == Constants.PATH_TYPE_FILE && topicDto.getDataType() != Constants.ALARM_RULE_TYPE) {
                 // 验证parentDataType是否为空
                 if (topicDto.getParentDataType() == null || topicDto.getParentDataType() < 1 || topicDto.getParentDataType() > 3) {
                     errorTip.put(topicDto.gainBatchIndex(), I18nUtils.getMessage("uns.file.type.invalid"));
