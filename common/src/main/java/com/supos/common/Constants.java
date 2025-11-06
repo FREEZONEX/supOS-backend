@@ -30,6 +30,8 @@ public class Constants {
     public static final int WS_SESSION_LIMIT; // ws会话限制
     public static final int UNS_OVERDUE_DELETE;
     public static final String OS_VERSION;
+    // 开启对文件夹的分类
+    public static final boolean ENABLE_AUTO_CATEGORIZATION;
 
     static {
         final String k = "SYS_OS_USE_ALIAS_PATH_AS_TOPIC";
@@ -38,6 +40,9 @@ public class Constants {
             v = System.getProperty(k);
         }
         useAliasAsTopic = Boolean.parseBoolean(v);
+
+        String val = SystemUtil.get("ENABLE_AUTO_CATEGORIZATION", "false");
+        ENABLE_AUTO_CATEGORIZATION = Boolean.parseBoolean(val);
 
         OS_VERSION = SystemUtil.get("SYS_OS_VERSION", "1.0");
         SYS_FIELD_CREATE_TIME = SystemUtil.get("SYS_OS_TIMESTAMP_NAME", "timeStamp");
@@ -72,7 +77,7 @@ public class Constants {
     public static final int UNS_FLAG_ACCESS_LEVEL_READ_WRITE = 1 << 7;// 北向访问级别:READ_WRITE-读写
     public static final int UNS_FLAG_WITH_ATTACHMENT = 1 << 9;// UNS带附件的标志
     public static final int UNS_FLAG_HAS_DATA = 1 << 10;// UNS有存过数据的标志,帮助决定删除时是否要存 uns_history_delete_job
-
+    public static final int UNS_FLAG_WITH_SUBSCRIBE_ENABLE = 1 << 11;// 是否开启订阅
 
     public static boolean withFlow(int unsFlag) {
         return (unsFlag & UNS_FLAG_WITH_FLOW) == UNS_FLAG_WITH_FLOW;
@@ -114,6 +119,10 @@ public class Constants {
         return (flags & UNS_FLAG_HAS_DATA) == UNS_FLAG_HAS_DATA;
     }
 
+    public static boolean withSubscribeEnable(int unsFlag) {
+        return (unsFlag & UNS_FLAG_WITH_SUBSCRIBE_ENABLE) == UNS_FLAG_WITH_SUBSCRIBE_ENABLE;
+    }
+
     /**
      * 时序类型
      */
@@ -141,9 +150,13 @@ public class Constants {
      * 引用类型，不持久化，只读, 不能引用引用类型的文件
      */
     public static final int CITING_TYPE = 7;
+    /**
+     * 整个json当做一个字段存储
+     */
+    public static final int JSONB_TYPE = 8;
 
     public static boolean isValidDataType(int type) {
-        return type >= TIME_SEQUENCE_TYPE && type <= CITING_TYPE;
+        return type >= 0 && type <= JSONB_TYPE;
     }
 
     /**
@@ -189,6 +202,8 @@ public class Constants {
 
     public final static String EXCEL_TEMPLATE_PATH = "/templates/all-namespace.xlsx";
     public final static String EXCEL_TEMPLATE_ZH_PATH = "/templates/all-namespace-zh-CN.xlsx";
+    public final static String EXCEL_TEMPLATE_PATH_CATEGORY = "/templates/all-namespace-category.xlsx";
+    public final static String EXCEL_TEMPLATE_ZH_PATH_CATEGORY = "/templates/all-namespace-category-zh-CN.xlsx";
     public final static String JSON_TEMPLATE_PATH = "/templates/all-namespace.json";
     public final static String EXCEL_OUT_PATH = "/export/all-namespace.xlsx";
     public final static String JSON_OUT_PATH = "/export/all-namespace.json";

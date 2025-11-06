@@ -57,6 +57,8 @@ public class ValidateFolder {
     /**扩展属性*/
     String extendproperties;
 
+    String dataType;
+
     public CreateTopicDto createTopic() {
         CreateTopicDto topicDto = new CreateTopicDto();
         topicDto.setFlagNo(flagNo);

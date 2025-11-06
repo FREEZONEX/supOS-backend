@@ -9,6 +9,7 @@ import cn.hutool.core.util.ZipUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.supos.common.Constants;
+import com.supos.common.RunningStatus;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.enums.GlobalExportModuleEnum;
@@ -16,7 +17,6 @@ import com.supos.common.exception.BuzException;
 import com.supos.common.utils.*;
 import com.supos.uns.bo.GlobalExportConfig;
 import com.supos.uns.bo.GlobalRunningStatus;
-import com.supos.common.RunningStatus;
 import com.supos.uns.dao.mapper.GlobalExportRecordMapper;
 import com.supos.uns.dao.po.GlobalExportRecordPo;
 import com.supos.uns.vo.ExportRecordConfirmReq;
@@ -63,9 +63,9 @@ public class GlobalExportService {
     @Autowired
     private DashboardService dashboardService;
     @Autowired
-    private EventFlowService eventFlowService;
-    @Autowired
     private SourceFlowService sourceFlowService;
+    @Autowired
+    private EventFlowService eventFlowService;
     @Autowired
     private GlobalExportRecordMapper globalExportRecordMapper;
     @Autowired
@@ -359,6 +359,7 @@ public class GlobalExportService {
             }
             if(Objects.equals(globalRunningStatus.getCode(),200)  && Objects.equals(0,runningStatus.getTotalCount()) && Objects.equals(0,runningStatus.getSuccessCount())){
                runningStatus.setMsg(I18nUtils.getMessage("global.import.rs.notData"));
+               runningStatus.setFinished(true);
             }else{
                 totalCount += runningStatus.getTotalCount();
                 errorCount += runningStatus.getErrorCount();

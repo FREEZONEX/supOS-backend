@@ -2,6 +2,7 @@ package com.supos.uns.service;
 
 import cn.hutool.core.collection.ConcurrentHashSet;
 import cn.hutool.core.collection.ListUtil;
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.net.URLDecoder;
 import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson2.JSON;
@@ -11,9 +12,7 @@ import com.supos.common.Constants;
 import com.supos.common.adpater.TopicMessageConsumer;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.JsonResult;
-import com.supos.common.event.RemoveTopicsEvent;
-import com.supos.common.event.UnsTopologyChangeEvent;
-import com.supos.common.event.WebsocketNotifyEvent;
+import com.supos.common.event.*;
 import com.supos.common.sdk.WebsocketSender;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.DataUtils;
@@ -25,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.http.HttpStatus;
+import org.postgresql.jdbc.TimestampUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -41,10 +41,12 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.Timestamp;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ForkJoinPool;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -395,17 +397,35 @@ public class WebsocketService implements WebsocketSender {
 
     private void aliasDataPush(WebSocketSession session, String version, JSONObject aliasMap) {
         List<JSONObject> dataArray = new ArrayList<>();
+        Map<Long, Map<String, Object>> vqtDataMap = vqtQueryLastData(aliasMap);
         for (String alias : aliasMap.keySet()) {
             JSONObject aliasObj = aliasMap.getJSONObject(alias);
-            String rs = unsQueryService.getLastMsgByAlias(alias, true).getData();
-            boolean all = aliasObj.getBooleanValue("all");
-            JSONObject jsonObject = JSONObject.parseObject(rs);
-            JSONObject newJson = new JSONObject();
-            if (jsonObject != null) {
+            Map<String, Object> newJson = new HashMap<>();
+            Map<String, Object> payload = null;
+            CreateTopicDto def = definitionService.getDefinitionByAlias(alias);
+            // 先查VQT map
+            if (def != null && MapUtils.isNotEmpty(vqtDataMap.get(def.getId()))) {
+                Map<String, Object> vqtData = vqtDataMap.get(def.getId());
+                vqtData.remove("tag");
+                Date t = (Date) vqtData.get(Constants.SYS_FIELD_CREATE_TIME);
+                vqtData.put(Constants.SYS_FIELD_CREATE_TIME, t.getTime());
+                payload = vqtData;
+            }
+
+            if (MapUtils.isEmpty(payload)) {
+                String rs = unsQueryService.getLastMsgByAlias(alias, true).getData();
+                if (StringUtils.hasText(rs) && !"{}".equals(rs)) {
+                    payload = JSONObject.parseObject(rs).getJSONObject("data");
+                }
+            }
+            //pride：如果无消息如果所订查询的文件当前无实时值， 则status=通讯异常（0x80 00 00 00 00 00 00 00），
+            if (MapUtils.isEmpty(payload)) {
+                com.alibaba.fastjson.JSONObject defaultData =  DataUtils.transEmptyValue(def,false);
+                newJson = JSONObject.parseObject(defaultData.toJSONString());
+            } else {
                 //所有数据的payload
-                JSONObject payload = jsonObject.getJSONObject("data");
                 unsQueryService.standardizingData(alias, payload);
-                if (!all) {
+                if (!aliasObj.getBooleanValue("all")) {
                     //部分值
                     List<String> partValues = aliasObj.getList("part_value", String.class);
                     Set<String> subscribeTags = new HashSet<>(partValues);
@@ -420,17 +440,37 @@ public class WebsocketService implements WebsocketSender {
                 } else {
                     newJson = payload;
                 }
-            } else {
-                CreateTopicDto uns = definitionService.getDefinitionByAlias(alias);
-                com.alibaba.fastjson.JSONObject defaultData =  DataUtils.transEmptyValue(uns,false);
-                newJson = JSONObject.parseObject(defaultData.toJSONString());
             }
+
             JSONObject dataMap = new JSONObject();
             dataMap.put("alias", alias);
             dataMap.put("value", newJson);
             dataArray.add(dataMap);
         }
         valuePushResponse(session, version, dataArray);
+    }
+
+    private Map<Long, Map<String, Object>> vqtQueryLastData(JSONObject aliasMap) {
+        List<CreateTopicDto> defList = new ArrayList<>();
+        for (String alias : aliasMap.keySet()) {
+            CreateTopicDto def = definitionService.getDefinitionByAlias(alias);
+            if (def != null && StringUtils.hasText(def.getTbFieldName())) {
+                defList.add(def);
+            }
+        }
+        Map<Long, Map<String, Object>> tagValuesMap = new HashMap<>();
+        List<List<CreateTopicDto>> partition = ListUtil.partition(defList, 1000);
+        for (List<CreateTopicDto> topicDtos : partition) {
+            Map<String, List<Long>> tableIdsMap = topicDtos.stream().collect(Collectors.groupingBy(CreateTopicDto::getTableName, Collectors.mapping(CreateTopicDto::getId, Collectors.toList())));
+            for (String tableName : tableIdsMap.keySet()) {
+                BatchQueryLastMsgVqtEvent lastMsgEvent = new BatchQueryLastMsgVqtEvent(this,tableName, tableIdsMap.get(tableName));
+                EventBus.publishEvent(lastMsgEvent);
+                List<Map<String, Object>> values = lastMsgEvent.getValues();
+                Map<Long, Map<String, Object>> tags = values.stream().collect(Collectors.toMap(stringObjectMap -> (Long)stringObjectMap.get("tag"), Function.identity()));
+                tagValuesMap.putAll(tags);
+            }
+        }
+        return tagValuesMap;
     }
 
     /**

@@ -18,24 +18,14 @@ CREATE TABLE if not exists supos_node_flow_models (
 );
 CREATE INDEX if not exists  idx_flow_alias ON supos_node_flow_models (alias);
 
-CREATE TABLE if not exists supos_node_server (
-    id varchar NOT NULL PRIMARY KEY,
-    server_name varchar NOT NULL,
-    protocol_name varchar NOT NULL,
-	config_json varchar(2000) NULL,
-	create_time timestamptz NULL DEFAULT CURRENT_TIMESTAMP,
-	update_time timestamptz NULL
-);
-
-CREATE TABLE if not exists supos_node_protocol (
-    name varchar NOT NULL PRIMARY KEY,
-    description varchar NULL,
-    server_conn varchar NULL,
-	client_config_json varchar(2000) NULL,
-	server_config_json varchar(2000) NULL,
-	custom int2 default 1,
-	create_time timestamptz NULL DEFAULT CURRENT_TIMESTAMP,
-	update_time timestamptz NULL
-);
-
 alter table supos_node_flow_models add if not exists "alias" varchar(128) NULL;
+
+CREATE TABLE if not exists supos_node_flow_top_recodes (
+    id bigint NOT NULL,
+	user_id varchar Not NULL,
+	mark int2 default 1,
+	mark_time timestamptz NULL DEFAULT CURRENT_TIMESTAMP,
+	update_time timestamptz NULL
+);
+CREATE UNIQUE INDEX idx_unique_id_user ON supos_node_flow_top_recodes (id, user_id);
+alter table supos_node_flows add if not exists "creator" varchar(128) NULL;

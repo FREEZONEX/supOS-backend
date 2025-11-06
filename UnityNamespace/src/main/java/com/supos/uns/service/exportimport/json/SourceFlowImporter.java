@@ -13,6 +13,8 @@ import com.supos.adpter.nodered.dao.mapper.NodeFlowMapper;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowModelMapper;
 import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
 import com.supos.adpter.nodered.dao.po.NodeFlowPO;
+import com.supos.adpter.nodered.dto.ExportNodeFlowDto;
+import com.supos.adpter.nodered.service.SourceFlowApiService;
 import com.supos.common.dto.NodeRedTagsDTO;
 import com.supos.common.enums.GlobalExportModuleEnum;
 import com.supos.common.exception.BuzException;
@@ -37,10 +39,11 @@ import java.util.*;
  */
 @Slf4j
 public class SourceFlowImporter {
-    public SourceFlowImporter(SourceFlowImportContext context, NodeFlowMapper nodeFlowMapper, NodeFlowModelMapper nodeFlowModelMapper) {
+    public SourceFlowImporter(SourceFlowImportContext context, NodeFlowMapper nodeFlowMapper, NodeFlowModelMapper nodeFlowModelMapper, SourceFlowApiService sourceFlowApiService) {
         this.context = context;
         this.nodeFlowMapper = nodeFlowMapper;
         this.nodeFlowModelMapper = nodeFlowModelMapper;
+        this.sourceFlowApiService = sourceFlowApiService;
     }
 
     @Getter
@@ -49,17 +52,21 @@ public class SourceFlowImporter {
     private SourceFlowJsonWrapper sourceFlowJsonWrapper;
     private NodeFlowMapper nodeFlowMapper;
     private NodeFlowModelMapper nodeFlowModelMapper;
+    private SourceFlowApiService sourceFlowApiService;
 
     public void importData(File file) {
+        ExportNodeFlowDto reqDto = null;
         try {
             JsonMapper jsonMapper = new JsonMapper();
-            sourceFlowJsonWrapper = jsonMapper.readValue(file, SourceFlowJsonWrapper.class);
+            reqDto = jsonMapper.readValue(file, ExportNodeFlowDto.class);
         } catch (Exception e) {
             log.error("解析json文件失败", e);
             throw new BuzException("sourceFlow.import.json.error");
         }
         try {
-            handleImportData(sourceFlowJsonWrapper);
+            if (reqDto != null) {
+                sourceFlowApiService.importFlow(reqDto);
+            }
             log.info("sourceFlow import running time:{}s", stopWatch.getTotalTimeSeconds());
             log.info(stopWatch.prettyPrint());
         } catch (Exception e) {
@@ -68,95 +75,95 @@ public class SourceFlowImporter {
         }
     }
 
-    private void handleImportData(SourceFlowJsonWrapper sourceFlowJsonWrapper) {
-        if (sourceFlowJsonWrapper == null || (CollUtil.isEmpty(sourceFlowJsonWrapper.getFlows()) && CollUtil.isEmpty(sourceFlowJsonWrapper.getFlowModels()))) {
-            return;
-        }
-        context.setTotal(sourceFlowJsonWrapper.getFlows().size());
-        Date now = new Date();
-        List<String> flowIds = new ArrayList<>();
-        List<String> names = new ArrayList<>();
-        for (NodeFlowPO flow : sourceFlowJsonWrapper.getFlows()) {
-            flow.setCreateTime(now);
-            flow.setUpdateTime(now);
-            names.add(flow.getFlowName());
-            if (StringUtils.hasText(flow.getFlowId())) {
-                flowIds.add(flow.getFlowId());
-            }
-        }
-        Map<Long, List<NodeFlowModelPO>> nodeFlowModelMap = new HashMap<>();
-        if (CollUtil.isNotEmpty(sourceFlowJsonWrapper.getFlowModels())) {
-            for (NodeFlowModelPO modelFLow : sourceFlowJsonWrapper.getFlowModels()) {
-                nodeFlowModelMap.computeIfAbsent(modelFLow.getParentId(), v -> new ArrayList<>()).add(modelFLow);
-            }
-        }
-        Map<String, NodeFlowPO> existMap = new HashMap<>();
-        Map<String,NodeFlowPO> existNameMap = new HashMap<>();
-        if(CollUtil.isNotEmpty(flowIds)){
-            List<NodeFlowPO> nodeFlowPOS = nodeFlowMapper.selectByFlowIds(flowIds);
-            if (CollUtil.isNotEmpty(nodeFlowPOS)) {
-                for (NodeFlowPO nodeFlowPO : nodeFlowPOS) {
-                    existMap.put(nodeFlowPO.getFlowId(), nodeFlowPO);
-                }
-            }
-        }
-        List<NodeFlowPO> nodeFlowPOS = nodeFlowMapper.selectByFlowNames(names);
-        if (CollUtil.isNotEmpty(nodeFlowPOS)) {
-            for (NodeFlowPO nodeFlowPO : nodeFlowPOS) {
-                existNameMap.put(nodeFlowPO.getFlowName(),nodeFlowPO);
-            }
-        }
-        List<NodeFlowPO> addList = new ArrayList<>();
-        List<NodeFlowModelPO> addModelList = new ArrayList<>();
-        for (NodeFlowPO nodeFlowPO : sourceFlowJsonWrapper.getFlows()) {
-            if (existMap.containsKey(nodeFlowPO.getFlowId())) {
-                context.addError(nodeFlowPO.getFlowId(), I18nUtils.getMessage("sourceFlow.id.already.exists"));
-            }else if(existNameMap.containsKey(nodeFlowPO.getFlowName())){
-                context.addError(nodeFlowPO.getFlowId(), I18nUtils.getMessage("sourceFlow.name.already.exists"));
-            } else {
-                addList.add(nodeFlowPO);
-                List<NodeFlowModelPO> nodeFlowModelPOS = nodeFlowModelMap.get(nodeFlowPO.getId());
-                if (CollUtil.isNotEmpty(nodeFlowModelPOS)) {
-                    addModelList.addAll(nodeFlowModelPOS);
-                }
-                nodeFlowPO.setId(SuposIdUtil.nextId());
-                if (CollUtil.isNotEmpty(nodeFlowModelPOS)) {
-                    for (NodeFlowModelPO nodeFlowModelPO : nodeFlowModelPOS) {
-                        nodeFlowModelPO.setParentId(nodeFlowPO.getId());
-                    }
-                }
-            }
-        }
-        if (CollUtil.isNotEmpty(addList)) {
-            for (NodeFlowPO nodeFlowPO : addList) {
-                if (StringUtils.hasText(nodeFlowPO.getFlowData())) {
-                    String flowId = NodeRedUtils.create(GlobalExportModuleEnum.SOURCE_FLOW, null, nodeFlowPO.getFlowName(), nodeFlowPO.getDescription(), null, context.getNodeRedHost(), context.getNodeRedPort());
-                    nodeFlowPO.setFlowId(flowId);
-                    JSONArray nodes = JSON.parseArray(nodeFlowPO.getFlowData());
-                    NodeRedUtils.create(GlobalExportModuleEnum.SOURCE_FLOW, nodeFlowPO.getFlowId(), nodeFlowPO.getFlowName(), nodeFlowPO.getDescription(), nodes, context.getNodeRedHost(), context.getNodeRedPort());
-                    JSONObject nodeTags = nodeFlowPO.getNodeTags();
-                    // 更新节点的z属性（流程ID）
-                    for (int i = 0; i < nodes.size(); i++) {
-                        String parentId = nodes.getJSONObject(i).getString("z");
-                        if (parentId != null) {
-                            nodes.getJSONObject(i).put("z", flowId);
-                        }
-                        String nodeId = nodes.getJSONObject(i).getString("id");
-                        if(nodeTags != null && nodeTags.get(nodeId) != null){
-                            NodeRedTagsDTO nodeRedTagsDTO = nodeTags.getObject(nodeId, NodeRedTagsDTO.class);
-                            if(nodeRedTagsDTO != null && CollUtil.isNotEmpty(nodeRedTagsDTO.getData())){
-                                NodeRedUtils.saveTags(nodeId,nodeRedTagsDTO.getData(),context.getNodeRedHost(),context.getNodeRedPort());
-                            }
-                        }
-                    }
-                }
-            }
-            nodeFlowMapper.insert(addList);
-            if (CollUtil.isNotEmpty(addModelList)) {
-                nodeFlowModelMapper.batchInsert(addModelList);
-            }
-        }
-    }
+//    private void handleImportData(SourceFlowJsonWrapper sourceFlowJsonWrapper) {
+//        if (sourceFlowJsonWrapper == null || (CollUtil.isEmpty(sourceFlowJsonWrapper.getFlows()) && CollUtil.isEmpty(sourceFlowJsonWrapper.getFlowModels()))) {
+//            return;
+//        }
+//        context.setTotal(sourceFlowJsonWrapper.getFlows().size());
+//        Date now = new Date();
+//        List<String> flowIds = new ArrayList<>();
+//        List<String> names = new ArrayList<>();
+//        for (NodeFlowPO flow : sourceFlowJsonWrapper.getFlows()) {
+//            flow.setCreateTime(now);
+//            flow.setUpdateTime(now);
+//            names.add(flow.getFlowName());
+//            if (StringUtils.hasText(flow.getFlowId())) {
+//                flowIds.add(flow.getFlowId());
+//            }
+//        }
+//        Map<Long, List<NodeFlowModelPO>> nodeFlowModelMap = new HashMap<>();
+//        if (CollUtil.isNotEmpty(sourceFlowJsonWrapper.getFlowModels())) {
+//            for (NodeFlowModelPO modelFLow : sourceFlowJsonWrapper.getFlowModels()) {
+//                nodeFlowModelMap.computeIfAbsent(modelFLow.getParentId(), v -> new ArrayList<>()).add(modelFLow);
+//            }
+//        }
+//        Map<String, NodeFlowPO> existMap = new HashMap<>();
+//        Map<String,NodeFlowPO> existNameMap = new HashMap<>();
+//        if(CollUtil.isNotEmpty(flowIds)){
+//            List<NodeFlowPO> nodeFlowPOS = nodeFlowMapper.selectByFlowIds(flowIds);
+//            if (CollUtil.isNotEmpty(nodeFlowPOS)) {
+//                for (NodeFlowPO nodeFlowPO : nodeFlowPOS) {
+//                    existMap.put(nodeFlowPO.getFlowId(), nodeFlowPO);
+//                }
+//            }
+//        }
+//        List<NodeFlowPO> nodeFlowPOS = nodeFlowMapper.selectByFlowNames(names);
+//        if (CollUtil.isNotEmpty(nodeFlowPOS)) {
+//            for (NodeFlowPO nodeFlowPO : nodeFlowPOS) {
+//                existNameMap.put(nodeFlowPO.getFlowName(),nodeFlowPO);
+//            }
+//        }
+//        List<NodeFlowPO> addList = new ArrayList<>();
+//        List<NodeFlowModelPO> addModelList = new ArrayList<>();
+//        for (NodeFlowPO nodeFlowPO : sourceFlowJsonWrapper.getFlows()) {
+//            if (existMap.containsKey(nodeFlowPO.getFlowId())) {
+//                context.addError(nodeFlowPO.getFlowId(), I18nUtils.getMessage("sourceFlow.id.already.exists"));
+//            }else if(existNameMap.containsKey(nodeFlowPO.getFlowName())){
+//                context.addError(nodeFlowPO.getFlowId(), I18nUtils.getMessage("sourceFlow.name.already.exists"));
+//            } else {
+//                addList.add(nodeFlowPO);
+//                List<NodeFlowModelPO> nodeFlowModelPOS = nodeFlowModelMap.get(nodeFlowPO.getId());
+//                if (CollUtil.isNotEmpty(nodeFlowModelPOS)) {
+//                    addModelList.addAll(nodeFlowModelPOS);
+//                }
+//                nodeFlowPO.setId(SuposIdUtil.nextId());
+//                if (CollUtil.isNotEmpty(nodeFlowModelPOS)) {
+//                    for (NodeFlowModelPO nodeFlowModelPO : nodeFlowModelPOS) {
+//                        nodeFlowModelPO.setParentId(nodeFlowPO.getId());
+//                    }
+//                }
+//            }
+//        }
+//        if (CollUtil.isNotEmpty(addList)) {
+//            for (NodeFlowPO nodeFlowPO : addList) {
+//                if (StringUtils.hasText(nodeFlowPO.getFlowData())) {
+//                    String flowId = NodeRedUtils.create(GlobalExportModuleEnum.SOURCE_FLOW, null, nodeFlowPO.getFlowName(), nodeFlowPO.getDescription(), null, context.getNodeRedHost(), context.getNodeRedPort());
+//                    nodeFlowPO.setFlowId(flowId);
+//                    JSONArray nodes = JSON.parseArray(nodeFlowPO.getFlowData());
+//                    NodeRedUtils.create(GlobalExportModuleEnum.SOURCE_FLOW, nodeFlowPO.getFlowId(), nodeFlowPO.getFlowName(), nodeFlowPO.getDescription(), nodes, context.getNodeRedHost(), context.getNodeRedPort());
+//                    JSONObject nodeTags = nodeFlowPO.getNodeTags();
+//                    // 更新节点的z属性（流程ID）
+//                    for (int i = 0; i < nodes.size(); i++) {
+//                        String parentId = nodes.getJSONObject(i).getString("z");
+//                        if (parentId != null) {
+//                            nodes.getJSONObject(i).put("z", flowId);
+//                        }
+//                        String nodeId = nodes.getJSONObject(i).getString("id");
+//                        if(nodeTags != null && nodeTags.get(nodeId) != null){
+//                            NodeRedTagsDTO nodeRedTagsDTO = nodeTags.getObject(nodeId, NodeRedTagsDTO.class);
+//                            if(nodeRedTagsDTO != null && CollUtil.isNotEmpty(nodeRedTagsDTO.getData())){
+//                                NodeRedUtils.saveTags(nodeId,nodeRedTagsDTO.getData(),context.getNodeRedHost(),context.getNodeRedPort());
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//            nodeFlowMapper.insert(addList);
+//            if (CollUtil.isNotEmpty(addModelList)) {
+//                nodeFlowModelMapper.batchInsert(addModelList);
+//            }
+//        }
+//    }
 
     public void writeError(File outFile) {
         try {

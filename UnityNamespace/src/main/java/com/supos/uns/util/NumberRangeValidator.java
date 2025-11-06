@@ -24,20 +24,23 @@ public class NumberRangeValidator {
         try {
             switch (targetType) {
                 case INTEGER:
-                    long longValue = Long.parseLong(strValue);
-                    return longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE;
-
+                    java.math.BigInteger big = new java.math.BigInteger(strValue);
+                    return big.compareTo(java.math.BigInteger.valueOf(Integer.MIN_VALUE)) < 0
+                            || big.compareTo(java.math.BigInteger.valueOf(Integer.MAX_VALUE)) > 0;
                 case LONG:
                     // 尝试解析为 BigInteger 判断是否超出 long
                     java.math.BigInteger bigInt = new java.math.BigInteger(strValue);
                     return bigInt.compareTo(java.math.BigInteger.valueOf(Long.MIN_VALUE)) < 0
                             || bigInt.compareTo(java.math.BigInteger.valueOf(Long.MAX_VALUE)) > 0;
+                case FLOAT:
+                    // 尝试解析为 Double
+                    float f = Float.parseFloat(strValue); // 只要能解析成功，不报错就算没超出
+                    return f > Float.MAX_VALUE;
 
                 case DOUBLE:
                     // 尝试解析为 Double
-                    Double.parseDouble(strValue); // 只要能解析成功，不报错就算没超出
-                    return false;
-
+                    double d = Double.parseDouble(strValue); // 只要能解析成功，不报错就算没超出
+                    return d > Double.MAX_VALUE;
                 default:
                     return false;
             }

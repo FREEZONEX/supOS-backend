@@ -21,6 +21,7 @@ import com.supos.common.event.EventBus;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.utils.GrafanaUtils;
 import com.supos.common.utils.RuntimeUtil;
+import com.supos.common.utils.UserContext;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -50,10 +51,11 @@ public class GrafanaEventHandler {
             return;
         }
         log.info(">>>>>> GrafanaEventHandler 批量创建事件,topic数量：{},flowName:{}", event.topics.size(), event.flowName);
+        String username = UserContext.get() != null ? UserContext.get().getPreferredUsername() : "";
         ThreadUtil.execute(() -> {
             for (Map.Entry<SrcJdbcType, CreateTopicDto[]> entry : event.topics.entrySet()) {
                 try {
-                    create(entry.getKey(), entry.getValue(), event.flowName, event.fromImport);
+                    create(entry.getKey(), entry.getValue(), event.flowName, event.fromImport, username);
                 } catch (Exception e) {
                     log.error("批量创建dashboard异常", e);
                 }
@@ -88,7 +90,7 @@ public class GrafanaEventHandler {
 
     private final Map<SrcJdbcType, DataStorageAdapter> dataStorageAdapterMap = new HashMap<>();
 
-    public void create(final SrcJdbcType jdbcType, final CreateTopicDto[] topics, String flowName, boolean fromImport) {
+    public void create(final SrcJdbcType jdbcType, final CreateTopicDto[] topics, String flowName, boolean fromImport, String username) {
         DataStorageAdapter storageAdapter = dataStorageAdapterMap.get(jdbcType);
         if (storageAdapter == null) {
             log.warn("ignore jdbcType={}", jdbcType);
@@ -125,7 +127,7 @@ public class GrafanaEventHandler {
                 String uuid = GrafanaUtils.createDashboard(table, tagNameCondition, jdbcType, schema, title, columns, Constants.SYS_FIELD_CREATE_TIME);
                 //当创建类型为 非导入（手动创建），发送事件，创建数据看板
                 if (!fromImport) {
-                    EventBus.publishEvent(new CreateDashboardEvent(this, uuid, title, title));
+                    EventBus.publishEvent(new CreateDashboardEvent(this, uuid, title, title, username));
                 }
                 count++;
             } catch (Exception e) {
@@ -146,7 +148,7 @@ public class GrafanaEventHandler {
                     dashboardName = String.format("%s-%s", tempName, dashboardName);
                 }
                 String uuid = GrafanaUtils.createTimeSeriesListDashboard(jdbcType, topics, dashboardName);
-                EventBus.publishEvent(new CreateDashboardEvent(this, uuid, dashboardName, "组合dashboard"));
+                EventBus.publishEvent(new CreateDashboardEvent(this, uuid, dashboardName, "组合dashboard", username));
             }
         }
     }

@@ -1,7 +1,7 @@
 package com.supos.uns.service.exportimport.json.data;
 
-import com.supos.adpter.eventflow.dao.po.NodeFlowModelPO;
-import com.supos.adpter.eventflow.dao.po.NodeFlowPO;
+import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
+import com.supos.adpter.nodered.dao.po.NodeFlowPO;
 import lombok.Data;
 
 import java.util.List;

@@ -5,21 +5,24 @@ import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.ObjectUtil;
+import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
+import com.supos.common.RunningStatus;
 import com.supos.common.SrcJdbcType;
+import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.*;
 import com.supos.common.enums.*;
 import com.supos.common.event.*;
 import com.supos.common.event.multicaster.EventStatusAware;
+import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.service.IUnsManagerService;
 import com.supos.common.utils.*;
 import com.supos.uns.bo.CreateModelInstancesArgs;
-import com.supos.common.RunningStatus;
 import com.supos.uns.bo.UnsPoLabels;
 import com.supos.uns.dao.mapper.UnsHistoryDeleteJobMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
@@ -40,6 +43,7 @@ import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
@@ -75,6 +79,77 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     UnsTemplateService unsTemplateService;
     @Resource
     private IUnsDefinitionService unsDefinitionService;
+    @Autowired
+    private UnsMapper unsMapper;
+    @Autowired
+    private SystemConfig systemConfig;
+
+    @Transactional(rollbackFor = Throwable.class, timeout = 300)
+    public JsonResult<Map<String, String>> createCategoryModelInstance(CreateTopicDto dto) {
+        List<CreateTopicDto> dtoList = new ArrayList<>();
+        dtoList.add(dto);
+
+        boolean isParentFolderCategory = false;
+        UnsPo parentFolder = null;
+        if (dto.getParentId() != null || dto.getParentAlias() != null) {
+            parentFolder = dto.getParentId() != null ? baseMapper.selectById(dto.getParentId()) : baseMapper.getByAlias(dto.getParentAlias());
+            if (parentFolder == null) {
+                return new JsonResult<>(400, I18nUtils.getMessage("uns.folder.not.found"));
+            }
+            isParentFolderCategory = parentFolder.getDataType() != null && parentFolder.getDataType() > 0;
+            log.info("当前文件(name={})的父级文件夹是否为分类文件夹： {}", dto.getName(), isParentFolderCategory);
+            // 分类文件夹下不能再建文件夹
+            if (isParentFolderCategory && dto.getPathType() == Constants.PATH_TYPE_DIR) {
+                return new JsonResult<>(400, I18nUtils.getMessage("uns.folder.create.forbidden"));
+            }
+            dto.setParentAlias(parentFolder.getAlias());
+        }
+
+        // 当其父节点类型设置为非普通文件夹，需要自动创建一层特殊文件夹
+        if (systemConfig.getEnableAutoCategorization() && !isParentFolderCategory && dto.getParentDataType() != null && dto.getParentDataType() > 0) {
+            if (!FolderDataType.isTypeMatched(dto.getParentDataType(), dto.getDataType())) {
+                String msg = I18nUtils.getMessage("uns.category.type.not.eq");
+                throw new BuzException(400, msg);
+            }
+            UnsPo fixedCategoryFolder = unsMapper.getFixedCategoryFolder(dto.getParentAlias(), dto.getParentDataType());
+            String mountSource = parentFolder == null ? null : parentFolder.getMountSource();
+            Integer mountType = parentFolder == null ? null : parentFolder.getMountType();
+            if (fixedCategoryFolder == null) {
+                CreateTopicDto categoryFolder = buildCategoryFolderDto(dto.getParentAlias(), mountType, mountSource, dto.getParentDataType());
+                dto.setParentAlias(categoryFolder.getAlias());
+                dtoList.add(categoryFolder);
+            } else {
+                dto.setParentAlias(fixedCategoryFolder.getAlias());
+                dto.setParentId(fixedCategoryFolder.getId());
+            }
+        }
+
+        boolean isSuccess = false;
+        String errorMsg = "";
+        if (dtoList.size() == 1) {
+            JsonResult<String> result = createModelInstance(dtoList.get(0));
+            isSuccess = result.getCode() == 0;
+            errorMsg = result.getMsg();
+        } else {
+            Map<String, String> errorMap = createModelAndInstance(dtoList, false);
+            isSuccess = errorMap.isEmpty();
+            if (!isSuccess) {
+                errorMsg = errorMap.values().iterator().next();
+            }
+        }
+        JsonResult<Map<String, String>> resultMap = new JsonResult<>(0, "ok");
+        if (isSuccess) {
+            UnsPo unsFile = unsMapper.getByAlias(dto.getAlias());
+            Map<String, String> resultData = new HashMap<>();
+            resultData.put("parentId", unsFile.getParentId() == null ? "" : unsFile.getParentId().toString());
+            resultData.put("id", unsFile.getId().toString());
+            resultMap.setData(resultData);
+        } else {
+            resultMap.setCode(400);
+            resultMap.setMsg(errorMsg);
+        }
+        return resultMap;
+    }
 
     /**
      * 创建目录或文件 -- 前端界面创建单个实例发起
@@ -86,12 +161,20 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     public JsonResult<String> createModelInstance(CreateTopicDto dto) {
         JsonResult<String> result = new JsonResult<>(0, "ok");
         Long folderId = dto.getParentId();
-        if (folderId != null && dto.getParentAlias() == null) {
-            UnsPo folder = baseMapper.selectById(folderId);
+        if (folderId != null || dto.getParentAlias() != null) {
+            UnsPo folder = folderId != null ? baseMapper.selectById(folderId) : baseMapper.getByAlias(dto.getParentAlias());
             if (folder == null) {
                 return new JsonResult<>(400, I18nUtils.getMessage("uns.folder.not.found"));
             }
             dto.setParentAlias(folder.getAlias());
+        }
+
+        // 查询文件是否存在，因为修改也是走这个方法。。
+        UnsPo fileUns = baseMapper.getByAlias(dto.getAlias());
+        if (fileUns != null) {
+            dto.setDataType(fileUns.getDataType());
+            dto.setParentDataType(fileUns.getParentDataType());
+            dto.setParentAlias(fileUns.getParentAlias());
         }
 
         //是文件夹 并且 需要创建模板
@@ -118,12 +201,33 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         }
         Map<String, String> rs = createModelAndInstancesInner(args);
         if (rs != null && !rs.isEmpty()) {
-            result.setCode(400);
-            result.setMsg(rs.values().toString());
+            throw new BuzException(400, rs.values().toString());
         } else {
             result.setData(dto.getId().toString());
         }
         return result;
+    }
+
+    private CreateTopicDto buildCategoryFolderDto(String parentAlias, Integer mountType, String mountSource, Integer folderDataType) {
+        CreateTopicDto dto = new CreateTopicDto();
+        FolderDataType fdt = FolderDataType.getFolderDataType(folderDataType);
+        if (StringUtils.hasText(parentAlias)) {
+            dto.setAlias(fdt.name().toLowerCase() + "_" + parentAlias);
+            dto.setParentAlias(parentAlias);
+            dto.setMountSource(mountSource);
+            dto.setMountType(mountType);
+        } else {
+            dto.setAlias("_" + fdt.name().toLowerCase() + "_");
+            dto.setParentAlias(null);
+        }
+        dto.setId(SuposIdUtil.nextId());
+        String name = I18nUtils.getMessage(fdt.getI18nName());
+        dto.setName(name);
+        dto.setDisplayName(name);
+        dto.setDataType(folderDataType);
+        dto.setPathType(Constants.PATH_TYPE_DIR);
+        return dto;
+
     }
 
     public JsonResult<String> updateModelInstance(UpdateUnsDto dto) {
@@ -146,7 +250,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         createTopicDto.setPathType(unsPo.getPathType());
         Integer flags = createTopicDto.getFlags();
         Boolean dash = createTopicDto.getAddDashBoard(), flow = createTopicDto.getAddFlow(), save2db = createTopicDto.getSave2db();
-
+        String accessLevel = dto.getAccessLevel();
         if (flags == null && (dash != null || flow != null || save2db != null)) {
             flags = unsPo.getWithFlags();
             if (flags == null) {
@@ -162,14 +266,31 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             if (save2db != null) {
                 fl = save2db ? (fl | Constants.UNS_FLAG_WITH_SAVE2DB) : (fl & ~Constants.UNS_FLAG_WITH_SAVE2DB);
             }
+            if (StringUtils.hasText(accessLevel)) {
+                if (accessLevel.equals(FileReadWriteMode.READ_ONLY.getMode())) {
+                    fl = (fl & ~Constants.UNS_FLAG_ACCESS_LEVEL_READ_WRITE)
+                            | Constants.UNS_FLAG_ACCESS_LEVEL_READ_ONLY;
+                } else {
+                    fl = (fl & ~Constants.UNS_FLAG_ACCESS_LEVEL_READ_ONLY)
+                            | Constants.UNS_FLAG_ACCESS_LEVEL_READ_WRITE;
+                }
+            }
             flags = fl;
         } else {
             flags = unsPo.getWithFlags();
         }
+
         createTopicDto.setFlags(flags);
         createTopicDto.setParentAlias(unsPo.getParentAlias());
         createTopicDto.setDataType(unsPo.getDataType());
-        return createModelInstance(createTopicDto);
+        JsonResult<String> modelInstance = createModelInstance(createTopicDto);
+        JsonResult<String> newResult = new JsonResult<>();
+        newResult.setCode(modelInstance.getCode());
+        newResult.setMsg(modelInstance.getMsg());
+        if (modelInstance.getData() != null) {
+            newResult.setData(modelInstance.getData());
+        }
+        return newResult;
     }
 
 
@@ -185,7 +306,67 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         createTopicDto.setAlias(unsPo.getAlias());
         createTopicDto.setParentAlias(unsPo.getParentAlias());
         createTopicDto.setDataType(unsPo.getDataType());
-        return createModelInstance(createTopicDto);
+        JsonResult<String> modelInstance = createModelInstance(createTopicDto);
+        JsonResult<String> newResult = new JsonResult<>();
+        newResult.setCode(modelInstance.getCode());
+        newResult.setMsg(modelInstance.getMsg());
+        if (modelInstance.getData() != null) {
+            newResult.setData(modelInstance.getData());
+        }
+        return newResult;
+    }
+
+    public ResultVO subscribeModel(Long id, Boolean enable, String frequency) {
+        if (enable == null && frequency == null) {
+            return ResultVO.fail("enable and frequency not be null");
+        }
+        CreateTopicDto dto = unsDefinitionService.getDefinitionById(id);
+        if (dto == null) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.folder.or.file.not.found"));
+        }
+
+        Integer flags = dto.getFlags();
+        if (enable != null) {
+            if (flags == null) {
+                if (enable) {
+                    flags = Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE;
+                }
+            } else {
+                flags = enable ? (flags | Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE) : (flags & ~Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE);
+            }
+        }
+
+        if (enable != null) {
+            dto.setFlags(flags);
+        }
+        if (frequency != null) {
+            Map<String, Object> protocol = new HashMap<>();
+            protocol.put("frequency", frequency);
+            dto.setProtocol(protocol);
+        }
+        dto.setSubscribeAt(new Date());
+        JsonResult jsonResult = createModelInstance(dto);
+        if (jsonResult.getCode() != 0) {
+            return ResultVO.fail(jsonResult.getMsg());
+        }
+        UnsPo afterUnsPo = baseMapper.selectById(id);
+        CreateTopicDto createTopicDto = UnsConverter.po2dto(afterUnsPo);
+        Integer pathType = afterUnsPo.getPathType();
+        CreateTopicDto[] dtos = new CreateTopicDto[1];
+        dtos[0] = createTopicDto;
+        List<CreateTopicDto> emptyList = Collections.emptyList();
+        CreateTopicDto[] emptyArray = new CreateTopicDto[0];
+        if (pathType == 0) {
+            UpdateInstanceEvent event = new UpdateInstanceEvent(this, emptyList, dtos, emptyArray);
+            EventBus.publishEvent(event);
+        } else if (pathType == 1) {
+            UpdateInstanceEvent event = new UpdateInstanceEvent(this, emptyList, emptyArray, dtos);
+            EventBus.publishEvent(event);
+        } else if (pathType == 2) {
+            UpdateInstanceEvent event = new UpdateInstanceEvent(this, Arrays.asList(createTopicDto), null, null);
+            EventBus.publishEvent(event);
+        }
+        return ResultVO.success("ok");
     }
 
 
@@ -312,10 +493,175 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         return results;
     }
 
+    /**
+     * 文件或者文件夹黏贴
+     * @param sourceId 被复制的顶级文件（夹）ID
+     * @param targetParentId 粘贴的目的地顶层文件夹ID
+     * @param newFolderOrFile 源顶层文件夹重命名
+     */
+    @Transactional(rollbackFor = Throwable.class)
+    public ResultVO pasteFolderOrFile(String sourceId, String targetParentId, CreateTopicDto newFolderOrFile) {
+        UnsPo targetFolder = null;
+        // 挂载的目录不允许粘贴
+        if (StringUtils.hasText(targetParentId)) {
+            targetFolder = unsMapper.getById(Long.parseLong(targetParentId));
+            if (targetFolder.getMountType() != null && targetFolder.getMountType() > 0) {
+                throw new BuzException(400, "uns.paste.mount.not.allow");
+            }
+        }
+        // 查询被复制顶层文件以及其下面的所有文件和文件夹
+        List<UnsPo> unsPos = unsMapper.selectAllByLayRec(sourceId);
+        if (unsPos.isEmpty()) {
+            throw new BuzException(400, "uns.paste.empty.not.allow");
+        }
+        // 归类文件夹下不能创建文件夹，且只能创建同类型文件
+        if (systemConfig.getEnableAutoCategorization()) {
+            if (targetFolder != null) {
+                Integer pDataType = targetFolder.getDataType();
+                if (pDataType != null && pDataType > 0) {
+                    List<UnsPo> forbiddenFiles = unsPos.stream().filter(po ->
+                                    (po.getPathType() == Constants.PATH_TYPE_DIR && po.getDataType().intValue() != pDataType.intValue()) ||
+                                            (po.getPathType() == Constants.PATH_TYPE_FILE && (po.getParentDataType() == null || po.getParentDataType().intValue() != pDataType.intValue())))
+                            .toList();
+                    if (!forbiddenFiles.isEmpty()) {
+                        throw new BuzException(400, "uns.paste.category.not.allow");
+                    }
+                }
+            }
+            UnsPo sourceFile = unsMapper.getById(Long.parseLong(sourceId));
+            if (sourceFile.getPathType() == Constants.PATH_TYPE_DIR && sourceFile.getDataType() > 0) {
+                // 删除顶层归类文件夹，并且不支持传入新的归类文件夹
+                unsPos.removeIf(item -> item.getId().longValue() == sourceFile.getId().longValue());
+                newFolderOrFile = null;
+            }
+        }
+        List<CreateTopicDto> createTopicDtos = unsPo2Dto(unsPos, sourceId, targetParentId, newFolderOrFile);
+        if (createTopicDtos.size() == 1) {
+            JsonResult<Map<String, String>> modelInstance = createCategoryModelInstance(createTopicDtos.get(0));
+            if (modelInstance.getCode() > 200) {
+                throw new BuzException(modelInstance.getMsg());
+            }
+            return ResultVO.successWithData(modelInstance.getData());
+        }
+        Map<String, String> modelAndInstance = createModelAndInstance(createTopicDtos, false);
+        // 当超过一半文件失败则回滚
+        if (modelAndInstance.size() >= (createTopicDtos.size() / 2)) {
+            // 取第一个报错信息返回
+            throw new BuzException(modelAndInstance.values().iterator().next());
+        }
+        // 查询新文件的ID和parentId,并返回前端用于定位
+        UnsPo anyOne = unsMapper.getByAlias(createTopicDtos.get(0).getAlias());
+        Map<String, String> resultData = new HashMap<>();
+        resultData.put("parentId", anyOne.getParentId() == null ? "" : anyOne.getParentId().toString());
+        resultData.put("id", anyOne.getId().toString());
+        // 当前方法只能处理5000条数据，超过5000需要给前端一个反馈
+        if (createTopicDtos.size() > 2000) { // 避免每次都查总数
+            int count = unsMapper.countAllByLayRec(sourceId);
+            if (count > 5000) {
+                modelAndInstance.put("0", I18nUtils.getMessage("uns.paste.total.limit"));
+            }
+        }
+
+        if (modelAndInstance.isEmpty()) {
+            return ResultVO.successWithData(resultData);
+        }
+
+        return ResultVO.builder()
+                .code(206)
+                .msg(modelAndInstance.values().iterator().next())
+                .data(resultData)
+                .build();
+    }
+
+    private List<CreateTopicDto> unsPo2Dto(List<UnsPo> unsPos, String sourceId, String targetParentId, CreateTopicDto newFolderOrFile) {
+        LinkedList<CreateTopicDto> topicDtos = new LinkedList<>();
+        Map<String, String> aliasMapping = new HashMap<>();
+        for (UnsPo unsPo : unsPos) {
+            CreateTopicDto topicDto = new CreateTopicDto();
+            BeanUtils.copyProperties(unsPo, topicDto);
+            topicDto.setId(SuposIdUtil.nextId());
+            String newAlias = "";
+            if (newFolderOrFile == null) {
+                newAlias = PathUtil.generateAliasWithRandom(topicDto.getName(), topicDto.getPathType());
+            } else {
+                newAlias = PathUtil.generateAliasWithRandom(newFolderOrFile.getName(), newFolderOrFile.getPathType());
+            }
+            topicDto.setAlias(newAlias);
+            topicDto.setTemplate(unsPo.getTemplateAlias());
+            if (unsPo.getLabelIds() != null) {
+                topicDto.setLabelNames(unsPo.getLabelIds().values().toArray(new String[0]));
+            }
+            if (StringUtils.hasText(unsPo.getProtocol())) {
+                Map<String, Object> protoMap = JSON.parseObject(unsPo.getProtocol(), Map.class);
+                topicDto.setFrequency(protoMap.get("frequency").toString());
+                topicDto.setProtocol(protoMap);
+            }
+            if (Constants.withFlow(unsPo.getWithFlags())) {
+                // 粘贴的文件不需要mock数据
+                topicDto.setFlags(unsPo.getWithFlags() & ~Constants.UNS_FLAG_WITH_FLOW);
+            } else {
+                topicDto.setFlags(unsPo.getWithFlags());
+            }
+            topicDto.setAccessLevel(Constants.withReadOnly(unsPo.getWithFlags()));
+            aliasMapping.put(unsPo.getAlias(), newAlias);
+            // 顶层文件添加到列表第一位置
+            if (sourceId.equals(unsPo.getId().toString())) {
+                // 粘贴并修改得情况，顶层采用输入的文件
+                if (newFolderOrFile != null) {
+                    aliasMapping.put(newFolderOrFile.getAlias(), newAlias);
+                    newFolderOrFile.setId(SuposIdUtil.nextId());
+                    newFolderOrFile.setAlias(newAlias);
+                    newFolderOrFile.setMountType(0);
+                    newFolderOrFile.setMountSource(null);
+                    topicDtos.addFirst(newFolderOrFile);
+                } else {
+                    topicDtos.addFirst(topicDto);
+                }
+            } else {
+                topicDtos.add(topicDto);
+            }
+        }
+        // 重新设置parent alias
+        resetParentAlias(topicDtos, targetParentId, aliasMapping);
+
+        // 判断文件夹name是否和同级的师兄弟是否有重名，如果重名需要对name进行重命名
+        if (topicDtos.get(0).getPathType() == Constants.PATH_TYPE_DIR) {
+            renameDuplicateFolderName(topicDtos.get(0), targetParentId);
+        }
+        return topicDtos;
+    }
+
+    private void renameDuplicateFolderName(CreateTopicDto topDto, String targetParentId) {
+        Long fatherId = StringUtils.hasText(targetParentId) ? Long.valueOf(targetParentId) : null;
+        Set<String> brotherNameList = unsMapper.listBrotherFileName(fatherId);
+        String unsName = topDto.getName();
+        if (brotherNameList.contains(unsName)) {
+            String newName = LayRecUtils.genNewPath(unsName, brotherNameList);
+            topDto.setName(newName);
+        }
+    }
+
+    private void resetParentAlias(LinkedList<CreateTopicDto> topicDtos, String targetParentId, Map<String, String> aliasMapping) {
+        for (CreateTopicDto topicDto : topicDtos) {
+            String newParentAlias = aliasMapping.get(topicDto.getParentAlias());
+            if (newParentAlias != null) {
+                topicDto.setParentAlias(newParentAlias);
+            } else {
+                if (StringUtils.hasText(targetParentId)) {
+                    UnsPo newParent = unsMapper.getById(Long.parseLong(targetParentId));
+                    topicDto.setParentAlias(newParent.getAlias());
+                } else {
+                    topicDto.setParentAlias(null);
+                }
+            }
+        }
+    }
+
     @Transactional(rollbackFor = Throwable.class, timeout = 300)
     @Override
     public Map<String, String> createModelAndInstance(List<CreateTopicDto> topicDtos, boolean fromImport) {
         final int TASK_ID = System.identityHashCode(topicDtos);
+
         CreateModelInstancesArgs args = new CreateModelInstancesArgs();
         args.topics = topicDtos;
         args.fromImport = fromImport;
@@ -346,6 +692,106 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         return rs;
     }
 
+    private List<CreateTopicDto> appendCategoryFolders(List<CreateTopicDto> topicDtos, Map<String, String> errorTip) {
+        List<CreateTopicDto> newTopicDtos = new ArrayList<>(topicDtos);
+        Set<String> parentAliasSet = newTopicDtos.stream().map(CreateTopicDto::getParentAlias).filter(StringUtils::hasText).collect(Collectors.toSet());
+        Map<String, UnsPo> parentAliasMap = new HashMap<>();
+        Map<String, List<UnsPo>> categoryFolderMap = new HashMap<>();
+        if (!parentAliasSet.isEmpty()) {
+            List<UnsPo> parentUnsPoList = unsMapper.listByAlias(parentAliasSet);
+            parentAliasMap = parentUnsPoList.stream()
+                    .collect(Collectors.toMap(
+                            UnsPo::getAlias, // Key Mapper: 提取 alias 作为 key
+                            unsPo -> unsPo   // Value Mapper: 对象本身作为 value
+                    ));
+            // 查询数据库父节点下的归类子文件夹
+            List<UnsPo> categoryFolders = unsMapper.listCategoryFolders(parentAliasSet);
+            categoryFolderMap = categoryFolders.stream()
+                    .collect(Collectors.groupingBy(UnsPo::getParentAlias));
+        }
+        List<UnsPo> rootUnsPoList = unsMapper.listRootCategoryFolders();
+        categoryFolderMap.put(null, rootUnsPoList);
+
+        Map<String, CreateTopicDto> aliasMap = newTopicDtos.stream().collect(Collectors.toMap(
+                CreateTopicDto::getAlias, // Key Mapper: 提取 alias 作为 key
+                dto -> dto   // Value Mapper: 对象本身作为 value
+        ));
+        Map<String, CreateTopicDto> newCategoryAliasMap = new HashMap<>();
+        Iterator<CreateTopicDto> iterator = newTopicDtos.iterator();
+        while(iterator.hasNext()) {
+            CreateTopicDto topicDto = iterator.next();
+            if (topicDto.getPathType() == Constants.PATH_TYPE_FILE) {
+                // 验证parentDataType是否为空
+                if (topicDto.getParentDataType() == null || topicDto.getParentDataType() < 1 || topicDto.getParentDataType() > 3) {
+                    errorTip.put(topicDto.gainBatchIndex(), I18nUtils.getMessage("uns.file.type.invalid"));
+                    iterator.remove();
+                    continue;
+                }
+                // 判断父级类型和文件类型是否属于包含关系，例如操作文件夹下只能包含JSONB类型
+                if (!FolderDataType.isTypeMatched(topicDto.getParentDataType(), topicDto.getDataType())) {
+                    errorTip.put(topicDto.gainBatchIndex(), I18nUtils.getMessage("uns.category.type.not.eq"));
+                    iterator.remove();
+                    continue;
+                }
+                UnsPo parentUnsPo = parentAliasMap.get(topicDto.getParentAlias());
+                // 如果父级目录是归类文件夹并且已经在数据库中已存在，则跳过
+                if (parentUnsPo != null && parentUnsPo.getDataType() != null) {
+                    // 检查文件类型和父级文件夹类型是否一致
+                    if (parentUnsPo.getDataType() > 0 && parentUnsPo.getDataType().intValue() != topicDto.getParentDataType()) {
+                        errorTip.put(topicDto.gainBatchIndex(), I18nUtils.getMessage("uns.category.type.not.eq"));
+                        iterator.remove();
+                        continue;
+                    }
+                    if (parentUnsPo.getDataType().intValue() == topicDto.getParentDataType()) {
+                        continue;
+                    }
+                }
+                // 如果数据库不存在则从当前列表中查询
+                CreateTopicDto parentDto = aliasMap.get(topicDto.getParentAlias());
+                // 如果当前列表中已存在父级文件夹，并且类型为归类文件夹，则跳过
+                if (parentDto != null && parentDto.getDataType() != null) {
+                    if (parentDto.getDataType() > 0 && parentDto.getDataType().intValue() != topicDto.getParentDataType()) {
+                        errorTip.put(topicDto.gainBatchIndex(), I18nUtils.getMessage("uns.category.type.not.eq"));
+                        iterator.remove();
+                        continue;
+                    }
+                    if (parentDto.getDataType().intValue() == topicDto.getParentDataType()) {
+                        continue;
+                    }
+                }
+                // 判断父节点下面有没有归类子文件夹，如果有则将当前文件的父级设置为已经存在的归类子文件夹
+                List<UnsPo> existsCategoryFolders = categoryFolderMap.get(topicDto.getParentAlias());
+                boolean bingo = false;
+                if (existsCategoryFolders != null) {
+                    for (UnsPo existsCategoryFolder : existsCategoryFolders) {
+                        if (existsCategoryFolder.getDataType() != null && topicDto.getParentDataType() != null
+                                && existsCategoryFolder.getDataType().intValue() == topicDto.getParentDataType().intValue()) {
+                            topicDto.setParentAlias(existsCategoryFolder.getAlias());
+                            bingo = true;
+                            break;
+                        }
+                    }
+                    if (bingo) {
+                        continue;
+                    }
+                }
+                String mountSource = parentUnsPo == null ? (parentDto == null ? null : parentDto.getMountSource()) : parentUnsPo.getMountSource();
+                Integer mountType = parentUnsPo == null ? (parentDto == null ? null : parentDto.getMountType()) : parentUnsPo.getMountType();;
+
+                // 在文件和其父节点之间插入一层归类文件夹
+                CreateTopicDto categoryDto = buildCategoryFolderDto(topicDto.getParentAlias(), mountType, mountSource, topicDto.getParentDataType());
+                topicDto.setParentAlias(categoryDto.getAlias());
+                if (!newCategoryAliasMap.containsKey(categoryDto.getAlias())) {
+                    newCategoryAliasMap.put(categoryDto.getAlias(), categoryDto);
+                }
+            }
+        }
+        if (!newCategoryAliasMap.isEmpty()) {
+            newTopicDtos.addAll(newCategoryAliasMap.values());
+        }
+        return newTopicDtos;
+    }
+
     static class FileMap extends HashMap<String, CreateTopicDto> {
         public FileMap(int initialCapacity) {
             super(initialCapacity);
@@ -364,15 +810,20 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     }
 
     public Map<String, String> createModelAndInstancesInner(final CreateModelInstancesArgs args) {
+        final Map<String, String> errTipMap = new HashMap<>();
+        if (systemConfig.getEnableAutoCategorization()) {
+            // 对文件进行归类
+            args.topics = appendCategoryFolders(args.topics, errTipMap);
+        }
         List<CreateTopicDto> topicDtos = args.topics;
         if (log.isDebugEnabled()) {
             log.debug("createModelAndInstances args:{}", args);
         } else if (topicDtos.size() == 1) {
             log.info("UnsAdd: {}", topicDtos.get(0));
-        } else {
+        } else if (topicDtos.size() > 1) {
             log.info("UnsAdd[{}]: {} ~ {}", topicDtos.size(), topicDtos.get(0).getAlias(), topicDtos.get(topicDtos.size() - 1).getAlias());
         }
-        final Map<String, String> errTipMap = new HashMap<>(topicDtos.size());
+
         FileMap paramFiles = new FileMap(topicDtos.size());
         Map<String, CreateTopicDto> paramFolders = initParamsUns(topicDtos, errTipMap, paramFiles);
         if (paramFolders.isEmpty() && paramFiles.isEmpty()) {
@@ -434,7 +885,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             if (po != null) {
                 addFiles.put(po.getId(), po);
                 aliasMap.put(po.getAlias(), po);
-                if (ArrayUtils.isNotEmpty(bo.getLabelNames())) {
+                if (bo.getLabelNames() != null) {
                     unsPoLabels.put(po.getId(), new UnsPoLabels(po, dbFiles.containsKey(po.getId()), bo.getLabelNames()));
                 }
             }
@@ -859,7 +1310,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
     private void setJdbcType(CreateTopicDto bo) {
         final Integer DATA_TYPE = bo.getDataType();
         SrcJdbcType jdbcType = bo.getDataSrcId();
-        if (jdbcType == null && DATA_TYPE != null) {
+        if (jdbcType == null && DATA_TYPE != null && Constants.PATH_TYPE_FILE == bo.getPathType()) {
             switch (DATA_TYPE) {
                 case Constants.CALCULATION_HIST_TYPE:
                 case Constants.CALCULATION_REAL_TYPE:
@@ -869,6 +1320,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                 case Constants.ALARM_RULE_TYPE:
                 case Constants.RELATION_TYPE:
                 case Constants.MERGE_TYPE:
+                case Constants.JSONB_TYPE:
                     jdbcType = relationType;
                     break;
             }
@@ -878,7 +1330,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
 
     private static UnsPo newUnsFile(CreateModelInstancesArgs args, CreateTopicDto bo) {
         String alias = bo.getAlias();
-        UnsPo instance = new UnsPo(bo.getId(), alias, bo.getName(), bo.getPathType(), null, null, null, bo.getDescription());
+        UnsPo instance = new UnsPo(bo.getId(), alias, bo.getName(), bo.getPathType(), bo.getDataType(), null, null, bo.getDescription());
         SrcJdbcType jdbcType = bo.getDataSrcId();
         if (jdbcType != null) {
             instance.setDataSrcId(jdbcType.id);
@@ -893,10 +1345,10 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         instance.setWithFlags(bo.getFlags());
         instance.setModelId(bo.getModelId());
         instance.setModelAlias(bo.getModelAlias());
+        instance.setSubscribeAt(bo.getSubscribeAt());
         if (bo.getPathType() == Constants.PATH_TYPE_FILE) {
-            Integer dataType = bo.getDataType();
-            if (dataType != null) {
-                instance.setDataType(dataType);
+            if (bo.getParentDataType() != null) {
+                instance.setParentDataType(bo.getParentDataType());
             }
             if (ArrayUtils.isNotEmpty(bo.getFields())) {
                 instance.setNumberFields(bo.countNumberFields());
@@ -919,6 +1371,8 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         if (bo.getExtendFieldUsed() != null) {
             instance.setExtendFieldFlags(FieldUtils.generateFlag(bo.getExtendFieldUsed()));
         }
+        instance.setMountType(bo.getMountType());
+        instance.setMountSource(bo.getMountSource());
         return instance;
     }
 
@@ -1148,9 +1602,9 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                                       Map<String, CreateTopicDto> paramFiles,
                                       final CreateTopicDto dto) {
         final int pathType = dto.getPathType();
-        if (pathType == Constants.PATH_TYPE_DIR) {
+        /*if (pathType == Constants.PATH_TYPE_DIR) {
             dto.setDataType(null);
-        }
+        }*/
         Set<ConstraintViolation<Object>> violations = validator.validate(dto);
         String batchIndex = dto.gainBatchIndex();
         if (!violations.isEmpty()) {
@@ -1165,10 +1619,10 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
             errTipMap.put(batchIndex, msg);
             return;
         }
-
-
         if (pathType == Constants.PATH_TYPE_DIR) {// current is folder
-            dto.setDataType(0);
+            if (dto.getDataType() == null) {
+                dto.setDataType(0);
+            }
             paramFolders.put(alias, dto);
         } else if (pathType == Constants.PATH_TYPE_FILE) { // current is file
             Integer dataType = dto.getDataType();
@@ -1199,7 +1653,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                 dto.setFrequencySeconds(getFrequencySeconds(frequency));
             }
             paramFiles.put(alias, dto);
-        }else {
+        } else {
             dto.setDataType(0);
         }
     }

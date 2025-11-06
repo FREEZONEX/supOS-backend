@@ -3,6 +3,7 @@ package com.supos.uns.service.exportimport.excel;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.poi.excel.ExcelUtil;
 import cn.hutool.poi.excel.sax.handler.RowHandler;
+import cn.hutool.system.SystemUtil;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.read.metadata.ReadSheet;
@@ -52,6 +53,9 @@ public class ExcelDataImporter extends DataImporter {
     public void writeError(File srcfile, File outFile) {
         try {
             String templatePath = Constants.EXCEL_TEMPLATE_PATH;
+            if (SystemUtil.getBoolean("SYS_OS_ENABLE_AUTO_CATEGORIZATION", false)) {
+                templatePath = Constants.EXCEL_TEMPLATE_PATH_CATEGORY;
+            }
             ExcelWriter excelWriter = EasyExcel.write(outFile).withTemplate(new ClassPathResource(templatePath).getInputStream()).build();
 
             com.alibaba.excel.ExcelReader excelReader =EasyExcel.read(srcfile).ignoreEmptyRow(false).build();
@@ -125,6 +129,9 @@ public class ExcelDataImporter extends DataImporter {
                     .setTask(I18nUtils.getMessage("uns.create.task.name.file"))
                     .setFinished(false)
                     .setProgress(80.0));
+        } else if (excelTypeEnum == ExcelTypeEnum.FILE_JSONB) {
+            // 保存JSONB文件
+            importFile(getContext(), Constants.JSONB_TYPE);
         }
     }
 

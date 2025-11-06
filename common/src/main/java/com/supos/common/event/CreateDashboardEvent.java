@@ -8,14 +8,19 @@ import org.springframework.context.ApplicationEvent;
  */
 public class CreateDashboardEvent extends ApplicationEvent {
     public final String uuid;
+    /**
+     * this name = uns alias
+     */
     public final String name;
     public final String description;
+    public final String username;
 
-    public CreateDashboardEvent(Object source, String uuid, String name, String description) {
+    public CreateDashboardEvent(Object source, String uuid, String name, String description, String username) {
         super(source);
         this.uuid = uuid;
         this.name = name;
         this.description = description;
+        this.username = username;
     }
 
     @Override

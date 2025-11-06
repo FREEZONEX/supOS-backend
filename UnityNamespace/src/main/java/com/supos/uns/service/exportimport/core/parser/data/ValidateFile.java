@@ -64,6 +64,11 @@ public class ValidateFile {
     String autoDashboard;
     String mockData;
 
+    /**
+     * 0-3 see com.supos.common.enums.FolderDataType
+     */
+    Integer parentDataType;
+
 
     public void setPath(String path) {
         if (path != null && !path.isEmpty()) {

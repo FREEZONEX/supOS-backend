@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.codec.Base64;
 import cn.hutool.core.convert.Convert;
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson2.JSONObject;
@@ -15,6 +16,7 @@ import com.supos.common.dto.*;
 import com.supos.common.enums.FieldType;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.QueryDataEvent;
+import com.supos.common.event.UnsMessageEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.service.IUnsDefinitionService;
@@ -66,6 +68,11 @@ public class UnsDataService {
         timeSequenceDataStorageAdapter = storageServiceHelper.getSequenceDbEnabled();
     }
 
+    @EventListener(UnsMessageEvent.class)
+    void onBatchUpdateFileEvent(UnsMessageEvent event) {
+        batchUpdateFile(event.dataList);
+    }
+
     public ResultVO<UnsDataResponseVo> batchUpdateFile(List<UpdateFileDTO> list) {
         if (CollectionUtils.isNotEmpty(list)) {
             if (list.size() > 100) {
@@ -90,7 +97,7 @@ public class UnsDataService {
                             resultVO.setCode(400);
                             UnsDataResponseVo responseVo = new UnsDataResponseVo();
                             responseVo.setNotExists(notExists);
-                            errorFields.put(k, "null");
+                            errorFields.put(k, I18nUtils.getMessage("uns.write.value.relation.pk.is.null"));
                             responseVo.setErrorFields(errorFields);
                             resultVO.setData(responseVo);
                             return resultVO;
@@ -120,6 +127,8 @@ public class UnsDataService {
                             }
                         } else if (type == FieldType.BLOB || type == FieldType.LBLOB) {
                             value = DataUtils.saveBlobData(dto.getAlias(), entry.getKey(), type, value);
+                        }  else if (type == FieldType.DATETIME) {
+                            value = DateTimeUtils.toUtcIso(value);
                         }
                     }
                     verifyFileField(alias, field, value, fMap, errorFields);
@@ -215,28 +224,43 @@ public class UnsDataService {
         }
 
         FieldType type = fieldDefine.getType();
-
-        if (type == FieldType.DATETIME) {
-            if (!DateTimeUtils.isValidTime(value)) {
-                errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.type.un.match"));
+        String sValue = Convert.toStr(value);
+        try {
+            if (type == FieldType.DATETIME) {
+                if (!DateTimeUtils.isValidTime(value)) {
+                    errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.type.un.match"));
+                }
+            } else if (type == FieldType.STRING) {
+                if (sValue.length() > fieldDefine.getMaxLen()) {
+                    errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
+                }
+            } else if (type == FieldType.INTEGER) {
+                if (NumberRangeValidator.isOutOfRange(value, FieldType.INTEGER)) {
+                    errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
+                } else {
+                    Integer.parseInt(sValue);
+                }
+            } else if (type == FieldType.LONG) {
+                if (NumberRangeValidator.isOutOfRange(value, FieldType.LONG)) {
+                    errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
+                } else {
+                    Long.parseLong(sValue);
+                }
+            } else if (type == FieldType.FLOAT) {
+                if (NumberRangeValidator.isOutOfRange(value, FieldType.FLOAT)) {
+                    errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
+                }  else {
+                    Float.parseFloat(sValue);
+                }
+            } else if (type == FieldType.DOUBLE) {
+                if (NumberRangeValidator.isOutOfRange(value, FieldType.DOUBLE)) {
+                    errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
+                } else {
+                    Double.parseDouble(sValue);
+                }
             }
-        } else if (type == FieldType.STRING) {
-            String cValue = Convert.toStr(value);
-            if (cValue.length() > fieldDefine.getMaxLen()) {
-                errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
-            }
-        } else if (type == FieldType.INTEGER) {
-            if (NumberRangeValidator.isOutOfRange(value, FieldType.INTEGER)) {
-                errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
-            }
-        } else if (type == FieldType.LONG) {
-            if (NumberRangeValidator.isOutOfRange(value, FieldType.LONG)) {
-                errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
-            }
-        } else if (type == FieldType.DOUBLE) {
-            if (NumberRangeValidator.isOutOfRange(value, FieldType.DOUBLE)) {
-                errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.value.out.of.size"));
-            }
+        } catch (NumberFormatException e) {
+            errorFields.put(alias + "." + fieldName, I18nUtils.getMessage("uns.field.type.un.match"));
         }
     }
 
@@ -273,7 +297,7 @@ public class UnsDataService {
             }
         }
         //去重
-        selects = selects.stream().collect(Collectors.collectingAndThen(Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(Select::getTable))), ArrayList::new));
+        selects = selects.stream().collect(Collectors.collectingAndThen(Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(Select::getTable).thenComparing(Select::getColumn))), ArrayList::new));
         historyQueryParams.setSelect(selects.toArray(new Select[0]));
         historyQueryParams.setWhere(trans2Where(request.getWhere()));
         log.debug(">>>>>>>>> 批量查询文件历史值转换后参数：{}", JSONUtil.toJsonStr(historyQueryParams));
@@ -376,7 +400,7 @@ public class UnsDataService {
     // pride 定制需求 查询引用类型需要把别名转换成原始文件的别名
     private List<FieldsAndData> transToAlias(List<String> selectList, List<FieldsAndData> dataList, Map<String, String> aliasMap) {
 
-        Map<String, FieldsAndData> dataMap = dataList.stream().distinct().collect(Collectors.toMap(FieldsAndData::getTable, Function.identity()));
+        Map<String, FieldsAndData> dataMap = dataList.stream().distinct().collect(Collectors.toMap(d -> d.getTable() + "." + d.getColumn(), Function.identity(), (v1, v2) -> v1));
 
         return mapFieldsInOrderAndReplaceTable(selectList, aliasMap, dataMap);
     }
@@ -394,24 +418,38 @@ public class UnsDataService {
             Map<String, String> mappingMap,
             Map<String, FieldsAndData> resultMap
     ) {
-        return originTableList.stream()
-                .map(originKey -> {
-                    String mappedKey = mappingMap.get(originKey);
-                    if (mappedKey == null) {
-                        return null;
-                    }
 
-                    FieldsAndData original = resultMap.get(mappedKey);
-                    if (original == null) {
-                        return null;
-                    }
-                    FieldsAndData newData = BeanUtil.copyProperties(original, FieldsAndData.class);
-                    newData.setTable(originKey);
-                    return newData;
-                })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+        List<FieldsAndData> dataList = new ArrayList<>();
+        for (String mappedKey : mappingMap.keySet()) {
+            FieldsAndData original = resultMap.get(mappedKey);
+            if (original == null) {
+                return null;
+            }
+            FieldsAndData newData = BeanUtil.copyProperties(original, FieldsAndData.class);
+            newData.setTable(original.getTable());
+            dataList.add(newData);
+        }
+        return dataList;
     }
+
+//        return originTableList.stream()
+//                .map(originKey -> {
+//                    String mappedKey = mappingMap.get(originKey);
+//                    if (mappedKey == null) {
+//                        return null;
+//                    }
+//
+//                    FieldsAndData original = resultMap.get(mappedKey);
+//                    if (original == null) {
+//                        return null;
+//                    }
+//                    FieldsAndData newData = BeanUtil.copyProperties(original, FieldsAndData.class);
+//                    newData.setTable(originKey);
+//                    return newData;
+//                })
+//                .filter(Objects::nonNull)
+//                .collect(Collectors.toList());
+//    }
 
     private Where trans2Where(JSONObject whereJson) {
         if (whereJson == null || whereJson.isEmpty()) {
@@ -476,12 +514,12 @@ public class UnsDataService {
         String table = select.getTable();//别名
         CreateTopicDto originUns = iUnsDefinitionService.getDefinitionByAlias(table);
         //如果文件是引用类型，则需查询被引用的原始表名，并且替换
-        if (originUns != null && Constants.CITING_TYPE == originUns.getDataType()) {
+        if (originUns != null && Constants.CITING_TYPE == originUns.getDataType() && ArrayUtil.isNotEmpty(originUns.getRefers())) {
             CreateTopicDto refUns = iUnsDefinitionService.getDefinitionById(originUns.getRefers()[0].getId());
             select.setTable(refUns.getAlias());
-            aliasMap.put(table, refUns.getAlias());
+            aliasMap.put(input, refUns.getAlias());
         } else {
-            aliasMap.put(table, table);
+            aliasMap.put(input, table);
         }
         return select;
     }

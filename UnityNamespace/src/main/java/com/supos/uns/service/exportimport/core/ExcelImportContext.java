@@ -49,6 +49,8 @@ public class ExcelImportContext {
     private Map<String, ExcelUnsWrapDto> fileAggregationMap = new HashMap<>();
     /**待导入的引用文件*/
     private Map<String, ExcelUnsWrapDto> fileReferenceMap = new HashMap<>();
+    /**待导入的JSONB文件*/
+    private Map<String, ExcelUnsWrapDto> fileJsonbMap = new HashMap<>();
 
     /**待导入的引用源文件*/
     private Map<String, ExcelUnsWrapDto> fileSourceMap = new HashMap<>();
@@ -148,6 +150,8 @@ public class ExcelImportContext {
                 fileAggregationMap.put(uns.getPath(), uns);
             } else if (dataType == Constants.CITING_TYPE) {
                 fileReferenceMap.put(uns.getPath(), uns);
+            } else if (dataType == Constants.JSONB_TYPE) {
+                fileJsonbMap.put(uns.getPath(), uns);
             }
         }
         aliasInImportFile.add(uns.getAlias());
@@ -220,6 +224,8 @@ public class ExcelImportContext {
                 fileAggregationMap = new HashMap<>();
             }else if (dataType == Constants.CITING_TYPE) {
                 fileReferenceMap = new HashMap<>();
+            }else if (dataType == Constants.JSONB_TYPE) {
+                fileJsonbMap = new HashMap<>();
             }
         }
     }

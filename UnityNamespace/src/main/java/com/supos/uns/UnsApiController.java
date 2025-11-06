@@ -8,6 +8,7 @@ import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.JsonUtil;
 import com.supos.uns.dao.mapper.UnsMapper;
+import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.service.*;
 import com.supos.uns.vo.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -47,7 +48,7 @@ public class UnsApiController {
     @Autowired
     UnsTreeService unsTreeService;
 
-    private static final Set<Integer> baseDataTypes = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE)));
+    private static final Set<Integer> baseDataTypes = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.JSONB_TYPE)));
 
     @Operation(summary = "分页搜索主题")
     @GetMapping(path = {"/inter-api/supos/uns/search"}, produces = "application/json")
@@ -196,8 +197,8 @@ public class UnsApiController {
     @Operation(summary = "创建文件夹和文件", tags = "openapi.tag.folder.management")
     @PostMapping(path = {"/inter-api/supos/uns/model"})
     @Valid
-    public JsonResult<String> createModelInstance(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "文件夹或文件字段定义") CreateTopicDto dto) throws Exception {
-        return unsAddService.createModelInstance(dto);
+    public JsonResult<Map<String, String>> createModelInstance(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "文件夹或文件字段定义") CreateTopicDto dto) throws Exception {
+        return unsAddService.createCategoryModelInstance(dto);
     }
 
     @Operation(summary = "修改文件夹或文件明细", tags = "openapi.tag.folder.management")
@@ -214,11 +215,27 @@ public class UnsApiController {
         return unsAddService.updateName(updateNameVo);
     }
 
+    @Operation(summary = "文件或文件夹修改订阅", tags = "openapi.tag.folder.management")
+    @PutMapping(path = {"/inter-api/supos/uns/model/subscribe"})
+    @Valid
+    public ResultVO subscribeModel(@RequestParam(name = "id") @Parameter(description = "文件ID") Long id
+            , @RequestParam(name = "enable") @Parameter(description = "是否开启") Boolean enable,
+                                   @RequestParam(name = "frequency", required = false) @Parameter(description = "订阅频率") String frequency) {
+
+        return unsAddService.subscribeModel(id, enable, frequency);
+    }
+
     @Operation(summary = "预先判断是否有属性关联")
     @PostMapping(path = {"/inter-api/supos/uns/model/detect"})
     @Valid
     public ResultVO detectIfFieldReferenced(@RequestBody @Valid @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "模型字段定义") UpdateModeRequestVo dto) throws Exception {
         return unsManagerService.detectIfFieldReferenced(dto.getAlias(), dto.getFields());
+    }
+
+    @Operation(summary = "粘贴文件夹和文件", tags = "openapi.tag.folder.management")
+    @PostMapping(path = {"/inter-api/supos/uns/paste"})
+    public ResultVO pasteFolderOrFile(@RequestBody PasteRequestVO pasteRequest) {
+        return unsAddService.pasteFolderOrFile(pasteRequest.getSourceId(), pasteRequest.getTargetId(), pasteRequest.getNewF());
     }
 
     @Operation(summary = "批量创建文件夹和文件", tags = "openapi.tag.folder.management")
@@ -363,5 +380,13 @@ public class UnsApiController {
     @PostMapping(path = {"/inter-api/supos/external/topic2Uns"})
     public ResultVO externalTopicAdd(@RequestBody CreateFileDto createFileDto) {
         return unsExternalTopicService.topic2Uns(createFileDto);
+    }
+
+    @GetMapping(path = {"/inter-api/supos/uns/folder/empty"}, produces = "application/json")
+    public JsonResult<List<UnsPo>> searchEmptyFolder() throws Exception {
+
+        List<UnsPo> folders = unsQueryService.listAllEmptyFolder();
+        return new JsonResult<>(0, "ok", folders);
+
     }
 }

@@ -18,8 +18,8 @@ public class SourceFlowImportContext {
 
     private String file;
     private int total;
-    private String nodeRedHost;
-    private String nodeRedPort;
+//    private String nodeRedHost;
+//    private String nodeRedPort;
     private Map<String, String> checkErrorMap = new HashMap<>(4);
 
     public void addError(String key, String error) {

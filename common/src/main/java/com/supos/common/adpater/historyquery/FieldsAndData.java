@@ -11,6 +11,7 @@ import java.util.List;
 public class FieldsAndData {
     @JsonProperty("alias")
     String table; // 表名 (uns文件的别名）
+    String column;//字段名
     SelectFunction function;// select的函数, 可能为null(查询原始值)
     boolean hasNext;// 是否有下一页
     /**

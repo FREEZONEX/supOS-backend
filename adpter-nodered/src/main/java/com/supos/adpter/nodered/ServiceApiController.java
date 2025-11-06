@@ -1,6 +1,6 @@
 package com.supos.adpter.nodered;
 
-import com.supos.adpter.nodered.service.NodeRedAdapterService;
+import com.supos.adpter.nodered.service.SourceflowAdapterService;
 import com.supos.adpter.nodered.vo.BatchQueryRequest;
 import com.supos.adpter.nodered.vo.NodeFlowVO;
 import com.supos.common.dto.ResultDTO;
@@ -17,7 +17,7 @@ import java.util.List;
 public class ServiceApiController {
 
     @Autowired
-    private NodeRedAdapterService nodeRedAdapterService;
+    private SourceflowAdapterService nodeRedAdapterService;
 
 
     @PostMapping({"/service-api/supos/flow/by/aliases"})

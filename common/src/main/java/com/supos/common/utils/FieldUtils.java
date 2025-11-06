@@ -142,9 +142,9 @@ public class FieldUtils {
                     fNews.add(f);
                 }
             }
-            if (!hasId) {
-                fNews.add(new FieldDefine(Constants.SYS_FIELD_ID, FieldType.LONG, true));
-            }
+//            if (!hasId) {
+//                fNews.add(new FieldDefine(Constants.SYS_FIELD_ID, FieldType.LONG, true));
+//            }
             fields = fNews.toArray(new FieldDefine[0]);
         }
         return new TableFieldDefine(tableName, fields);

@@ -39,6 +39,9 @@ public class FileAggregationData implements ExportImportData {
     @ExcelProperty(index = 8)
     private String label;
 
+    @ExcelProperty(index = 9)
+    private String parentDataType;
+
     @ExcelIgnore
     private String error;
 }

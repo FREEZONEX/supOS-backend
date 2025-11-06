@@ -28,6 +28,8 @@ public class FolderData implements ExportImportData {
     private String fields;
     @ExcelProperty(index = 5)
     private String description;
+    @ExcelProperty(index = 6)
+    private String dataType;
 
     @ExcelIgnore
     private String type;

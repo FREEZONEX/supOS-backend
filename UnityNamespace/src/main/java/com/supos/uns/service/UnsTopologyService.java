@@ -6,6 +6,7 @@ import cn.hutool.core.exceptions.ExceptionUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.supos.adpter.elasticsearch.ElasticsearchAdpterService;
 import com.supos.common.Constants;
@@ -16,12 +17,15 @@ import com.supos.common.enums.IOTProtocol;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.NamespaceChangeEvent;
 import com.supos.common.event.UnsTopologyChangeEvent;
+import com.supos.common.event.mount.MountStatusChangeEvent;
 import com.supos.common.utils.JsonUtil;
 import com.supos.uns.bo.InstanceTopologyData;
 import com.supos.uns.bo.PathTypeCount;
 import com.supos.uns.bo.ProtocolCount;
 import com.supos.uns.dao.mapper.AlarmMapper;
+import com.supos.uns.dao.mapper.UnsMountMapper;
 import com.supos.uns.dao.mapper.UnsTopologyMapper;
+import com.supos.uns.dao.po.UnsMountPo;
 import com.supos.uns.vo.ICMPStateVO;
 import jakarta.annotation.Resource;
 import lombok.Data;
@@ -36,6 +40,7 @@ import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortOrder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
@@ -96,6 +101,9 @@ public class UnsTopologyService {
     @Resource
     private SystemConfig systemConfig;
 
+    @Autowired
+    private UnsMountMapper unsMountMapper;
+
     @EventListener(classes = ContextRefreshedEvent.class)
     private void init() {
         if (System.getProperty("os.name").toLowerCase().contains("windows")) {
@@ -149,12 +157,17 @@ public class UnsTopologyService {
                     JSONObject data = JSONObject.parseObject(httpResponse.body());
                     topologyData.setLiveConnections(data.getLong("live_connections"));
                     topologyData.setAllConnections(data.getLong("connections"));
+                    topologyData.setMessageInThroughput(data.getLong("received_msg_rate"));
+                    topologyData.setMessageOutThroughput(data.getLong("sent_msg_rate"));
                 }
             } catch (Exception ex) {
                 log.error("mqtt 连不上 {}", ex.getMessage());
             }
 
-            if (!topologyData.equals(globalTopologyData)) {
+            // 统计挂载状态
+            topologyData.setMountStatus(doCountMountStatus());
+
+            {
                 if (globalTopologyData != null) {
                     topologyData.setIcmpStates(globalTopologyData.getIcmpStates());
                 }
@@ -192,6 +205,27 @@ public class UnsTopologyService {
     public void namespaceChange(NamespaceChangeEvent event) {
         // 模型实例变动，重新统计信息
         statisticsExecutor.schedule(this::refresh, 1, TimeUnit.SECONDS);
+    }
+
+    @EventListener(classes = MountStatusChangeEvent.class)
+    public void mountStatusChange(MountStatusChangeEvent event) {
+        globalTopologyData.setMountStatus(doCountMountStatus());
+
+        log.debug("挂载状态发生变化");
+        topologyJson = globalTopologyData.toMessage();
+        EventBus.publishEvent(new UnsTopologyChangeEvent(this));
+    }
+
+    private Map<String, String> doCountMountStatus() {
+        List<UnsMountPo> mountPos = unsMountMapper.selectList(Wrappers.lambdaQuery(UnsMountPo.class));
+        Map<String, String> mountStatus = new HashMap<>();
+        if (CollectionUtil.isNotEmpty(mountPos)) {
+
+            for (UnsMountPo mount : mountPos) {
+                mountStatus.put(mount.getTargetAlias(), mount.getStatus());
+            }
+        }
+        return mountStatus;
     }
 
 
@@ -322,12 +356,20 @@ public class UnsTopologyService {
         @JsonProperty("liveConnections")
         long liveConnections;//在线连接数
 
+        @JsonProperty("messageInThroughput")
+        long messageInThroughput;// 每秒进入 mqtt broker 的消息数
+
+        @JsonProperty("messageOutThroughput")
+        long messageOutThroughput;// 每秒从mqtt broker 输出的消息数
+
         Map<String, Long> protocol = new HashMap<>();
         // 监控目标服务器ping状态，状态在树节点展示
         Set<ICMPStateVO> icmpStates = new HashSet<>();
 
+        Map<String, String> mountStatus = new HashMap<>();
+
         public String toMessage() {
-            return JsonUtil.toJson(this);
+            return JsonUtil.jackToJson(this);
         }
     }
 }

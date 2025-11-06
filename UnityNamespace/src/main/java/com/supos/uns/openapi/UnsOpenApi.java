@@ -9,6 +9,7 @@ import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.UserContext;
 import com.supos.common.vo.LabelVo;
+import com.supos.common.vo.PersonConfigVo;
 import com.supos.common.vo.UserInfoVo;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.UnsPo;
@@ -261,7 +262,7 @@ public class UnsOpenApi {
 
     @Operation(summary = "创建标签", tags = "openapi.tag.label.management")
     @PostMapping(path = {"/open-api/uns/label"})
-    public ResultVO createLabel(@Valid @RequestBody CreateLabelDto createLabelDto) {
+    public ResultVO<LabelVo> createLabel(@Valid @RequestBody CreateLabelDto createLabelDto) {
         return unsLabelService.create(createLabelDto.getLabelName());
     }
 

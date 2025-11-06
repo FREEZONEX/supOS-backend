@@ -18,4 +18,11 @@ public class UpdateLabelDto {
     @Size(max = 63 , message = "uns.label.length.limit.exceed")
     @NotEmpty(message = "uns.label.name.not.empty")
     private String labelName;
+
+    @Schema(description = "是否订阅")
+    Boolean subscribeEnable;
+
+    @Schema(description = "订阅频率")
+//    @TimeIntervalValidator(field = "subscribeFrequency")
+    String subscribeFrequency;
 }

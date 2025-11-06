@@ -4,6 +4,7 @@ import cn.hutool.core.util.ObjectUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
@@ -15,6 +16,7 @@ import com.supos.common.dto.mqtt.TopicDefinition;
 import com.supos.common.enums.ActionEnum;
 import com.supos.common.enums.EventMetaEnum;
 import com.supos.common.enums.ServiceEnum;
+import com.supos.common.enums.mount.MountSubSourceType;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.RemoveTopicsEvent;
 import com.supos.common.event.SysEvent;
@@ -23,9 +25,15 @@ import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.I18nUtils;
 import com.supos.uns.dao.mapper.AlarmMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
+import com.supos.uns.dao.mapper.UnsMountExtendMapper;
+import com.supos.uns.dao.mapper.UnsMountMapper;
 import com.supos.uns.dao.po.AlarmPo;
+import com.supos.uns.dao.po.UnsMountExtendPo;
+import com.supos.uns.dao.po.UnsMountPo;
 import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.dto.WebhookDataDTO;
+import com.supos.uns.service.mount.MountCoreService;
+import com.supos.uns.service.mount.MountService;
 import com.supos.uns.util.UnsConverter;
 import com.supos.uns.util.WebhookUtils;
 import com.supos.uns.vo.RemoveResult;
@@ -55,9 +63,12 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
     @Autowired
     UnsAddService unsAddService;
 
+    @Autowired
+    private UnsMountExtendMapper unsMountExtendMapper;
+
     @Transactional(rollbackFor = Throwable.class, timeout = 300)
     public RemoveResult removeModelOrInstance(Long unsId, boolean withFlow, boolean withDashboard, Boolean removeRefer) {
-        return removeModelOrInstance(this.getById(unsId), withFlow, withDashboard, removeRefer);
+        return removeModelOrInstance(this.getById(unsId), withFlow, withDashboard, removeRefer, true, false);
     }
 
     @Transactional(rollbackFor = Throwable.class, timeout = 300)
@@ -67,7 +78,9 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
             return ResponseEntity.status(400).body(new RemoveResult(0, I18nUtils.getMessage("uns.folder.or.file.not.found")));
         }
         for (UnsPo unsPo : unsList) {
-            removeModelOrInstance(unsPo, batchRemoveUnsDto.getWithFlow(), batchRemoveUnsDto.getWithDashboard(), batchRemoveUnsDto.getRemoveRefer());
+            removeModelOrInstance(unsPo, batchRemoveUnsDto.getWithFlow(), batchRemoveUnsDto.getWithDashboard(), batchRemoveUnsDto.getRemoveRefer(),
+                    batchRemoveUnsDto.getCheckMount() == null ? true : batchRemoveUnsDto.getCheckMount(),
+                    batchRemoveUnsDto.getOnlyRemoveChild() == null ? false : batchRemoveUnsDto.getOnlyRemoveChild());
         }
         return ResponseEntity.ok(new RemoveResult(0, "ok"));
     }
@@ -87,7 +100,7 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
         return removeResult;
     }
 
-    public RemoveResult removeModelOrInstance(UnsPo tar, boolean withFlow, boolean withDashboard, Boolean removeRefer) {
+    public RemoveResult removeModelOrInstance(UnsPo tar, boolean withFlow, boolean withDashboard, Boolean removeRefer, boolean checkMount, boolean onlyRemoveChild) {
         if (tar == null) {
             return new RemoveResult(0, "NotFound");
         }
@@ -102,6 +115,12 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
         long t0 = System.currentTimeMillis();
         List<CreateTopicDto> unsPos;
         if (tar.getPathType() == 0) {//按目录删除
+            if (checkMount && tar.getMountType() != null && tar.getMountType() != 0) {
+                UnsMountExtendPo mountExtend = unsMountExtendMapper.selectOne(Wrappers.lambdaQuery(UnsMountExtendPo.class).eq(UnsMountExtendPo::getTargetAlias, tar.getAlias()), false);
+                if (mountExtend != null && !MountSubSourceType.isALL(mountExtend.getSourceSubType()))
+                return new RemoveResult(500, I18nUtils.getMessage("uns.mount.folder.operate"));
+            }
+
             final String layRec = tar.getLayRec();
             unsAddService.reSyncCache();
             unsPos = new ArrayList<>(16 + unsDefinitionService.getTopicDefinitionMap().size() / 4);
@@ -110,13 +129,18 @@ public class UnsRemoveService extends ServiceImpl<UnsMapper, UnsPo> {
                 Integer pathType = dto.getPathType();
                 if (pathType == Constants.PATH_TYPE_FILE || pathType == Constants.PATH_TYPE_DIR) {
                     String curLayRec = dto.getLayRec();
-                    if (curLayRec.startsWith(layRec)) {
+                    if (curLayRec.startsWith(layRec) && curLayRec.length() > layRec.length()) {
                         unsPos.add(dto);
                     }
                 }
             }
-            unsPos.add(cur);
+            if (!onlyRemoveChild) {
+                unsPos.add(cur);
+            }
         } else {//只删除单个实例
+            if (checkMount && tar.getMountType() != null && tar.getMountType() != 0) {
+                return new RemoveResult(500, I18nUtils.getMessage("uns.mount.folder.operate"));
+            }
             unsPos = List.of(cur);
         }
         log.debug("remove unsPos: {}", unsPos.size());

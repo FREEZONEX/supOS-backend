@@ -102,4 +102,9 @@ public class SystemConfig {
      * 是否启用LDAP用户体系
      */
     private Boolean ldapEnable = false;
+
+    /**
+     * 是否开启文件自动归类
+     */
+    private Boolean enableAutoCategorization = false;
 }

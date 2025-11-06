@@ -16,6 +16,12 @@ public class ModelDetail {
     @Schema(description = "mqtt topic")
     String topic;
 
+    @Schema(description = "是否订阅")
+    boolean subscribeEnable;
+
+    @Schema(description = "订阅频率")
+    String subscribeFrequency;
+
     @Schema(description = "模型别名")
     String alias;//模型别名
 
@@ -24,6 +30,9 @@ public class ModelDetail {
 
     @Schema(description = "全路径")
     String path;
+
+    @Schema(description = "文件类型：0-文件夹  2-文件")
+    Integer pathType;
 
     @Schema(description = "1--时序库 2--关系库")
     Integer dataType;// 1--时序库 2--关系库
@@ -51,4 +60,7 @@ public class ModelDetail {
 
     @Schema(description = "模板别名")
     String templateAlias;
+
+    @Schema(description = "挂载信息")
+    MountDetailVo mount;
 }

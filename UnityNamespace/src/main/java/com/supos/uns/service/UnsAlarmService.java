@@ -11,6 +11,7 @@ import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.enums.FieldType;
+import com.supos.common.enums.FolderDataType;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
@@ -87,11 +88,13 @@ public class UnsAlarmService extends ServiceImpl<UnsMapper, UnsPo> {
         createTopicDto.setBatch(0);
         createTopicDto.setIndex(1);
         createTopicDto.setModelId(ALARM_MODEL_ID);
-        JsonResult<String> rs = unsAddService.createModelInstance(createTopicDto);
+        createTopicDto.setParentDataType(FolderDataType.METRICS.getTypeIndex());
+        JsonResult<Map<String, String>> rs = unsAddService.createCategoryModelInstance(createTopicDto);
 
         //16人员  32工作流
         if (rs.getData() != null && Constants.UNS_FLAG_ALARM_ACCEPT_PERSON == vo.getWithFlags()) {
-            alarmService.createAlarmHandler(Long.valueOf(rs.getData()), vo.getUserList());
+            String id = rs.getData().get("id");
+            alarmService.createAlarmHandler(Long.valueOf(id), vo.getUserList());
         }
         //工作流只保存ext字段  工作流流程ID
         return rs;

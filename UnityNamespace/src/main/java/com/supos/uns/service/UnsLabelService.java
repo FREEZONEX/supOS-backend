@@ -12,11 +12,14 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
 import com.supos.common.dto.PageResultDTO;
+import com.supos.common.dto.UnsLabelDto;
 import com.supos.common.event.EventBus;
 import com.supos.common.event.RemoveTopicsEvent;
+import com.supos.common.event.UnsLabelSubscribeEvent;
 import com.supos.common.event.UpdateInstanceEvent;
 import com.supos.common.exception.BuzException;
 import com.supos.common.exception.vo.ResultVO;
+import com.supos.common.service.IUnsLabelService;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
 import com.supos.common.utils.SuposIdUtil;
@@ -24,6 +27,7 @@ import com.supos.common.vo.LabelVo;
 import com.supos.uns.bo.UnsLabels;
 import com.supos.uns.bo.UnsPoLabels;
 import com.supos.uns.dao.mapper.UnsLabelMapper;
+import com.supos.uns.dao.mapper.UnsLabelRefMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsLabelRefPo;
@@ -38,6 +42,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
@@ -49,7 +54,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
+public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> implements IUnsLabelService {
 
     @Autowired
     private UnsMapper unsMapper;
@@ -57,31 +62,47 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
     private UnsLabelRefService unsLabelRefService;
     @Autowired
     private UnsDefinitionService unsDefinitionService;
-
+    @Autowired
+    private UnsLabelRefMapper unsLabelRefMapper;
 
     /**
      * 标签列表
      */
     public ResultVO<List<LabelVo>> allLabels(String key) {
-        List<UnsLabelPo> list = this.baseMapper.selectList(new LambdaQueryWrapper<UnsLabelPo>().like(StringUtils.isNotBlank(key), UnsLabelPo::getLabelName, key));
+        List<UnsLabelPo> list = this.baseMapper.selectList(new LambdaQueryWrapper<UnsLabelPo>()
+                .like(StringUtils.isNotBlank(key), UnsLabelPo::getLabelName, key).orderByAsc(UnsLabelPo::getCreateAt)
+        );
         if (CollectionUtils.isEmpty(list)) {
             return ResultVO.successWithData(Collections.emptyList());
         }
-        List<LabelVo> voList = list.stream().map(po -> BeanUtil.copyProperties(po, LabelVo.class)).collect(Collectors.toList());
-        return ResultVO.successWithData(voList);
+        return ResultVO.successWithData(formatPo2Vo(list));
     }
 
 
     public ResultVO<LabelVo> detail(Long id) {
         UnsLabelPo po = getById(id);
-        if (po == null) {
+        if (null == po) {
             return ResultVO.fail(I18nUtils.getMessage("uns.label.not.exists"));
         }
         LabelVo vo = BeanUtil.copyProperties(po, LabelVo.class);
+        vo.setTopic("label/" + po.getLabelName());
+
+        Integer flagsN = po.getWithFlags();
+        if (flagsN != null) {
+            int flags = flagsN.intValue();
+            vo.setSubscribeEnable(Constants.withSubscribeEnable(flags));
+            if (Boolean.TRUE.equals(vo.getSubscribeEnable())) {
+                vo.setSubscribeFrequency(po.getSubscribeFrequency());
+            }
+        }
+        if (po.getCreateAt() != null) {
+            vo.setCreateTime(po.getCreateAt().getTime());
+        }
+
         return ResultVO.successWithData(vo);
     }
 
-    public ResultVO<UnsLabelPo> create(String name) {
+    public ResultVO<LabelVo> create(String name) {
         if (!Constants.NAME_PATTERN.matcher(name).matches()) {
             return ResultVO.fail(I18nUtils.getMessage("uns.label.name.error"));
         }
@@ -92,7 +113,8 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
         UnsLabelPo po = new UnsLabelPo(name);
         po.setCreateAt(new Date());
         save(po);
-        return ResultVO.successWithData(po);
+        LabelVo vo = BeanUtil.copyProperties(po, LabelVo.class);
+        return ResultVO.successWithData(vo);
     }
 
     public void create(Set<String> labels) {
@@ -158,11 +180,68 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
         if (c > 0) {
             return ResultVO.fail(I18nUtils.getMessage("uns.label.already.exists"));
         }
+
         LambdaUpdateWrapper<UnsLabelPo> lambdaUpdateWrapper = new LambdaUpdateWrapper<>();
         lambdaUpdateWrapper.eq(UnsLabelPo::getId, labelId);
         lambdaUpdateWrapper.set(UnsLabelPo::getLabelName, dto.getLabelName());
+        String freq = dto.getSubscribeFrequency();
+        if (!StringUtils.isEmpty(freq)) {
+            lambdaUpdateWrapper.set(UnsLabelPo::getSubscribeFrequency, freq);
+        }
+        Boolean enable = dto.getSubscribeEnable();
+        if (enable != null) {
+            Integer flags = po.getWithFlags();
+            if (flags == null) {
+                flags = 0;
+            }
+            flags = enable ? (flags | Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE) : (flags & ~Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE);
+            lambdaUpdateWrapper.set(UnsLabelPo::getWithFlags, flags);
+        }
         update(lambdaUpdateWrapper);
         unsMapper.updateUnsLabelNames(labelId, dto.getLabelName());// 更新uns冗余的标签 id->name 键值对
+        return ResultVO.success("ok");
+    }
+
+    public ResultVO subscribeLabel(Long id, Boolean enable, String frequency) {
+        if (enable == null && frequency == null) {
+            return ResultVO.fail("enable and frequency not be null");
+        }
+        UnsLabelPo po = getById(id);
+        if (null == po) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.label.not.exists"));
+        }
+
+        Integer flags = po.getWithFlags();
+        if (enable != null) {
+            if (flags == null) {
+                if (enable) {
+                    flags = Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE;
+                }
+            } else {
+                flags = enable ? (flags | Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE) : (flags & ~Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE);
+            }
+        }
+
+        LambdaUpdateWrapper<UnsLabelPo> lambdaUpdateWrapper = new LambdaUpdateWrapper<>();
+        lambdaUpdateWrapper.eq(UnsLabelPo::getId, id);
+        if (enable != null) {
+            lambdaUpdateWrapper.set(UnsLabelPo::getWithFlags, flags);
+
+            if (enable) {
+                lambdaUpdateWrapper.set(UnsLabelPo::getSubscribeAt, new Date());
+            }
+        }
+        if (frequency != null) {
+            lambdaUpdateWrapper.set(UnsLabelPo::getSubscribeFrequency, frequency);
+        }
+        lambdaUpdateWrapper.set(UnsLabelPo::getUpdateAt, new Date());
+        update(lambdaUpdateWrapper);
+
+        UnsLabelPo afterPo = getOne(new LambdaQueryWrapper<UnsLabelPo>().eq(UnsLabelPo::getId, id));
+        List<UnsLabelDto> labelList = new ArrayList<>();
+        labelList.add(BeanUtil.copyProperties(afterPo, UnsLabelDto.class));
+        UnsLabelSubscribeEvent subscribeEvent = new UnsLabelSubscribeEvent(this, labelList);
+        EventBus.publishEvent(subscribeEvent);
         return ResultVO.success("ok");
     }
 
@@ -192,7 +271,7 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
                     ref = new UnsLabelRefPo(Long.parseLong(lid), uns.getId());
                 } else {
                     //不存在标签，先创建
-                    Long labelId = create(labelVo.getLabelName()).getData().getId();
+                    Long labelId = Long.parseLong(create(labelVo.getLabelName()).getData().getId());
                     ref = new UnsLabelRefPo(labelId, uns.getId());
                 }
                 labelIdNameMap.put(ref.getLabelId(), labelVo.getLabelName());
@@ -373,6 +452,32 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
         return SuposIdUtil.nextId();
     }
 
+    private List<LabelVo> formatPo2Vo(List<UnsLabelPo> pos) {
+        if (CollectionUtils.isEmpty(pos)) {
+            return Collections.emptyList();
+        }
+        return pos.stream().map(this::formatPo2Vo).toList();
+    }
+
+    private LabelVo formatPo2Vo(UnsLabelPo po) {
+        LabelVo vo = BeanUtil.copyProperties(po, LabelVo.class);
+        vo.setTopic("label/" + po.getLabelName());
+
+        Integer flagsN = po.getWithFlags();
+        if (flagsN != null) {
+            int flags = flagsN.intValue();
+            vo.setSubscribeEnable(Constants.withSubscribeEnable(flags));
+            if (Boolean.TRUE.equals(vo.getSubscribeEnable())) {
+                vo.setSubscribeFrequency(po.getSubscribeFrequency());
+            }
+        }
+        if (po.getCreateAt() != null) {
+            vo.setCreateTime(po.getCreateAt().getTime());
+        }
+
+        return vo;
+    }
+
     @EventListener(classes = RemoveTopicsEvent.class)
     @Order(2000)
     void onRemoveTopicsEvent(RemoveTopicsEvent event) {
@@ -391,5 +496,27 @@ public class UnsLabelService extends ServiceImpl<UnsLabelMapper, UnsLabelPo> {
                 }
             }
         }
+    }
+
+    @EventListener(classes = ContextRefreshedEvent.class)
+    @Order(1000)
+    void labelSubscribeInit() {
+        List<UnsLabelDto> unsLabelList = this.baseMapper.listSubscribe();
+        if (CollectionUtils.isNotEmpty(unsLabelList)) {
+            UnsLabelSubscribeEvent event = new UnsLabelSubscribeEvent(this, unsLabelList);
+            EventBus.publishEvent(event);
+            log.debug("labelSubscribeInit  publish event done!");
+        }
+    }
+
+    @Override
+    public UnsLabelDto getLabelById(Long id) {
+        UnsLabelPo po = getById(id);
+        if (po == null) {
+            return null;
+        }
+        UnsLabelDto dto = BeanUtil.copyProperties(po, UnsLabelDto.class);
+        dto.setRefUnsIds(unsLabelRefMapper.listByLabelId(id));
+        return dto;
     }
 }

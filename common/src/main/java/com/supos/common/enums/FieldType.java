@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import lombok.Getter;
 
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 @Getter
 public enum FieldType {
@@ -59,4 +61,7 @@ public enum FieldType {
     public String toString() {
         return name;
     }
+
+    public static Set<FieldType> enablePrimaryKeyFields = Set.of(FieldType.STRING, FieldType.INTEGER, FieldType.LONG);
+
 }

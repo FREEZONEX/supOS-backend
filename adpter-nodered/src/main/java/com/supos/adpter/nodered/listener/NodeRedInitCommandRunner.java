@@ -4,11 +4,11 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowMapper;
 import com.supos.adpter.nodered.dao.po.NodeFlowPO;
+import com.supos.adpter.nodered.enums.FlowType;
 import com.supos.adpter.nodered.service.NodeRedAdapterService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.stereotype.Component;
 
 /**
  * init default flow
@@ -28,7 +28,7 @@ public class NodeRedInitCommandRunner implements CommandLineRunner {
     }
 
     private void initFlow(String flowFile, String name, String desc) throws Exception{
-        NodeFlowPO standardFlow = nodeFlowMapper.getByName(name);
+        NodeFlowPO standardFlow = nodeFlowMapper.getByName(name, FlowType.NODERED.getFlowName());
         int retry = 3; // 失败重试
         while (retry > 0) {
             retry -= 1;

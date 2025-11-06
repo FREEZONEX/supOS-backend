@@ -42,6 +42,8 @@ public class FileData implements ExportImportData {
     private String enableHistory;
     @ExcelProperty(index = 13)
     private String mockData;
+    @ExcelProperty(index = 14)
+    private String parentDataType;
 
     @ExcelIgnore
     private String type;

@@ -1,5 +1,7 @@
 package com.supos.uns.service.exportimport.core.parser;
 
+import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.system.SystemUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.supos.common.Constants;
@@ -87,6 +89,15 @@ public class FileAggregationParser extends AbstractParser {
 
         createTopicDto.setFields(null);
 
+        if (SystemUtil.getBoolean("SYS_OS_ENABLE_AUTO_CATEGORIZATION", false)) {
+            if (fileDto.getParentDataType() == null) {
+                context.addError(flagNo, I18nUtils.getMessage("uns.excel.parentDataType.is.blank"));
+                return null;
+            } else {
+                createTopicDto.setParentDataType(fileDto.getParentDataType());
+            }
+        }
+
         // 收集模板
         if (StringUtils.isNotBlank(fileDto.getTemplateAlias())) {
             wrapDto.setTemplateAlias(fileDto.getTemplateAlias());
@@ -169,6 +180,9 @@ public class FileAggregationParser extends AbstractParser {
         fileDto.setPersistence(getValueFromDataMap(dataMap, "enableHistory"));
         fileDto.setAutoDashboard(getValueFromDataMap(dataMap, "generateDashboard"));
         fileDto.setLabel(getValueFromDataMap(dataMap, "label"));
+        Object parentDataType = dataMap.get("parentDataType");
+        Integer pDataType = ObjectUtil.isEmpty(parentDataType) ? null : Integer.parseInt(parentDataType.toString());
+        fileDto.setParentDataType(pDataType);
 
         ExcelUnsWrapDto wrapDto = check(fileDto, context, null);
         if (wrapDto != null) {

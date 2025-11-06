@@ -1,10 +1,15 @@
 package com.supos.uns.util;
 
+import com.supos.common.Constants;
 import com.supos.common.utils.PathUtil;
 import com.supos.uns.dao.po.UnsPo;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class LayRecUtils {
 
@@ -77,6 +82,7 @@ public class LayRecUtils {
                 collectAffectedNodes(node, childrenMap, allNodes, recorder);
             }
         }
+        renameDuplicatePath(allNodes);
         return new SaveOrUpdate(nodesToInsert, nodesToUpdate);
     }
 
@@ -127,7 +133,22 @@ public class LayRecUtils {
 
     private static void processPathName(List<UnsPo> siblings, HashMap<Long, UnsPo> addFiles, HashSet<UnsPo> nodesToUpdate) {
         if (siblings == null || siblings.isEmpty()) return;
+        for (UnsPo unsPo : siblings) {
+            if (StringUtils.isNotEmpty(unsPo.getPath())) {
+                int i = unsPo.getPath().lastIndexOf("/");
+                unsPo.setPathName(unsPo.getPath().substring(i+1));
+            } else if (StringUtils.isEmpty(unsPo.getPathName())) {
+                unsPo.setPathName(unsPo.getName());
+            }
+            if (!addFiles.containsKey(unsPo.getId()) && !Objects.equals(PathUtil.getName(unsPo.getPath()), unsPo.getPathName())) {
+                String pDir = PathUtil.subParentPath(unsPo.getPath());
+                String path = pDir != null ? pDir + "/" + unsPo.getPathName() : unsPo.getPathName();
+                unsPo.setPath(path);
+                nodesToUpdate.add(unsPo);
+            }
+        }
 
+/*
         // 按名称分组，处理同名兄弟节点
         Map<String, List<UnsPo>> nameGroup = new HashMap<>();
         for (UnsPo node : siblings) {
@@ -152,6 +173,48 @@ public class LayRecUtils {
                         nodesToUpdate.add(node);
                     }
                 }
+            }
+        }*/
+
+    }
+
+    public static String genNewPath(String path, Set<String> pathSet) {
+        Matcher matcher = Pattern.compile("(.+)-(\\d+)").matcher(path);
+        String allText = path;
+        int numbers = 1;
+        if (matcher.matches()) {
+            allText = matcher.group(1);
+            numbers = Integer.parseInt(matcher.group(2)) + 1;   // 第二部分：数字
+        }
+        String newPath = allText + "-" + numbers;
+        if (pathSet.contains(newPath)) {
+            return genNewPath(newPath, pathSet);
+        } else {
+            pathSet.add(newPath);
+        }
+        return newPath;
+    }
+
+    private static void renameDuplicatePath(Map<Long, UnsPo> allNodes) {
+        // 上面方法存在一个问题，复现步骤：新建文件A->复制A并原地粘贴（变成A-1）->对A-1原地复制粘贴会出现路径重复的文件
+        // 根据路径进行分组，重复的重命名
+        Map<String, List<UnsPo>> groupByPath = allNodes.values().stream().filter(p -> p.getPath() != null).collect(Collectors.groupingBy(UnsPo::getPath));
+        // 找出重复的路径
+        Map<String, List<UnsPo>> duplicatePaths = groupByPath.entrySet().stream()
+                .filter(entry -> entry.getValue().size() > 1)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        Set<String> pathSet = new HashSet<>(groupByPath.keySet());
+        for (Map.Entry<String, List<UnsPo>> entry : duplicatePaths.entrySet()) {
+            List<UnsPo> group = entry.getValue();
+            group.sort(Comparator.comparingLong(UnsPo::getId));
+            for (int i = 1; i < group.size(); i++) {
+                String newPath = genNewPath(entry.getKey(), pathSet);
+                group.get(i).setPath(newPath);
+                String[] parts = newPath.split("/");
+                // 取路径最后一个元素
+                String lastElement = parts[parts.length - 1];
+                group.get(i).setPathName(lastElement);
             }
         }
     }

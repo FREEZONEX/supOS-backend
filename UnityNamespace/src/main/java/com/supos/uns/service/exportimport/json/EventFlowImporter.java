@@ -1,17 +1,19 @@
 package com.supos.uns.service.exportimport.json;
 
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.IdUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.fasterxml.jackson.core.JsonEncoding;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.supos.adpter.eventflow.dao.mapper.EventFlowMapper;
-import com.supos.adpter.eventflow.dao.mapper.EventFlowModelMapper;
-import com.supos.adpter.eventflow.dao.po.NodeFlowModelPO;
-import com.supos.adpter.eventflow.dao.po.NodeFlowPO;
+import com.supos.adpter.nodered.dao.mapper.NodeFlowMapper;
+import com.supos.adpter.nodered.dao.mapper.NodeFlowModelMapper;
+import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
+import com.supos.adpter.nodered.dao.po.NodeFlowPO;
+import com.supos.adpter.nodered.dto.ExportNodeFlowDto;
+import com.supos.adpter.nodered.service.EventFlowApiService;
+import com.supos.adpter.nodered.service.SourceFlowApiService;
 import com.supos.common.enums.GlobalExportModuleEnum;
 import com.supos.common.exception.BuzException;
 import com.supos.common.utils.I18nUtils;
@@ -35,29 +37,34 @@ import java.util.*;
  */
 @Slf4j
 public class EventFlowImporter {
-    public EventFlowImporter(EventFlowImportContext context, EventFlowMapper nodeFlowMapper, EventFlowModelMapper nodeFlowModelMapper) {
+    public EventFlowImporter(EventFlowImportContext context, NodeFlowMapper nodeFlowMapper, NodeFlowModelMapper nodeFlowModelMapper, EventFlowApiService eventFlowApiService) {
         this.context = context;
         this.nodeFlowMapper = nodeFlowMapper;
         this.nodeFlowModelMapper = nodeFlowModelMapper;
+        this.eventFlowApiService = eventFlowApiService;
     }
 
     @Getter
     private StopWatch stopWatch = new StopWatch();
     private EventFlowImportContext context;
     private EventFlowJsonWrapper eventFlowJsonWrapper;
-    private EventFlowMapper nodeFlowMapper;
-    private EventFlowModelMapper nodeFlowModelMapper;
+    private NodeFlowMapper nodeFlowMapper;
+    private NodeFlowModelMapper nodeFlowModelMapper;
+    private EventFlowApiService eventFlowApiService;
 
     public void importData(File file) {
+        ExportNodeFlowDto reqDto = null;
         try {
             JsonMapper jsonMapper = new JsonMapper();
-            eventFlowJsonWrapper = jsonMapper.readValue(file, EventFlowJsonWrapper.class);
+            reqDto = jsonMapper.readValue(file, ExportNodeFlowDto.class);
         } catch (Exception e) {
             log.error("解析json文件失败", e);
             throw new BuzException("dashboard.import.json.error");
         }
         try {
-            handleImportData(eventFlowJsonWrapper);
+            if (reqDto != null) {
+                eventFlowApiService.importFlow(reqDto);
+            }
             log.info("dashboard import running time:{}s", stopWatch.getTotalTimeSeconds());
             log.info(stopWatch.prettyPrint());
         } catch (Exception e) {

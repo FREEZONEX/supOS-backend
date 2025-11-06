@@ -12,5 +12,6 @@ public class CalcInstanceSearchResult {
     String path;
     String name;
     Integer dataType;
+    Integer parentDataType;
     List<FieldDefineVo> fields;
 }

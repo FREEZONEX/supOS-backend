@@ -37,8 +37,6 @@ public class CreateFileDto {
 
     @Schema(description = "1-时序，2-关系，3-序实时计算，4-历史计算，6-聚合，7-时序引用。为1/3时supOS系统默认创建\"value\"，\"timeStamp\"，\"status\"三个键。其中value的数据类型要和文件数据类型一致。")
     @DataTypeValidator
-    @Min(value = Constants.TIME_SEQUENCE_TYPE, message = "uns.file.dataType.invalid")
-    @Max(value = Constants.CITING_TYPE, message = "uns.file.dataType.invalid")
     private Integer dataType;
 
     @Schema(description = "描述")
@@ -79,4 +77,9 @@ public class CreateFileDto {
     @Schema(description = "标签名称数组，支持创建文件时打标签")
     private String[] labelNames;
 
+    /**
+     * see com.supos.common.enums.FolderDataType
+     */
+    @Schema(description = "父级文件夹类型")
+    Integer parentDataType;
 }

@@ -189,6 +189,11 @@ public class UpdateUnsDto {
     @Schema(description = "当valueType=STRING时，可以设置该参数。默认512字符")
     Integer strMaxLen;//当valueType=STRING时，可以设置该参数。默认512字符
 
+    /**
+     * 读写模式：北向访问级别。READ_ONLY-只读，READ_WRITE-读写
+     * @see com.supos.common.enums.FileReadWriteMode
+     */
+    String accessLevel;
 
 
     @JsonIgnore

@@ -9,6 +9,7 @@ import com.supos.common.dto.auth.RoleDto;
 import com.supos.common.vo.UserAttributeVo;
 import com.supos.common.vo.UserManageVo;
 import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.openapi.dto.UserDetailDto;
 import com.supos.uns.openapi.dto.UserPageQueryDto;
 import com.supos.uns.openapi.vo.UserDetailVo;
 import org.apache.ibatis.annotations.MapKey;
@@ -85,6 +86,6 @@ public interface UserManageMapper extends BaseMapper {
     List<UserManageVo> getNotInitializedLdapUsers();
 
 
-    IPage<UserDetailVo> userOpenapiList(Page<?> page, @Param("params")UserPageQueryDto params);
+    IPage<UserDetailDto> userOpenapiList(Page<?> page, @Param("params")UserPageQueryDto params);
 }
 

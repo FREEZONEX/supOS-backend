@@ -29,6 +29,7 @@ public enum ExcelTypeEnum {
     FILE_CALCULATE("Topic-calculate", 6),
     FILE_AGGREGATION("Topic-aggregation", 7),
     FILE_REFERENCE("Topic-reference", 8),
+    FILE_JSONB("Topic-jsonb", 9),
 
     UNS("UNS", 3),
     File("File", 4),
@@ -83,6 +84,8 @@ public enum ExcelTypeEnum {
             return FILE_AGGREGATION;
         } else if (dataType == Constants.CITING_TYPE) {
             return FILE_REFERENCE;
+        } else if (dataType == Constants.JSONB_TYPE) {
+            return FILE_JSONB;
         }
         return ERROR;
     }

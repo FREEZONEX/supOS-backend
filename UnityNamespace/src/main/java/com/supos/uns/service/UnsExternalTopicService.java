@@ -134,9 +134,9 @@ public class UnsExternalTopicService {
             return ResultVO.fail(I18nUtils.getMessage("uns.external.name.length.limit.exceed"));
         }
         createFileDto.setAlias(PathUtil.generateAlias(createFileDto.getName(), Constants.PATH_TYPE_DIR));
-        JsonResult<String> result = unsAddService.createModelInstance(createFileDto);
-        if (result.getCode() == 0) {
-            String id = result.getData();
+        JsonResult<Map<String, String>> result = unsAddService.createCategoryModelInstance(createFileDto);
+        if (result.getCode() == 0 && result.getData() != null) {
+            String id = result.getData().get("id");
             if (CollectionUtils.isNotEmpty(createFileDto.getLabelList())) {
                 unsLabelService.makeLabel(Long.parseLong(id), createFileDto.getLabelList());
             }

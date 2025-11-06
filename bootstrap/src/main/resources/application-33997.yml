@@ -95,6 +95,7 @@ minio:
 chat2db:
   enable: ${ENABLE_CHAT2DB:false}
   address: http://chat2db:10824
+i18nVersion: 202510170900
 #camunda:
 #  bpm:
 #    database:

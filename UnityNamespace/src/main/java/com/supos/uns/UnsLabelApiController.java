@@ -41,7 +41,7 @@ public class UnsLabelApiController {
 
     @Operation(summary = "创建标签", tags = "openapi.tag.label.management")
     @PostMapping(path = {"/inter-api/supos/uns/label"})
-    public ResultVO createLabel(@RequestParam @Parameter(description = "标签名称") String name) {
+    public ResultVO<LabelVo> createLabel(@RequestParam @Parameter(description = "标签名称") String name) {
         return unsLabelService.create(name);
     }
 
@@ -55,6 +55,15 @@ public class UnsLabelApiController {
     @PutMapping(path = {"/inter-api/supos/uns/label"})
     public ResultVO updateLabel(@Valid @RequestBody UpdateLabelDto dto) {
         return unsLabelService.update(dto);
+    }
+
+    @Operation(summary = "修改标签订阅", tags = "openapi.tag.label.management")
+    @PutMapping(path = {"/inter-api/supos/uns/label/subscribe"})
+    @Valid
+    public ResultVO subscribeLabel(@RequestParam(name = "id") @Parameter(description = "模板ID") Long id,
+                                   @RequestParam(name = "enable") @Parameter(description = "是否开启") Boolean enable,
+                                   @RequestParam(name = "frequency", required = false) @Parameter(description = "订阅频率") String frequency) {
+        return unsLabelService.subscribeLabel(id, enable, frequency);
     }
 
     @Operation(summary = "文件打标签", tags = "openapi.tag.label.management")

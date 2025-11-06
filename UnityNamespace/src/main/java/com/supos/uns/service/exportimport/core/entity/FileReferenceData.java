@@ -27,12 +27,10 @@ public class FileReferenceData implements ExportImportData {
     @ExcelProperty(index = 4)
     private String description;
     @ExcelProperty(index = 5)
-    private String generateDashboard;
+    private String label;
 
     @ExcelProperty(index = 6)
-    private String enableHistory;
-    @ExcelProperty(index = 7)
-    private String label;
+    private String parentDataType;
 
     @ExcelIgnore
     private String error;

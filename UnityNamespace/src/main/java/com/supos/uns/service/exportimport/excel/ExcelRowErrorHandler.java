@@ -86,6 +86,7 @@ public class ExcelRowErrorHandler implements ReadListener<Map<Integer, String>> 
                 case FILE_CALCULATE:
                 case FILE_AGGREGATION:
                 case FILE_REFERENCE:
+                case FILE_JSONB:
                     if (rowIndex < 4) {
                         return;
                     }

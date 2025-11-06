@@ -2,6 +2,7 @@ package com.supos.uns.openapi;
 
 import com.supos.adpter.kong.vo.ResultVO;
 import com.supos.common.dto.PageResultDTO;
+import com.supos.common.utils.I18nUtils;
 import com.supos.uns.openapi.dto.UserPageQueryDto;
 import com.supos.uns.openapi.service.UserOpenapiService;
 import com.supos.uns.openapi.vo.UserDetailVo;
@@ -39,7 +40,9 @@ public class UserOpenApi {
         queryDto.setUsername(username);
         PageResultDTO<UserDetailVo> resultDTO = userOpenapiService.userManageList(queryDto);
         if (CollectionUtils.isEmpty(resultDTO.getData())){
-            return ResultVO.fail("用户不存在");
+            ResultVO resultVO = ResultVO.fail(I18nUtils.getMessage("user.not.exist"));
+            resultVO.setCode(404);
+            return resultVO;
         }
         return ResultVO.success(resultDTO.getData().get(0));
     }

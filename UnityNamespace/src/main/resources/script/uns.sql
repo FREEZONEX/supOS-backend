@@ -32,18 +32,39 @@ ALTER TABLE uns_namespace ALTER COLUMN refers TYPE json USING refers::json;
 ALTER TABLE uns_namespace ALTER COLUMN extend TYPE jsonb USING extend::jsonb;
 ALTER TABLE uns_namespace ADD IF NOT EXISTS "label_ids" jsonb default NULL;
 ALTER TABLE uns_namespace ALTER COLUMN "label_ids" TYPE jsonb USING label_ids::jsonb;
+ALTER TABLE uns_namespace ADD IF NOT EXISTS "subscribe_at" timestamptz NULL;
 CREATE UNIQUE INDEX if not exists idx_uns_spacex_alias ON uns_namespace (alias);
 
 insert into uns_namespace("id","path_type","lay_rec","alias","name","path","description")values(1,1,'1','__templates__','tmplt','tmplt','模板顶级目录')ON CONFLICT (id) DO NOTHING;
 
-CREATE TABLE if not exists uns_dashboard (
-	id varchar(64) PRIMARY KEY NOT NULL,
-	"name" varchar(255) NULL,
-	description varchar(255) NULL,
-    "json_content" text NULL,
-	update_time timestamp(6) NULL,
-	create_time timestamp(6) NULL
+CREATE TABLE if not exists "supos"."uns_dashboard" (
+"id" varchar(64) COLLATE "pg_catalog"."default" NOT NULL,
+"name" varchar(255) COLLATE "pg_catalog"."default",
+"description" varchar(255) COLLATE "pg_catalog"."default",
+"json_content" text COLLATE "pg_catalog"."default",
+"update_time" timestamp(6),
+"create_time" timestamp(6),
+"creator" varchar(128) COLLATE "pg_catalog"."default",
+"type" int2 DEFAULT 1,
+"need_init" bool DEFAULT false,
+CONSTRAINT "uns_dashboard_pkey" PRIMARY KEY ("id"));
+
+CREATE TABLE if not exists "supos"."uns_dashboard_ref" (
+"dashboard_id" varchar(64) NOT NULL,
+"uns_alias" varchar(255) NOT NULL,
+"create_at" timestamptz(6) DEFAULT now()
 );
+
+CREATE TABLE if not exists uns_dashboard_top_recodes (
+    id varchar(64) NOT NULL,
+	user_id varchar Not NULL,
+	mark int2 default 1,
+	mark_time timestamptz NULL DEFAULT CURRENT_TIMESTAMP,
+	update_time timestamptz NULL
+);
+CREATE UNIQUE INDEX udx_dashboard_id_user ON uns_dashboard_top_recodes (id, user_id);
+alter table uns_dashboard add if not exists "creator" varchar(128) NULL;
+alter table uns_dashboard add if not exists "need_init" bool DEFAULT false;
 
 CREATE INDEX if not exists "idx_user_id" ON "supos_user_menu" USING btree ("user_id" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST);
 
@@ -90,6 +111,11 @@ CREATE TABLE if not exists "supos"."uns_label" (
 "label_name" varchar(255) COLLATE "pg_catalog"."default",
 "create_at" timestamptz(6) DEFAULT now()
 );
+
+alter table uns_label add if not exists "with_flags" integer NULL default 0;
+alter table uns_label add if not exists "subscribe_frequency"  varchar(20) NULL;
+alter table uns_label add if not exists "subscribe_at" timestamptz(6) NULL;
+alter table uns_label add if not exists "update_at" timestamptz(6) DEFAULT now();
 
 CREATE TABLE if not exists "supos"."uns_label_ref" (
 "id" BIGSERIAL PRIMARY KEY,
@@ -231,3 +257,35 @@ CREATE TABLE if not exists "supos"."uns_export_record" (
 );
 
 alter table uns_namespace add if not exists "extend_field_flags" integer NULL default 0;
+
+alter table uns_namespace add if not exists "mount_type" int2 DEFAULT 0 NULL;
+alter table uns_namespace add if not exists "mount_source" varchar(256) NULL;
+
+CREATE TABLE if not exists "supos"."uns_mount" (
+"id" BIGSERIAL PRIMARY KEY,
+"mount_seq" varchar(64),
+"target_type" varchar(20),
+"target_alias" varchar(64),
+"mount_model" varchar(20),
+"source_alias" varchar(1024),
+"mount_status" int2,
+"status" varchar(20),
+"data_type" int2,
+"with_flags" integer NULL default 0,
+"version" varchar(20),
+"next_version" varchar(20)
+);
+alter table uns_mount add if not exists "source_type" int2 DEFAULT 0 NULL;
+
+CREATE TABLE if not exists "supos"."uns_mount_extend" (
+"id" BIGSERIAL PRIMARY KEY,
+"source_sub_type" varchar(20),
+"mount_seq" varchar(64),
+"target_alias" varchar(64),
+"first_source_alias" varchar(1024),
+"second_source_alias" varchar(1024),
+"source_name" varchar(1024),
+"extend" text
+);
+
+alter table uns_namespace add if not exists "parent_data_type" int2 NULL;

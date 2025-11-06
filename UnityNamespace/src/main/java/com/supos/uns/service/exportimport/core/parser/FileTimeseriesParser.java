@@ -1,11 +1,15 @@
 package com.supos.uns.service.exportimport.core.parser;
 
+import cn.hutool.core.util.NumberUtil;
+import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.system.SystemUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.supos.common.Constants;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.excel.ExcelUnsWrapDto;
+import com.supos.common.enums.FolderDataType;
 import com.supos.common.utils.FieldUtils;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
@@ -95,6 +99,15 @@ public class FileTimeseriesParser extends AbstractParser {
             return null;
         }
 
+        if (SystemUtil.getBoolean("SYS_OS_ENABLE_AUTO_CATEGORIZATION", false)) {
+            if (fileDto.getParentDataType() == null) {
+                context.addError(flagNo, I18nUtils.getMessage("uns.excel.parentDataType.is.blank"));
+                return null;
+            } else {
+                createTopicDto.setParentDataType(FolderDataType.METRICS.getTypeIndex());
+            }
+        }
+
         // 收集模板
         if (StringUtils.isNotBlank(fileDto.getTemplateAlias())) {
             wrapDto.setTemplateAlias(fileDto.getTemplateAlias());
@@ -135,6 +148,9 @@ public class FileTimeseriesParser extends AbstractParser {
         fileDto.setAutoDashboard(getValueFromDataMap(dataMap, "generateDashboard"));
         fileDto.setMockData(getValueFromDataMap(dataMap, "mockData"));
         fileDto.setLabel(getValueFromDataMap(dataMap, "label"));
+        Object parentDataType = dataMap.get("parentDataType");
+        Integer pDataType = ObjectUtil.isEmpty(parentDataType) ? null : Integer.parseInt(parentDataType.toString());
+        fileDto.setParentDataType(pDataType);
 
 
         ExcelUnsWrapDto wrapDto = check(fileDto, context, null);

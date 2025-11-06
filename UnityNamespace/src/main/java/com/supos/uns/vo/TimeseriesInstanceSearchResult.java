@@ -11,5 +11,6 @@ public class TimeseriesInstanceSearchResult {
     String id;
     String name;
     String path;
+    Integer parentDataType;
     List<FieldDefine> fields;
 }

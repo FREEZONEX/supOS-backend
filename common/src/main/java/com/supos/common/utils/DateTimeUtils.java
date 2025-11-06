@@ -151,30 +151,121 @@ public class DateTimeUtils {
         if (value instanceof String) {
             String str = ((String) value).trim();
 
-            // 尝试解析为 Long
+            // 尝试解析为 Long 时间戳
             try {
                 Long.parseLong(str);
                 return true;
-            } catch (NumberFormatException e) {
-                // 不是时间戳，继续判断是否为UTC时间字符串
+            } catch (NumberFormatException ignored) {}
+
+            // 2️⃣ 尝试 ISO/UTC 格式
+            try {
+                Instant.parse(str); // 支持 Z 结尾
+                return true;
+            } catch (DateTimeParseException ignored) {}
+
+            try {
+                OffsetDateTime.parse(str, DateTimeFormatter.ISO_OFFSET_DATE_TIME); // 支持 +08:00
+                return true;
+            } catch (DateTimeParseException ignored) {}
+
+            // 3️⃣ 尝试自定义格式
+            DateTimeFormatter[] dateTimeFormatters = new DateTimeFormatter[]{
+                    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+                    DateTimeFormatter.ofPattern("yyyy-MM-dd")
+            };
+
+            for (DateTimeFormatter formatter : dateTimeFormatters) {
+                try {
+                    LocalDateTime.parse(str, formatter); // 带时间的格式
+                    return true;
+                } catch (DateTimeParseException ignored) {}
+                try {
+                    LocalDate.parse(str, formatter); // 只有日期的格式
+                    return true;
+                } catch (DateTimeParseException ignored) {}
             }
 
-            // 2️⃣ 判断是否为UTC时间字符串
+            // 4️⃣ 尝试只包含时间的格式
+            DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
             try {
-                // 尝试解析为 Instant (支持Z结尾)
-                Instant.parse(str);
+                LocalTime.parse(str, timeFormatter);
                 return true;
-            } catch (DateTimeParseException e1) {
-                // 不是Z结尾，尝试解析为 OffsetDateTime (支持+08:00)
-                try {
-                    OffsetDateTime.parse(str, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
-                    return true;
-                } catch (DateTimeParseException e2) {
-                    // 都不行，返回 false
-                }
-            }
+            } catch (DateTimeParseException ignored) {}
         }
 
         return false;
+    }
+
+    /**
+     * 将入参 dateTime 转换为 UTC ISO 格式：yyyy-MM-dd'T'HH:mm:ss.SSS'Z'
+     *
+     * @param dateTime 入参，可以是 Long 时间戳 或 String 日期时间
+     * @return UTC ISO 格式字符串
+     */
+    public static String toUtcIso(Object dateTime) {
+        if (dateTime == null) {
+            return null;
+        }
+
+        Instant instant = null;
+
+        try {
+            // 1️⃣ 如果是 Long 或可转 Long，按时间戳处理
+            if (dateTime instanceof Number) {
+                instant = Instant.ofEpochMilli(((Number) dateTime).longValue());
+            } else if (dateTime instanceof String) {
+                String str = ((String) dateTime).trim();
+
+                // 尝试解析为 Long 时间戳
+                try {
+                    long timestamp = Long.parseLong(str);
+                    instant = Instant.ofEpochMilli(timestamp);
+                } catch (NumberFormatException ignored) {}
+
+                // 如果不是时间戳，再尝试解析特定格式
+                if (instant == null) {
+                    DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                    DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+                    DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+                    // 仅日期 YYYY-MM-DD，补 00:00:00
+                    try {
+                        LocalDate date = LocalDate.parse(str, dateFormatter);
+                        instant = date.atStartOfDay(ZoneOffset.UTC).toInstant();
+                    } catch (DateTimeParseException ignored) {}
+
+                    // 仅时间 HH:mm:ss，补当天日期
+                    if (instant == null) {
+                        try {
+                            LocalTime time = LocalTime.parse(str, timeFormatter);
+                            LocalDate today = LocalDate.now(ZoneOffset.UTC);
+                            instant = LocalDateTime.of(today, time).toInstant(ZoneOffset.UTC);
+                        } catch (DateTimeParseException ignored) {}
+                    }
+
+                    // 完整日期时间 YYYY-MM-DD HH:mm:ss，按 UTC
+                    if (instant == null) {
+                        try {
+                            LocalDateTime ldt = LocalDateTime.parse(str, dateTimeFormatter);
+                            instant = ldt.toInstant(ZoneOffset.UTC);
+                        } catch (DateTimeParseException ignored) {}
+                    }
+                }
+            }
+
+            // 2️⃣ 如果解析成功，格式化输出
+            if (instant != null) {
+                return DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+                        .withZone(ZoneOffset.UTC)
+                        .format(instant);
+            }
+
+        } catch (Exception e) {
+            // 其他格式原样返回
+            return dateTime.toString();
+        }
+
+        // 解析失败，原样返回
+        return dateTime.toString();
     }
 }

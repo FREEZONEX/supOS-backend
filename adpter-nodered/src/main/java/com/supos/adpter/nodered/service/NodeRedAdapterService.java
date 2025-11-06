@@ -1,7 +1,5 @@
 package com.supos.adpter.nodered.service;
 
-import cn.hutool.core.util.IdUtil;
-import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
@@ -9,10 +7,14 @@ import cn.hutool.http.Method;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowMapper;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowModelMapper;
+import com.supos.adpter.nodered.dao.mapper.NodeMarkTopMapper;
+import com.supos.adpter.nodered.dao.po.NodeFlowExtendsPO;
 import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
 import com.supos.adpter.nodered.dao.po.NodeFlowPO;
+import com.supos.adpter.nodered.dao.po.NodeMarkTopPO;
 import com.supos.adpter.nodered.enums.FlowStatus;
 import com.supos.adpter.nodered.util.IDGenerator;
 import com.supos.adpter.nodered.vo.DeployResponseVO;
@@ -20,27 +22,37 @@ import com.supos.adpter.nodered.vo.NodeFlowVO;
 import com.supos.adpter.nodered.vo.UpdateFlowRequestVO;
 import com.supos.common.dto.NodeRedTagsDTO;
 import com.supos.common.dto.PageResultDTO;
+import com.supos.common.dto.grafana.DashboardRefDto;
 import com.supos.common.exception.NodeRedException;
+import com.supos.common.exception.vo.ResultVO;
+import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.RuntimeUtil;
 import com.supos.common.utils.SuposIdUtil;
+import com.supos.common.utils.UserContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
-@Service
 @Slf4j
-public class NodeRedAdapterService {
+public abstract class NodeRedAdapterService {
 
-    @Value("${node-red.host:nodered}")
-    private String nodeRedHost;
-    @Value("${node-red.port:1880}")
-    private String nodeRedPort;
+    protected String nodeRedHost;
+
+    protected String nodeRedPort;
+
+    public NodeRedAdapterService(String nodeRedHost, String nodeRedPort) {
+        this.nodeRedHost = nodeRedHost;
+        this.nodeRedPort = nodeRedPort;
+    }
+
     public String getNodeRedHost(){
         if (RuntimeUtil.isLocalProfile()) {
             return "http://100.100.100.22:33893/nodered/home";
@@ -59,6 +71,8 @@ public class NodeRedAdapterService {
     private NodeFlowMapper nodeFlowMapper;
     @Autowired
     private NodeFlowModelMapper nodeFlowModelMapper;
+    @Autowired
+    private NodeMarkTopMapper nodeMarkTopMapper;
 
     /**
      * proxy nodered /flows api
@@ -158,25 +172,33 @@ public class NodeRedAdapterService {
      * @param pageSize
      * @return
      */
-    public PageResultDTO<NodeFlowVO> selectList(String fuzzyName, int pageNo, int pageSize) {
+    public PageResultDTO<NodeFlowVO> selectList(String fuzzyName, String template, String orderCode, String descOrAsc, int pageNo, int pageSize) {
         PageResultDTO.PageResultDTOBuilder<NodeFlowVO> pageBuilder = PageResultDTO.<NodeFlowVO>builder().pageNo(pageNo).pageSize(pageSize);
-        int total = nodeFlowMapper.selectTotal(fuzzyName);
+        String userId = UserContext.get().getSub();
+        int total = nodeFlowMapper.selectTotal(fuzzyName, template);
         if (total == 0) {
             return pageBuilder.code(200).data(new ArrayList<>(1)).build();
         }
-        List<NodeFlowPO> nodeFlowList = nodeFlowMapper.selectFlows(fuzzyName, pageNo, pageSize);
+
+        List<NodeFlowExtendsPO> nodeFlowList = nodeFlowMapper.selectFlows(userId, fuzzyName, template, orderCode, descOrAsc, pageNo, pageSize);
         List<NodeFlowVO> nodeFlowVOS = buildNodeFlowVOs(nodeFlowList);
         return pageBuilder.code(200).total(total).data(nodeFlowVOS).build();
     }
 
-    private List<NodeFlowVO> buildNodeFlowVOs(List<NodeFlowPO> nodeFlowPOS) {
+    private List<NodeFlowVO> buildNodeFlowVOs(List<NodeFlowExtendsPO> nodeFlowPOS) {
         List<NodeFlowVO> vos = new ArrayList<>();
-        for (NodeFlowPO po : nodeFlowPOS) {
+        for (NodeFlowExtendsPO po : nodeFlowPOS) {
             NodeFlowVO vo = buildNodeFlowVO(po);
             vos.add(vo);
         }
         return vos;
     }
+
+    /*private NodeFlowVO buildNodeFlowVO(NodeFlowExtendsPO po) {
+        NodeFlowVO vo = buildNodeFlowVO(po);
+        vo.setMark(po.getMark() == null ? 0 : po.getMark());
+        return vo;
+    }*/
 
     private NodeFlowVO buildNodeFlowVO(NodeFlowPO po) {
         NodeFlowVO vo = new NodeFlowVO();
@@ -186,6 +208,12 @@ public class NodeRedAdapterService {
         vo.setTemplate(po.getTemplate());
         vo.setId(po.getId() + "");
         vo.setFlowName(po.getFlowName());
+        vo.setCreator(po.getCreator());
+        vo.setCreateTime(po.getCreateTime().getTime());
+        if (po instanceof NodeFlowExtendsPO) {
+            Integer mark = ((NodeFlowExtendsPO) po).getMark();
+            vo.setMark(mark == null ? 0 : mark);
+        }
         return vo;
     }
 
@@ -310,7 +338,7 @@ public class NodeRedAdapterService {
      */
     public long createFlow(String flowName, String description, String template) {
         // 判断流程是否存在
-        NodeFlowPO nf = nodeFlowMapper.getByName(flowName);
+        NodeFlowPO nf = nodeFlowMapper.getByName(flowName, template);
         if (nf != null) {
             throw new NodeRedException(400, "nodered.flowName.duplicate");
         }
@@ -320,6 +348,9 @@ public class NodeRedAdapterService {
         flowPO.setFlowName(flowName);
         flowPO.setDescription(description);
         flowPO.setTemplate(template);
+        if (UserContext.get() != null) {
+            flowPO.setCreator(UserContext.get().getPreferredUsername());
+        }
         nodeFlowMapper.insert(flowPO);
         return flowPO.getId();
     }
@@ -391,7 +422,7 @@ public class NodeRedAdapterService {
         }
         // 验证名称是否被占用
         if (!nodeFlow.getFlowName().equals(requestVO.getFlowName())) {
-            NodeFlowPO flowPO = nodeFlowMapper.getByName(requestVO.getFlowName());
+            NodeFlowPO flowPO = nodeFlowMapper.getByName(requestVO.getFlowName(), nodeFlow.getTemplate());
             if (flowPO != null) {
                 throw new NodeRedException(400, "nodered.flowName.has.used");
             }
@@ -423,6 +454,7 @@ public class NodeRedAdapterService {
         }
         nodeFlowMapper.deleteById(id);
         nodeFlowModelMapper.deleteById(id);
+        nodeMarkTopMapper.deleteById(id);
     }
 
     private void deleteFromNodeRed(String flowId, String flowData) {
@@ -547,7 +579,26 @@ public class NodeRedAdapterService {
         log.info("update global nodes to node-red, response: {}", response.body());
     }
 
-    // 部署流程到node-red
+    /**
+     * 全局部署
+     * @param nodes
+     */
+    public void deployAllToNodeRed(JSONArray nodes) {
+        String url = String.format("http://%s:%s/flows", nodeRedHost, nodeRedPort);
+        HttpRequest httpClient = HttpUtil.createRequest(Method.POST, url);
+        Map<String, String> headers = new HashMap<>();
+        headers.put("content-type", "application/json; charset=UTF-8");
+        httpClient.addHeaders(headers);
+        httpClient.body(nodes.toJSONString());
+        // 连接超时和读取响应超时 2 分钟
+        httpClient.timeout(2 * 60 * 1000);
+        HttpResponse response = httpClient.execute();
+        if (!isSuccess(response.getStatus())) {
+            throw new NodeRedException(response.body());
+        }
+    }
+
+    // 部署流程到node-red，部署单个流程
     public String deployToNodeRed(String flowId, String flowName, String description, JSONArray nodes) {
         JSONObject requestBody = new JSONObject();
         requestBody.put("id", flowId);
@@ -569,8 +620,8 @@ public class NodeRedAdapterService {
         headers.put("content-type", "application/json; charset=UTF-8");
         httpClient.addHeaders(headers);
         httpClient.body(requestBody.toJSONString());
-        // 连接超时和读取响应超时 10分钟
-        httpClient.timeout(10 * 60 * 1000);
+        // 连接超时和读取响应超时 2分钟
+        httpClient.timeout(2 * 60 * 1000);
 
         HttpResponse response = httpClient.execute();
         if (!isSuccess(response.getStatus())) {
@@ -586,11 +637,12 @@ public class NodeRedAdapterService {
      * @return
      */
     public List<NodeFlowVO> selectByAliases(Collection<String> aliases) {
-        List<Long> parentIds = nodeFlowModelMapper.selectByAliases(aliases);
+        List<NodeFlowModelPO> refs = nodeFlowModelMapper.selectByAliases(aliases);
         List<NodeFlowVO> nodeFlowVo = new ArrayList<>();
-        if (parentIds.isEmpty()) {
+        if (refs.isEmpty()) {
             return nodeFlowVo;
         }
+        Set<Long> parentIds = refs.stream().map(NodeFlowModelPO::getParentId).collect(Collectors.toSet());
         List<NodeFlowPO> nodeFlows = nodeFlowMapper.selectByIds(parentIds);
         for (NodeFlowPO po : nodeFlows) {
             NodeFlowVO vo = new NodeFlowVO();
@@ -601,7 +653,89 @@ public class NodeRedAdapterService {
         return nodeFlowVo;
     }
 
+    public JSONArray retrieveAllFlowConfig() {
+        HttpRequest getClient = HttpUtil.createGet(String.format("http://%s:%s/flows", nodeRedHost, nodeRedPort));
+        HttpResponse response = getClient.execute();
+        if (!isSuccess(response.getStatus())) {
+            log.error("node-red获取所有节点失败： error = {}", response.body());
+            return null;
+        }
+        return JSON.parseArray(response.body());
+    }
 
+    /**
+     * 查询节点引用的位号
+     * @param nodeIds
+     * @return [{nodeId: []}]
+     */
+    public JSONArray retrieveRefTags(List<String> nodeIds) {
+        if (nodeIds == null || nodeIds.isEmpty()) {
+            return null;
+        }
+        StringBuilder paramUrlBuilder = new StringBuilder("&");
+        for (String nodeId : nodeIds) {
+            paramUrlBuilder.append("&").append("nodeId=").append(nodeId);
+        }
+        String url = String.format("http://%s:%s/nodered-api/tags?", nodeRedHost, nodeRedPort) + paramUrlBuilder.substring(1);
+        HttpRequest getClient = HttpUtil.createGet(url);
+        HttpResponse response = getClient.execute();
+        if (response.getStatus() == 200) {
+            return JSON.parseArray(response.body());
+        }
+        log.error("node-red获取引用tag失败： {}", response.body());
+        return null;
+    }
 
+    /**
+     * 批量保存引用位号
+     * @param requestBody
+     */
+    public void saveRefTags(JSONArray requestBody) {
+        String url = String.format("http://%s:%s/nodered-api/batchSave/tags", nodeRedHost, nodeRedPort);
+        HttpRequest httpClient = HttpUtil.createRequest(Method.POST, url);
 
+        Map<String, String> headers = new HashMap<>();
+        headers.put("content-type", "application/json; charset=UTF-8");
+        httpClient.addHeaders(headers);
+        httpClient.body(requestBody.toJSONString());
+        // 连接超时和读取响应超时 2分钟
+        httpClient.timeout(2 * 60 * 1000);
+
+        HttpResponse response = httpClient.execute();
+        if (!isSuccess(response.getStatus())) {
+            log.error("node-red保存引用位号失败： error = {}", response.body());
+        }
+    }
+    /**
+     * 置顶
+     * @param id
+     */
+    public void markTop(long id) {
+        NodeMarkTopPO po = new NodeMarkTopPO();
+        po.setId(id);
+        po.setUserId(UserContext.get().getSub());
+        nodeMarkTopMapper.insert(po);
+    }
+
+    /**
+     * 取消置顶
+     * @param id
+     */
+    public void removeMarkedTop(long id) {
+        nodeMarkTopMapper.delete(id, UserContext.get().getSub());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ResultVO bindUns(Long flowId,String unsAlias){
+        NodeFlowPO nodeFlow = nodeFlowMapper.getById(flowId);
+        if (nodeFlow == null) {
+            return ResultVO.fail(I18nUtils.getMessage("nodered.flow.not.exist"));
+        }
+        nodeFlowModelMapper.delete(new LambdaQueryWrapper<NodeFlowModelPO>().eq(NodeFlowModelPO::getAlias, unsAlias));
+        NodeFlowModelPO po = new NodeFlowModelPO();
+        po.setParentId(flowId);
+        po.setAlias(unsAlias);
+        nodeFlowModelMapper.insert(po);
+        return ResultVO.success("ok");
+    }
 }

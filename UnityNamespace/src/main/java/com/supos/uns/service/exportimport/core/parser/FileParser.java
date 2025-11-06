@@ -1,8 +1,7 @@
 package com.supos.uns.service.exportimport.core.parser;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.system.SystemUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.supos.common.Constants;
@@ -23,7 +22,6 @@ import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang3.tuple.Triple;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -37,7 +35,7 @@ import java.util.Set;
 public class FileParser extends AbstractParser {
 
     private static Set<Integer> FILE_TYPE = Set.of(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.CALCULATION_REAL_TYPE,
-            Constants.MERGE_TYPE, Constants.CITING_TYPE);
+            Constants.MERGE_TYPE, Constants.CITING_TYPE, Constants.JSONB_TYPE);
 
     private Integer checkDataType(ValidateFile fileDto, ExcelImportContext context) {
         String dataTypeStr = fileDto.getDataType();
@@ -87,6 +85,7 @@ public class FileParser extends AbstractParser {
         CreateTopicDto createTopicDto = fileDto.createTopic();
         createTopicDto.setPathType(Constants.PATH_TYPE_FILE);
         createTopicDto.setDataType(dataType);
+        createTopicDto.setParentDataType(fileDto.getParentDataType());
         ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(createTopicDto);
 
         // 校验path是否重复
@@ -109,6 +108,15 @@ public class FileParser extends AbstractParser {
                 return null;
             }
             createTopicDto.setParentAlias(parentWrap.getAlias());
+        }
+
+        if (SystemUtil.getBoolean("SYS_OS_ENABLE_AUTO_CATEGORIZATION", false)) {
+            if (fileDto.getParentDataType() == null) {
+                context.addError(flagNo, I18nUtils.getMessage("uns.excel.parentDataType.is.blank"));
+                return null;
+            } else {
+                createTopicDto.setParentDataType(fileDto.getParentDataType());
+            }
         }
 
         if (dataType != Constants.MERGE_TYPE && dataType != Constants.CITING_TYPE) {
@@ -250,7 +258,9 @@ public class FileParser extends AbstractParser {
         fileDto.setPersistence(getValueFromDataMap(dataMap, "enableHistory"));
         fileDto.setAutoDashboard(getValueFromDataMap(dataMap, "generateDashboard"));
         fileDto.setMockData(getValueFromDataMap(dataMap, "mockData"));
-
+        Object parentDataType = dataMap.get("parentDataType");
+        Integer pDataType = ObjectUtil.isEmpty(parentDataType) ? null : Integer.parseInt(parentDataType.toString());
+        fileDto.setParentDataType(pDataType);
 
         ExcelUnsWrapDto wrapDto = check(fileDto, context, null);
         if (wrapDto != null) {
@@ -282,7 +292,9 @@ public class FileParser extends AbstractParser {
         fileDto.setPersistence(getValueFromJsonNode(data, "enableHistory"));
         fileDto.setAutoDashboard(getValueFromJsonNode(data, "generateDashboard"));
         fileDto.setMockData(getValueFromJsonNode(data, "mockData"));
-
+        String parentDataType = getValueFromJsonNode(data, "parentDataType");
+        Integer pDataType = ObjectUtil.isEmpty(parentDataType) ? null : Integer.parseInt(parentDataType);
+        fileDto.setParentDataType(pDataType);
         ExcelUnsWrapDto wrapDto = check(fileDto, context, parent);
         if (wrapDto != null) {
             context.addUns(wrapDto);

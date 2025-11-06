@@ -12,20 +12,20 @@ import cn.hutool.poi.excel.ExcelUtil;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
-import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
 import com.supos.common.LogWrapperConsumer;
+import com.supos.common.RunningStatus;
+import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.enums.ExcelTypeEnum;
 import com.supos.common.exception.BuzException;
 import com.supos.common.utils.FileUtils;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.SuposIdUtil;
-import com.supos.common.RunningStatus;
 import com.supos.uns.dao.mapper.UnsExportRecordMapper;
 import com.supos.uns.dao.po.UnsExportRecordPo;
 import com.supos.uns.dao.po.UnsLabelPo;
@@ -96,6 +96,8 @@ public class UnsExcelService {
     UnsTemplateService unsTemplateService;
     @Autowired
     private UnsAddService unsAddService;
+    @Autowired
+    private SystemConfig systemConfig;
 
     @Autowired
     private UnsExportRecordMapper unsExportRecordMapper;
@@ -122,13 +124,25 @@ public class UnsExcelService {
             targetPath = String.format("%s%s", FileUtils.getFileRootPath(), path);
             FileUtil.touch(targetPath);
 
-            String templatePath = Constants.EXCEL_TEMPLATE_PATH;
-            Locale locale = LocaleContextHolder.getLocale();
-            if (locale != null) {
-                if (StringUtils.containsIgnoreCase(locale.getLanguage(), "zh")) {
-                    templatePath = Constants.EXCEL_TEMPLATE_ZH_PATH;
+            String templatePath = null;
+            if (!systemConfig.getEnableAutoCategorization()) {
+                templatePath = Constants.EXCEL_TEMPLATE_PATH;
+                Locale locale = LocaleContextHolder.getLocale();
+                if (locale != null) {
+                    if (StringUtils.containsIgnoreCase(locale.getLanguage(), "zh")) {
+                        templatePath = Constants.EXCEL_TEMPLATE_ZH_PATH;
+                    }
+                }
+            } else {
+                templatePath = Constants.EXCEL_TEMPLATE_PATH_CATEGORY;
+                Locale locale = LocaleContextHolder.getLocale();
+                if (locale != null) {
+                    if (StringUtils.containsIgnoreCase(locale.getLanguage(), "zh")) {
+                        templatePath = Constants.EXCEL_TEMPLATE_ZH_PATH_CATEGORY;
+                    }
                 }
             }
+
             ExcelWriter excelWriter = EasyExcel.write(targetPath).withTemplate(new ClassPathResource(templatePath).getInputStream()).build();
             //writeExplanationRow(excelWriter);
             excelWriter.finish();
@@ -320,9 +334,9 @@ public class UnsExcelService {
                         throw new BuzException("uns.import.template.error");
                     }
                     List<Object> heads = reader.readRow(0);
-                    if (CollectionUtils.isEmpty(heads) || !ExportImportHelper.checkHead(excelType, heads)) {
-                        throw new BuzException("uns.import.head.error", sheetName);
-                    }
+//                    if (CollectionUtils.isEmpty(heads) || !ExportImportHelper.checkHead(excelType, heads)) {
+//                        throw new BuzException("uns.import.head.error", sheetName);
+//                    }
 
 /*                    List<Map<String, Object>> dataList = reader.read(0, 4, 7);
                     if (!CollectionUtils.isEmpty(dataList)) {
@@ -452,7 +466,7 @@ public class UnsExcelService {
 
             List<UnsPo> files = unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 2)
                     //.eq(UnsPo::getStatus, 1)
-                    .in(UnsPo::getDataType, Lists.newArrayList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.CALCULATION_REAL_TYPE, Constants.MERGE_TYPE, Constants.CITING_TYPE))
+                    .in(UnsPo::getDataType, Lists.newArrayList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.CALCULATION_REAL_TYPE, Constants.MERGE_TYPE, Constants.CITING_TYPE, Constants.JSONB_TYPE))
                     .ne(UnsPo::getDataType, Constants.ALARM_RULE_TYPE).orderByAsc(UnsPo::getLayRec));
             files.forEach(file -> {
                 context.addExportFile(file);
@@ -527,21 +541,21 @@ public class UnsExcelService {
                     Set<String> queryFileAliass = exportParam.getInstances().stream().filter(StringUtils::isNotBlank).collect(Collectors.toSet());
                     files.addAll(unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 2)
                             //.eq(UnsPo::getStatus, 1)
-                            .in(UnsPo::getDataType, Lists.newArrayList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.CALCULATION_REAL_TYPE, Constants.MERGE_TYPE, Constants.CITING_TYPE))
+                            .in(UnsPo::getDataType, Lists.newArrayList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.CALCULATION_REAL_TYPE, Constants.MERGE_TYPE, Constants.CITING_TYPE, Constants.JSONB_TYPE))
                             .in(UnsPo::getAlias, queryFileAliass)
                             .ne(UnsPo::getDataType, Constants.ALARM_RULE_TYPE)));
                 } else if (StringUtils.equals(exportParam.getFileFlag(), "path")) {
                     Set<String> queryFilePaths = exportParam.getInstances().stream().filter(StringUtils::isNotBlank).collect(Collectors.toSet());
                     files.addAll(unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 2)
                             //.eq(UnsPo::getStatus, 1)
-                            .in(UnsPo::getDataType, Lists.newArrayList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.CALCULATION_REAL_TYPE, Constants.MERGE_TYPE, Constants.CITING_TYPE))
+                            .in(UnsPo::getDataType, Lists.newArrayList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.CALCULATION_REAL_TYPE, Constants.MERGE_TYPE, Constants.CITING_TYPE, Constants.JSONB_TYPE))
                             .in(UnsPo::getPath, queryFilePaths)
                             .ne(UnsPo::getDataType, Constants.ALARM_RULE_TYPE)));
                 } else {
                     Set<Long> queryFileIds = exportParam.getInstances().stream().filter(StringUtils::isNotBlank).map(Long::parseLong).collect(Collectors.toSet());
                     files.addAll(unsManagerService.list(Wrappers.lambdaQuery(UnsPo.class).eq(UnsPo::getPathType, 2)
                             //.eq(UnsPo::getStatus, 1)
-                            .in(UnsPo::getDataType, Lists.newArrayList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.CALCULATION_REAL_TYPE, Constants.MERGE_TYPE, Constants.CITING_TYPE))
+                            .in(UnsPo::getDataType, Lists.newArrayList(Constants.TIME_SEQUENCE_TYPE, Constants.RELATION_TYPE, Constants.CALCULATION_REAL_TYPE, Constants.MERGE_TYPE, Constants.CITING_TYPE, Constants.JSONB_TYPE))
                             .in(UnsPo::getId, queryFileIds)
                             .ne(UnsPo::getDataType, Constants.ALARM_RULE_TYPE)));
                 }

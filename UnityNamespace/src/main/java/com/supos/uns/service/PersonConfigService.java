@@ -2,9 +2,13 @@ package com.supos.uns.service;
 
 import cn.hutool.cache.Cache;
 import cn.hutool.cache.CacheUtil;
+import com.supos.common.filter.UserContextFilter;
+import com.supos.common.service.IPersonConfigService;
+import com.supos.common.utils.UserContext;
+import com.supos.common.vo.UserInfoVo;
 import com.supos.uns.dao.mapper.PersonConfigMapper;
 import com.supos.uns.dao.po.PersonConfigPo;
-import com.supos.uns.vo.PersonConfigVo;
+import com.supos.common.vo.PersonConfigVo;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,7 +20,7 @@ import org.springframework.stereotype.Service;
  * @date 2025/7/3 13:45
  */
 @Service
-public class PersonConfigService {
+public class PersonConfigService implements IPersonConfigService {
 
     @Value("${SYS_OS_LANG:zh-CN}")
     private String systemLocale;
@@ -32,6 +36,10 @@ public class PersonConfigService {
 
         if (ret > 0) {
             personConfigCache.remove(userId);
+        }
+        UserInfoVo userInfoVo = UserContext.get();
+        if (userInfoVo != null) {
+            userInfoVo.setMainLanguage(mainLanguage);
         }
         return ret;
     }

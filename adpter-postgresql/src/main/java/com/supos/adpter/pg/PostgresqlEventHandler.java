@@ -62,10 +62,13 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
     @EventListener(classes = UpdateInstanceEvent.class)
     @Order(7)
     void onUpdateInstanceEvent(UpdateInstanceEvent event) {
-        CreateTopicDto[] topics = event.topics.stream().filter(t -> Boolean.TRUE.equals(t.getFieldsChanged()) && t.getDataSrcId() == SrcJdbcType.Postgresql).toArray(CreateTopicDto[]::new);
-        if (event.getSource() != this && ArrayUtils.isNotEmpty(topics)) {
-            Map<String, TableInfo> tableInfoMap = listTableInfos(topics);
-            super.doTx(() -> batchCreateTables(topics, tableInfoMap));
+        List<CreateTopicDto> topicList = event.topics;
+        if (!CollectionUtils.isEmpty(topicList)) {
+            CreateTopicDto[] topics = topicList.stream().filter(t -> Boolean.TRUE.equals(t.getFieldsChanged()) && t.getDataSrcId() == SrcJdbcType.Postgresql).toArray(CreateTopicDto[]::new);
+            if (event.getSource() != this && ArrayUtils.isNotEmpty(topics)) {
+                Map<String, TableInfo> tableInfoMap = listTableInfos(topics);
+                super.doTx(() -> batchCreateTables(topics, tableInfoMap));
+            }
         }
     }
 
@@ -281,13 +284,13 @@ public class PostgresqlEventHandler extends PostgresqlBase implements DataStorag
         Integer len = def.getMaxLen();
         switch (def.getType()) {
             case STRING:
-                if (len != null) {
+                String nameC = def.getName().toLowerCase();
+                if (nameC.contains("json")) {
+                    type = "jsonb";
+                } else if (len != null) {
                     type = "varchar(" + len + ")";
                 } else {
-                    String nameC = def.getName().toLowerCase();
-                    if (nameC.contains("json")) {
-                        type = "jsonb";
-                    }
+                    type = "varchar(64)";
                 }
                 break;
             case DATETIME:

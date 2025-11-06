@@ -5,14 +5,17 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
+import cn.hutool.core.thread.ThreadUtil;
+import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
+import cn.hutool.json.JSONUtil;
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
 import com.supos.common.Constants;
@@ -21,6 +24,7 @@ import com.supos.common.SrcJdbcType;
 import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.*;
 import com.supos.common.dto.grafana.DashboardDto;
+import com.supos.common.dto.grafana.DashboardRefDto;
 import com.supos.common.dto.grafana.PgDashboardParam;
 import com.supos.common.enums.GlobalExportModuleEnum;
 import com.supos.common.event.CreateDashboardEvent;
@@ -30,8 +34,13 @@ import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.service.IUnsDefinitionService;
 import com.supos.common.utils.*;
 import com.supos.uns.dao.mapper.DashboardMapper;
+import com.supos.uns.dao.mapper.DashboardMarkedMapper;
+import com.supos.uns.dao.mapper.DashboardRefMapper;
 import com.supos.uns.dao.mapper.UnsMapper;
+import com.supos.uns.dao.po.DashboardExtendsPo;
+import com.supos.uns.dao.po.DashboardMarkTopPO;
 import com.supos.uns.dao.po.DashboardPo;
+import com.supos.uns.dao.po.DashboardRefPo;
 import com.supos.uns.service.exportimport.core.DashboardExportContext;
 import com.supos.uns.service.exportimport.core.DashboardImportContext;
 import com.supos.uns.service.exportimport.json.DashboardDataExporter;
@@ -39,8 +48,10 @@ import com.supos.uns.service.exportimport.json.DashboardDataImporter;
 import com.supos.uns.util.UnsFlags;
 import com.supos.uns.vo.DashboardExportParam;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,6 +75,9 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
 
     @Autowired
     private DashboardMapper dashboardMapper;
+    // 置顶
+    @Autowired
+    private DashboardMarkedMapper dashboardMarkedMapper;
     @Autowired
     private SystemConfig systemConfig;
     @Autowired
@@ -72,9 +86,48 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
     UnsMapper unsMapper;
     @Autowired
     UnsAddService unsAddService;
+    @Autowired
+    DashboardRefMapper dashboardRefMapper;
 
-    public PageResultDTO<DashboardDto> pageList(String keyword, Integer type, PaginationDTO params) {
-        Page<DashboardPo> page = new Page<>(params.getPageNo(), params.getPageSize());
+    @EventListener(classes = ContextRefreshedEvent.class)
+    void onStartup(ContextRefreshedEvent event) {
+        ThreadUtil.execAsync(() -> {
+            LambdaQueryWrapper<DashboardPo> qw = new LambdaQueryWrapper<>();
+            qw.isNotNull(DashboardPo::getJsonContent).eq(DashboardPo::getType, 1).eq(DashboardPo::getNeedInit, true);
+            List<DashboardPo> list = dashboardMapper.selectList(qw);
+            if (CollectionUtils.isEmpty(list)) {
+                return;
+            }
+            log.info(">>> Dashboard 待初始化数据量：{}", list.size());
+            for (DashboardPo po : list) {
+                String jsonContent = po.getJsonContent();
+                if (StringUtils.isBlank(jsonContent) || !JSONUtil.isTypeJSON(jsonContent)) {
+                    continue;
+                }
+                JSONObject json = JSON.parseObject(jsonContent);
+                String uid = json.getJSONObject("dashboard").getString("uid");
+                JSONObject exist = GrafanaUtils.getDashboardByUuid(uid);
+                if (exist != null) {
+                    po.setNeedInit(false);
+                    dashboardMapper.updateById(po);
+                    log.info(">>> Dashboard ：{} 完成初始化!", po.getName());
+                    continue;
+                }
+                json.getJSONObject("dashboard").put("id", null);
+                String url = GrafanaUtils.getGrafanaUrl() + "/api/dashboards/db/";
+                //不存在 > 初始化
+                HttpResponse response = HttpUtil.createPost(url).body(json.toJSONString()).executeAsync();
+                if (response.getStatus() == 200) {
+                    po.setNeedInit(false);
+                    dashboardMapper.updateById(po);
+                    log.info(">>> Dashboard ：{} 完成初始化!", po.getName());
+                }
+            }
+        });
+    }
+
+    public PageResultDTO<DashboardDto> pageList(String keyword, Integer type, String orderCode, String descOrAsc, PaginationDTO params) {
+        /*Page<DashboardPo> page = new Page<>(params.getPageNo(), params.getPageSize());
         LambdaQueryWrapper<DashboardPo> qw = new LambdaQueryWrapper<>();
         if (type != null) {
             qw.eq(DashboardPo::getType, type);
@@ -85,7 +138,13 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
         qw.orderByDesc(DashboardPo::getCreateTime);
         Page<DashboardPo> iPage = page(page, qw);
         List<DashboardDto> list = BeanUtil.copyToList(iPage.getRecords(), DashboardDto.class);
-        PageResultDTO.PageResultDTOBuilder<DashboardDto> pageBuilder = PageResultDTO.<DashboardDto>builder().total(iPage.getTotal()).pageNo(params.getPageNo()).pageSize(params.getPageSize());
+        PageResultDTO.PageResultDTOBuilder<DashboardDto> pageBuilder = PageResultDTO.<DashboardDto>builder().total(iPage.getTotal()).pageNo(params.getPageNo()).pageSize(params.getPageSize());*/
+        keyword = SqlUtil.escapeForLike(keyword);
+        long total = dashboardMapper.selectDashboardCount(keyword, type);
+        PageResultDTO.PageResultDTOBuilder<DashboardDto> pageBuilder = PageResultDTO.<DashboardDto>builder().total(total).pageNo(params.getPageNo()).pageSize(params.getPageSize());
+        String userId = UserContext.get().getSub();
+        List<DashboardExtendsPo> dashboardPoList = dashboardMapper.selectDashboard(userId, keyword, type, orderCode, descOrAsc, params.getPageNo(), params.getPageSize());
+        List<DashboardDto> list = BeanUtil.copyToList(dashboardPoList, DashboardDto.class);
         return pageBuilder.code(0).data(list).build();
     }
 
@@ -116,6 +175,9 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
             if (200 != dashboardResponse.getStatus()) {
                 return new JsonResult(500, I18nUtils.getMessage("uns.dashboard.create.failed"));
             }
+        }
+        if (UserContext.get() != null) {
+            po.setCreator(UserContext.get().getPreferredUsername());
         }
         save(po);
         return new JsonResult(0, "success", po);
@@ -156,6 +218,7 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
             HttpResponse response = HttpRequest.delete(url).execute();
             log.info(">>>>>>>>>>>>>>>dashboard fuxa delete response code:{}", response.getStatus());
         }
+        dashboardMarkedMapper.deleteById(uid);
         return removeById(uid);
     }
 
@@ -207,8 +270,13 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
         po.setName(event.name);
         po.setCreateTime(now);
         po.setUpdateTime(now);
+        po.setCreator(event.username);
         boolean flag = dashboardMapper.insert(po) > 0;
         log.info("结束创建数据看板 name：{}，创建状态：{}", event.name, flag);
+        if (flag) {
+            DashboardRefPo ref = new DashboardRefPo(po.getId(), event.name);
+            dashboardRefMapper.insert(ref);
+        }
     }
 
     public void asyncImport(File file, Consumer<RunningStatus> consumer) {
@@ -348,7 +416,7 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
         int dataType = uns.getDataType();
 
         SrcJdbcType jdbcType = null;
-        if (dataType == Constants.RELATION_TYPE) {
+        if (dataType == Constants.RELATION_TYPE || dataType == Constants.JSONB_TYPE) {
             jdbcType = SrcJdbcType.Postgresql;
         } else {
             jdbcType = systemConfig.getContainerMap().containsKey("tdengine") ? SrcJdbcType.TdEngine : SrcJdbcType.TimeScaleDB;
@@ -378,13 +446,86 @@ public class DashboardService extends ServiceImpl<DashboardMapper, DashboardPo> 
             DashboardPo po = new DashboardPo();
             po.setId(uuid);
             po.setName(alias);
+            if (UserContext.get() != null) {
+                po.setCreator(UserContext.get().getPreferredUsername());
+            }
             po.setCreateTime(now);
             po.setUpdateTime(now);
             dashboardMapper.insert(po);
         }
         int flag = UnsFlags.generateFlag(uns.getAddFlow(), uns.getSave2db(), true, uns.getRetainTableWhenDeleteInstance(), uns.getAccessLevel());
         uns.setFlags(flag);
-        unsAddService.createModelInstance(uns);
+        unsAddService.createCategoryModelInstance(uns);
+
+        //创建时 判断关系表是否存在记录，不存在则增加绑定关系，存在则无操作
+        DashboardPo po = dashboardRefMapper.getByUns(alias);
+        if (po == null) {
+            DashboardRefPo ref = new DashboardRefPo(uuid, alias);
+            dashboardRefMapper.insert(ref);
+        }
+        return ResultVO.success("ok");
+    }
+
+    /**
+     * 置顶
+     *
+     * @param id
+     */
+    public void markTop(String id) {
+        DashboardMarkTopPO po = new DashboardMarkTopPO();
+        po.setId(id);
+        po.setUserId(UserContext.get().getSub());
+        dashboardMarkedMapper.insert(po);
+    }
+
+    /**
+     * 取消置顶
+     *
+     * @param id
+     */
+    public void removeMarkedTop(String id) {
+        dashboardMarkedMapper.delete(id, UserContext.get().getSub());
+    }
+
+    public ResultVO bindUns(DashboardRefDto dto) {
+        String dashboardId = dto.getDashboardId();
+        String unsAlias = dto.getUnsAlias();
+        DashboardPo po = getById(dashboardId);
+        if (po == null) {
+            return ResultVO.fail("uns.dashboard.not.exit");
+        }
+
+        CreateTopicDto uns = unsDefinitionService.getDefinitionByAlias(dto.getUnsAlias());
+        if (uns == null) {
+            return ResultVO.fail("uns.dashboard.not.exit");
+        }
+        dashboardRefMapper.delete(new LambdaQueryWrapper<DashboardRefPo>()
+                .eq(DashboardRefPo::getUnsAlias, unsAlias));
+        DashboardRefPo ref = new DashboardRefPo(dashboardId, unsAlias);
+        dashboardRefMapper.insert(ref);
+
+        int flag = UnsFlags.generateFlag(uns.getAddFlow(), uns.getSave2db(), true, uns.getRetainTableWhenDeleteInstance(), uns.getAccessLevel());
+        uns.setFlags(flag);
+        unsAddService.createCategoryModelInstance(uns);
+
+        return ResultVO.success("ok");
+    }
+
+    public ResultVO<DashboardPo> getByUns(String unsAlias) {
+        DashboardPo po = dashboardRefMapper.getByUns(unsAlias);
+        if (po != null) {
+            return ResultVO.successWithData(po);
+        }
+        CreateTopicDto uns = unsDefinitionService.getDefinitionByAlias(unsAlias);
+        //引用类型 先查自身，再查原始引用
+        if (uns != null && Constants.CITING_TYPE == uns.getDataType() && ArrayUtil.isNotEmpty(uns.getRefers())) {
+            CreateTopicDto refUns = unsDefinitionService.getDefinitionById(uns.getRefers()[0].getId());
+            if (refUns != null) {
+                unsAlias = refUns.getAlias();
+                DashboardPo db = dashboardRefMapper.getByUns(unsAlias);
+                return ResultVO.successWithData(db);
+            }
+        }
         return ResultVO.success("ok");
     }
 }

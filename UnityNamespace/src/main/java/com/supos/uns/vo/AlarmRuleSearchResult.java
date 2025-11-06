@@ -58,6 +58,8 @@ public class AlarmRuleSearchResult {
      */
     List<AlarmHandlerPo> handlerList;
 
+    private Integer parentDataType;
+
     /**
      * 工作流流程定义
      */

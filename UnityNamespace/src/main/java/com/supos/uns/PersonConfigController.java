@@ -4,7 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.uns.service.PersonConfigService;
 import com.supos.uns.vo.PersonConfigUpdateReqVo;
-import com.supos.uns.vo.PersonConfigVo;
+import com.supos.common.vo.PersonConfigVo;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;

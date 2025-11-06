@@ -59,6 +59,11 @@ public class UserInfoVo extends UserAttributeVo {
     private Boolean enabled;
 
     /**
+     * 语言
+     */
+    private String mainLanguage;
+
+    /**
      * 角色列表
      */
     private List<RoleDto> roleList;

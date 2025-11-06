@@ -11,9 +11,11 @@ import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.enums.TimeUnits;
 import com.supos.common.utils.ExpressionFunctions;
+import com.supos.common.utils.FieldUtils;
 import com.supos.common.utils.JsonUtil;
 import com.supos.common.utils.PathUtil;
 import com.supos.uns.dao.po.UnsPo;
+import com.supos.uns.vo.MountDetailVo;
 import com.supos.uns.vo.TopicTreeResult;
 
 public class UnsConverter {
@@ -77,6 +79,7 @@ public class UnsConverter {
 //                dto.setReferModelId(refPo.getModelId());
 //            }
 //        }
+        dto.setExtendFieldUsed(FieldUtils.parseFlag(p.getExtendFieldFlags()));
         return dto;
     }
 
@@ -89,7 +92,7 @@ public class UnsConverter {
         return null;
     }
 
-    public static TopicTreeResult dto2TreeResult(CreateTopicDto dto){
+    public static TopicTreeResult dto2TreeResult(CreateTopicDto dto) {
         TopicTreeResult result = new TopicTreeResult();
         result.setId(dto.getId().toString());
         result.setAlias(dto.getAlias());
@@ -103,9 +106,21 @@ public class UnsConverter {
         result.setPath(dto.getPath());
         result.setPathName(PathUtil.getName(dto.getPath()));
         result.setDataType(dto.getDataType());
+        result.setMount(createMountDetailVo(dto));
+        result.setParentDataType(dto.getParentDataType());
 //        result.setCountChildren(count.getCountChildren());
 //        result.setHasChildren(count.getCountDirectChildren() > 0);
         return result;
     }
 
+    public static MountDetailVo createMountDetailVo(CreateTopicDto dto) {
+        if (dto.getMountType() == null || dto.getMountType() == 0) {
+            return null;
+        }
+
+        MountDetailVo mountDetailVo = new MountDetailVo();
+        mountDetailVo.setMountType(dto.getMountType());
+        mountDetailVo.setMountSource(dto.getMountSource());
+        return mountDetailVo;
+    }
 }

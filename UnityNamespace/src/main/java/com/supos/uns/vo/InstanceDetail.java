@@ -3,6 +3,7 @@ package com.supos.uns.vo;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.vo.LabelVo;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -29,6 +30,9 @@ public class InstanceDetail {
 
     @Schema(description = "1--时序库 2--关系库")
     Integer dataType;// 1--时序库 2--关系库
+
+    @Schema(description = "1--State 2--Action 3--Metrics")
+    Integer parentDataType;// 1--时序库 2--关系库
 
     String dataPath;
 
@@ -63,6 +67,9 @@ public class InstanceDetail {
 
     @Schema(description = "是否持久化")
     boolean withSave2db;
+
+    @Schema(description = "是否订阅")
+    boolean subscribeEnable;
 
     /**
      * 是否持久化:pride冗余
@@ -115,4 +122,17 @@ public class InstanceDetail {
 
     @Schema(description = "模板别名")
     String templateAlias;
+
+    /**
+     * 读写模式：北向访问级别。READ_ONLY-只读，READ_WRITE-读写
+     * @see com.supos.common.enums.FileReadWriteMode
+     */
+    String accessLevel;
+
+    @Schema(description = "挂载信息")
+    MountDetailVo mount;
+
+    String table;
+
+    String tbFieldName;//当前uns别名对应目标表的字段名
 }

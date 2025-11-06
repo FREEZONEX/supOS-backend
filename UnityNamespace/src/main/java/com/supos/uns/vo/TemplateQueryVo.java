@@ -11,4 +11,9 @@ public class TemplateQueryVo extends PaginationDTO {
     @Schema(description = "关键字查询，模版名称模糊匹配")
     String key;
 
+    /**
+     * 是否订阅
+     */
+    @Schema(description = "是否订阅")
+    Boolean subscribeEnable;
 }

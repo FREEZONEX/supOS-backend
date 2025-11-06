@@ -57,6 +57,8 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
     AlarmMapper alarmMapper;
     @Autowired
     UnsDefinitionService unsDefinitionService;
+    @Autowired
+    UnsQueryService unsQueryService;
 
     private static final long TEMPLATE_ROOT_id = 1L;
     private static final String TEMPLATE_ROOT_ALIAS = "__templates__";
@@ -187,6 +189,66 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
         List<CreateTopicDto> dtoList = files.stream().map(p -> UnsConverter.po2dto(p, false)).toList();
 
         return unsRemoveService.getRemoveResult(true, true, true, dtoList);
+    }
+
+    public ResultVO subscribeModel(Long id, Boolean enable, String frequency) {
+        if (enable == null && frequency == null) {
+            return ResultVO.fail("enable and frequency not be null");
+        }
+
+        UnsPo template = getById(id);
+        if (null == template) {
+            return ResultVO.fail(I18nUtils.getMessage("uns.template.not.exists"));
+        }
+
+        LambdaUpdateWrapper<UnsPo> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(UnsPo::getId, id);
+        if (enable != null) {
+            Integer flags = template.getWithFlags();
+            if (flags == null) {
+                flags = 0;
+            }
+            flags = enable ? (flags | Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE) : (flags & ~Constants.UNS_FLAG_WITH_SUBSCRIBE_ENABLE);
+            updateWrapper.set(UnsPo::getWithFlags, flags);
+            if (enable) {
+                updateWrapper.set(UnsPo::getSubscribeAt, new Date());
+            }
+        }
+        if (frequency != null) {
+            Map<String, Object> protocol = new HashMap<>();
+            protocol.put("frequency", frequency);
+            updateWrapper.set(StringUtils.hasText(frequency), UnsPo::getProtocol, JsonUtil.toJson(protocol));
+        }
+        updateWrapper.set(UnsPo::getUpdateAt, new Date());
+        update(updateWrapper);
+
+        UnsPo afterUnsPo = baseMapper.selectById(id);
+        if (afterUnsPo != null) {
+            sendTempUpdateEvent(afterUnsPo);
+        }
+        return ResultVO.success("ok");
+    }
+
+    private void sendTempUpdateEvent(UnsPo unsPo) {
+        if (unsPo == null) {
+            return;
+        }
+        CreateTopicDto createTopicDto = UnsConverter.po2dto(unsPo);
+        CreateTopicDto[] dtos = new CreateTopicDto[1];
+        dtos[0] = createTopicDto;
+        List<CreateTopicDto> emptyList = Collections.emptyList();
+        CreateTopicDto[] emptyArray = new CreateTopicDto[0];
+        Integer pathType = unsPo.getPathType();
+        if (pathType == 0) {
+            UpdateInstanceEvent event = new UpdateInstanceEvent(this, emptyList, dtos, emptyArray);
+            EventBus.publishEvent(event);
+        } else if (pathType == 1) {
+            UpdateInstanceEvent event = new UpdateInstanceEvent(this, emptyList, emptyArray, dtos);
+            EventBus.publishEvent(event);
+        } else if (pathType == 2) {
+            UpdateInstanceEvent event = new UpdateInstanceEvent(this, List.of(createTopicDto), emptyArray, emptyArray);
+            EventBus.publishEvent(event);
+        }
     }
 
     public ResultVO updateTemplate(Long id, String name, String description) {
@@ -336,9 +398,12 @@ public class UnsTemplateService extends ServiceImpl<UnsMapper, UnsPo> {
             // 更新实例的fields字段
             this.updateBatchById(instances);
         }
-
         // 更新td或者pg的实例表字段(同create事件)
         sendEvent(uns, instances);
+//        if (pathType == Constants.PATH_TYPE_FILE) {
+//           unsQueryService.refreshLatestMsg(uns.getId());
+//        }
+
         // webhook send
         List<WebhookDataDTO> webhookData = WebhookUtils.transfer(instances,
                 JsonUtil.jackToJson(fields));

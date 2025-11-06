@@ -5,7 +5,9 @@ import com.alibaba.fastjson.JSONArray;
 import com.google.common.collect.Lists;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowMapper;
 import com.supos.adpter.nodered.dao.mapper.NodeFlowModelMapper;
+import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
 import com.supos.adpter.nodered.dao.po.NodeFlowPO;
+import com.supos.adpter.nodered.enums.FlowType;
 import com.supos.adpter.nodered.service.parse.ParserApi;
 import com.supos.adpter.nodered.service.parse.RelationalParser;
 import com.supos.adpter.nodered.vo.BatchImportRequestVO;
@@ -32,7 +34,7 @@ import java.util.stream.Collectors;
 public class ImportNodeRedFlowService {
 
     @Autowired
-    private NodeRedAdapterService nodeRedAdapterService;
+    private SourceflowAdapterService nodeRedAdapterService;
     @Autowired
     private ResourceLoader resourceLoader;
     @Autowired
@@ -49,12 +51,12 @@ public class ImportNodeRedFlowService {
      * @param requestVO
      */
     public void importFlowFromUns(BatchImportRequestVO requestVO) {
-        NodeFlowPO nf = nodeFlowMapper.getByName(requestVO.getName());
+        NodeFlowPO nf = nodeFlowMapper.getByName(requestVO.getName(),  FlowType.NODERED.getFlowName());
         while (nf != null) {
             String newName = requestVO.getName() + "(1)";
             log.error("流程({})已存在, 重名为{}", requestVO.getName(), newName);
             requestVO.setName(newName);
-            nf = nodeFlowMapper.getByName(newName);
+            nf = nodeFlowMapper.getByName(newName, FlowType.NODERED.getFlowName());
         }
         int topicSize = requestVO.getUns().size();
         JSONArray fullNodes = new JSONArray();
@@ -143,13 +145,13 @@ public class ImportNodeRedFlowService {
         }
         List<List<String>> listList = Lists.partition(aliases, 500);
         for (List<String> sublist : listList) {
-            List<Long> parentIds = nodeFlowModelMapper.selectByAliases(sublist);
-            if (parentIds.isEmpty()) {
+            List<NodeFlowModelPO> refs = nodeFlowModelMapper.selectByAliases(sublist);
+            if (refs.isEmpty()) {
                 log.info("skip delete flows, because flow-model refs is empty");
                 return;
             }
-            for (Long id : parentIds) {
-                nodeRedAdapterService.deleteFlow(id, false);
+            for (NodeFlowModelPO ref : refs) {
+                nodeRedAdapterService.deleteFlow(ref.getParentId(), false);
             }
         }
 
@@ -190,7 +192,7 @@ public class ImportNodeRedFlowService {
      * @param demoFileName demo-it-flows / demo-ot-flows
      */
     public void deleteDemo(String demoFileName) {
-        NodeFlowPO demoFlow = nodeFlowMapper.getByName(demoFileName);
+        NodeFlowPO demoFlow = nodeFlowMapper.getByName(demoFileName, FlowType.NODERED.getFlowName());
         if (demoFlow == null) {
             return;
         }
@@ -209,4 +211,5 @@ public class ImportNodeRedFlowService {
             return builder.toString();
         }
     }
+
 }

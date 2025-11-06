@@ -5,7 +5,7 @@ import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.UserContext;
 import com.supos.common.vo.UserInfoVo;
 import com.supos.uns.service.PersonConfigService;
-import com.supos.uns.vo.PersonConfigVo;
+import com.supos.common.vo.PersonConfigVo;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -16,7 +16,6 @@ import java.util.List;
 public class UserDetailVo {
 
     @Hidden
-    @JsonIgnore
     private String id;
 
     @Schema(description = "用户名 英文+数组 长度3-20位")

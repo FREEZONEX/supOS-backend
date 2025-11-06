@@ -18,6 +18,7 @@
         <result property="pathType" column="path_type"/>
         <result property="dataSrcId" column="data_src_id"/>
         <result property="dataType" column="data_type"/>
+        <result property="parentDataType" column="parent_data_type"/>
         <result property="dataPath" column="data_path"/>
         <result property="fields" column="fields" typeHandler="com.supos.uns.config.FieldsTypeHandler"/>
         <result property="description" column="description"/>
@@ -172,4 +173,21 @@
         <include refid="commonWhereConditions"/>
     </select>
 
+    <select id="pageListTemplates" parameterType="com.supos.uns.vo.TemplateQueryVo" resultType="com.supos.uns.vo.TemplateSearchResult">
+        select id,name,alias,description  FROM uns_namespace a where path_type=1 AND data_type=0 AND status=1
+        <if test="params.key !=null and params.key!='' ">
+            AND name ILIKE CONCAT('%', #{params.key}, '%')
+        </if>
+        <if test="params.subscribeEnable !=null">
+            <choose>
+                <when test="params.subscribeEnable">
+                    <![CDATA[   AND  with_flags&256 >0   ]]>
+                </when>
+                <otherwise>
+                    <![CDATA[   AND  with_flags&256 = 0   ]]>
+                </otherwise>
+            </choose>
+        </if>
+        order by create_at asc
+    </select>
 </mapper>

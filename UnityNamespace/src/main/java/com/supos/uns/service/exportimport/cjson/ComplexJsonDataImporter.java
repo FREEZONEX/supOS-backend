@@ -200,6 +200,8 @@ public class ComplexJsonDataImporter extends DataImporter {
                 importFile(getContext(), Constants.MERGE_TYPE);
                 // 保存引用文件
                 importFile(getContext(), Constants.CITING_TYPE);
+                // 保存jsonb文件
+                importFile(getContext(), Constants.JSONB_TYPE);
                 getContext().getConsumer().accept(new RunningStatus()
                         .setTask(I18nUtils.getMessage("uns.create.task.name.file"))
                         .setFinished(false)

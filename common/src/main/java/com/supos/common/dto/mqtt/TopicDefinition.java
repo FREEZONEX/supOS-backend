@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
@@ -87,9 +88,11 @@ public class TopicDefinition {
         if (fields != null && fields.length > 0) {
             Map<String, FieldDefine> fieldDefineMap = dto.getFieldDefines().getFieldsMap();
             if (lastMsg != null && !lastMsg.isEmpty()) {
-                for (String k : lastMsg.keySet()) {
+                Iterator<String> iterator = lastMsg.keySet().iterator();
+                while (iterator.hasNext()) {
+                    String k = iterator.next();
                     if (!fieldDefineMap.containsKey(k)) {
-                        lastMsg.remove(k);
+                        iterator.remove();
                         if (lastDt != null) {
                             lastDt.remove(k);
                         }

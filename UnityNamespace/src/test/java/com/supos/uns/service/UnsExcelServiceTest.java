@@ -1,6 +1,10 @@
 package com.supos.uns.service;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.io.FileUtil;
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
+import cn.hutool.http.Method;
 import cn.hutool.json.JSONUtil;
 import cn.hutool.poi.excel.ExcelReader;
 import cn.hutool.poi.excel.ExcelUtil;
@@ -15,6 +19,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -320,5 +325,22 @@ public class UnsExcelServiceTest {
         dataMap.remove("fields");
         createTopicDto.setProtocol(dataMap);
         System.out.println();
+    }
+
+    @Test
+    public void testPride(){
+//        String url = "http://192.168.236.55:8080/os/open-api/uns/pride/task/import";
+        String url = "http://10.10.58.193:8080/os/open-api/uns/pride/task/import?rootAlias=_Awenjianjia_f875ed21281c4fb9ba9b";
+//        String file = "E:\\工作\\supos2\\7b853055-0c83-4d1e-a21e-813c94306846_2supos.txt";
+        String file = "E:\\工作\\supos2\\30M.txt";
+        String body = FileUtil.readString(new File(file), StandardCharsets.UTF_8);
+
+//        String ak = "ak-7383753428075283084";//100
+        String ak = "ak-7383770872672158317";//pride
+
+
+        HttpResponse res = HttpRequest.of(url).method(Method.POST).body(body).bearerAuth(ak).timeout(Integer.MAX_VALUE).execute();
+        System.out.println(res);
+        System.out.println(res.body());
     }
 }

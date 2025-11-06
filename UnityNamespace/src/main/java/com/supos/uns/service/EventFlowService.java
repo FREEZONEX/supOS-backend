@@ -3,11 +3,18 @@ package com.supos.uns.service;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
-import com.supos.adpter.eventflow.dao.mapper.EventFlowMapper;
-import com.supos.adpter.eventflow.dao.mapper.EventFlowModelMapper;
-import com.supos.adpter.eventflow.dao.po.NodeFlowModelPO;
-import com.supos.adpter.eventflow.dao.po.NodeFlowPO;
-import com.supos.adpter.eventflow.service.NodeRedAdapterService;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
+import com.supos.adpter.nodered.dao.mapper.NodeFlowMapper;
+import com.supos.adpter.nodered.dao.mapper.NodeFlowModelMapper;
+import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
+import com.supos.adpter.nodered.dao.po.NodeFlowPO;
+import com.supos.adpter.nodered.dto.ExportNodeFlowDto;
+import com.supos.adpter.nodered.dto.NodeFlowDto;
+import com.supos.adpter.nodered.service.EventFlowApiService;
+import com.supos.adpter.nodered.service.EventflowAdapterService;
+import com.supos.adpter.nodered.service.NodeRedAdapterService;
+import com.supos.adpter.nodered.service.SourceFlowApiService;
 import com.supos.common.Constants;
 import com.supos.common.dto.JsonResult;
 import com.supos.common.enums.GlobalExportModuleEnum;
@@ -26,11 +33,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StopWatch;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * @author wangshuzheng
@@ -41,11 +46,17 @@ import java.util.function.Consumer;
 @Slf4j
 public class EventFlowService {
     @Autowired
-    private EventFlowMapper nodeFlowMapper;
+    private NodeFlowMapper nodeFlowMapper;
     @Autowired
-    private EventFlowModelMapper nodeFlowModelMapper;
+    private NodeFlowModelMapper nodeFlowModelMapper;
+    //    @Autowired
+//    private NodeRedAdapterService nodeRedAdapterService;
+
     @Autowired
-    private NodeRedAdapterService nodeRedAdapterService;
+    private SourceFlowApiService sourceFlowApiService;
+
+    @Autowired
+    private EventFlowApiService eventFlowApiService;
 
     public void asyncImport(File file, Consumer<RunningStatus> consumer) {
         if (!file.exists()) {
@@ -54,9 +65,9 @@ public class EventFlowService {
             return;
         }
         EventFlowImportContext context = new EventFlowImportContext(file.toString());
-        context.setNodeRedHost(nodeRedAdapterService.getNodeRedHost());
-        context.setNodeRedPort(nodeRedAdapterService.getNodeRedPort());
-        EventFlowImporter dataImporter = new EventFlowImporter(context, nodeFlowMapper, nodeFlowModelMapper);
+//        context.setNodeRedHost(nodeRedAdapterService.getNodeRedHost());
+//        context.setNodeRedPort(nodeRedAdapterService.getNodeRedPort());
+        EventFlowImporter dataImporter = new EventFlowImporter(context, nodeFlowMapper, nodeFlowModelMapper, eventFlowApiService);
         try {
             dataImporter.importData(file);
         } catch (Throwable ex) {
@@ -128,27 +139,61 @@ public class EventFlowService {
         }
     }
     private void fetchData(EventFlowExportContext context,EventFlowExportParam exportParam,StopWatch stopWatch){
-        List<NodeFlowPO> flows = null;
+        ExportNodeFlowDto reqDto = null;
         if(CollUtil.isNotEmpty(exportParam.getIds())){
             List<Long> ids = exportParam.getIds().stream().map(Long::parseLong).toList();
-            flows = nodeFlowMapper.selectByIds(ids);
+            reqDto = eventFlowApiService.exportFlow(ids);
         }else if("ALL".equals(exportParam.getExportType())){
-            flows = nodeFlowMapper.selectAll();
+            reqDto = eventFlowApiService.exportAllFlow();
+        } else  {
+            return;
         }
+        context.setReqDto(reqDto);
 
-        if(CollUtil.isNotEmpty(flows)){
+/*        if (CollUtil.isNotEmpty(reqDto.getFlows())) {
             stopWatch.start("global eventFlow export load data");
+            Map<String, NodeFlowDto> flowMap = reqDto.getFlows().stream().collect(Collectors.toMap(NodeFlowDto::getFlowId, nodeFlowDto -> nodeFlowDto));
+            Map<String, List<JSONObject>> nodeMap = new HashMap<>();
+            if (CollUtil.isNotEmpty(reqDto.getNodes())) {
+                for (int i = 0; i < reqDto.getNodes().size(); i++) {
+                    JSONObject node = reqDto.getNodes().getJSONObject(i);
+                    String z = node.getString("z");
+                    String id = node.getString("id");
+
+                    if (z != null) {
+                        nodeMap.computeIfAbsent(z, k -> new ArrayList<>()).add(node);
+                    }
+                    if (id != null) {
+                        nodeMap.computeIfAbsent(id, k -> new ArrayList()).add(node);
+                    }
+                }
+            }
+
             List<Long> parentIds = new ArrayList<>();
-            for (NodeFlowPO flowPO : flows) {
-                flowPO.setCreateTime(null);
-                flowPO.setUpdateTime(null);
+            List<NodeFlowPO> flows = new ArrayList<>();
+            for (NodeFlowDto nodeFlowDto : reqDto.getFlows()) {
+                NodeFlowPO flowPO = new NodeFlowPO();
+                flowPO.setId(nodeFlowDto.getId());
+                flowPO.setFlowId(nodeFlowDto.getFlowId());
+                flowPO.setFlowName(nodeFlowDto.getFlowName());
+                flowPO.setDescription(nodeFlowDto.getDescription());
+                flowPO.setTemplate(nodeFlowDto.getTemplate());
+
+                JSONArray array = new JSONArray();
+                List<JSONObject> nodes =nodeMap.get(nodeFlowDto.getFlowId());
+                if (nodes != null) {
+                    array.addAll(nodes);
+                }
+                flowPO.setFlowData(array.toJSONString());
+                flows.add(flowPO);
                 parentIds.add(flowPO.getId());
             }
             context.setFlows(flows);
+
             List<NodeFlowModelPO> nodeFlowModelPOS = nodeFlowModelMapper.selectByParentIds(parentIds);
             context.setFlowModels(nodeFlowModelPOS);
             stopWatch.stop();
-        }
+        }*/
     }
     public JsonResult<String> dataExport(EventFlowExportParam exportParam) {
         StopWatch stopWatch = new StopWatch();

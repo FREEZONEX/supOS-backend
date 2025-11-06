@@ -1,9 +1,12 @@
 package com.supos.adapter.mqtt.service.impl;
 
 import cn.hutool.core.collection.ConcurrentHashSet;
+import cn.hutool.core.collection.ListUtil;
+import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.thread.RejectPolicy;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.ArrayUtil;
+import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.cron.timingwheel.TimerTask;
 import cn.hutool.extra.spring.SpringUtil;
 import cn.hutool.system.SystemUtil;
@@ -30,11 +33,14 @@ import com.supos.common.annotation.Description;
 import com.supos.common.dto.*;
 import com.supos.common.dto.mqtt.TopicDefinition;
 import com.supos.common.enums.FieldType;
+import com.supos.common.enums.SubscribeTypeEnum;
+import com.supos.common.enums.TimeUnits;
 import com.supos.common.event.*;
 import com.supos.common.exception.BuzException;
 import com.supos.common.sdk.UnsQueryApi;
 import com.supos.common.sdk.WebsocketSender;
 import com.supos.common.service.IUnsDefinitionService;
+import com.supos.common.service.IUnsLabelService;
 import com.supos.common.utils.*;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.MqttException;
@@ -44,6 +50,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -58,6 +65,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 
 import static com.codahale.metrics.MetricRegistry.name;
 
@@ -66,18 +74,22 @@ import static com.codahale.metrics.MetricRegistry.name;
 public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer {
 
     private final ConcurrentHashSet<Long> scheduleCalcTopics = new ConcurrentHashSet<>();
+    private final ConcurrentHashMap<SubscribeTypeEnum, ConcurrentHashSet<Long>> scheduleSubscribeTopics = new ConcurrentHashMap<>();
     @Autowired
     private IUnsDefinitionService uds;
     @Autowired
     private UnsQueryApi unsQueryService;
     @Autowired
     private WebsocketSender websocketSender;
+    @Autowired
+    private IUnsLabelService iUnsLabelService;
 
     private final ExecutorService dataPublishExecutor = ThreadUtil.newFixedExecutor(Integer.parseInt(System.getProperty("sink.thread", "4")), 100, "dbPub-", RejectPolicy.CALLER_RUNS.getValue());
     private final ExecutorService topicSender = ThreadUtil.newFixedExecutor(1, 100, "topicSend-", RejectPolicy.CALLER_RUNS.getValue());
 
     private static final String QUEUE_DIR = Constants.LOG_PATH + File.separator + "queue";
     private final BigQueue queue;
+    private final static int BATCH_PUBLISH_SIZE = 1000;
 
     private static final String DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSXXX";
 
@@ -738,12 +750,30 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                     obj.put(fieldName, define != null ? define.getType().defaultValue : "0");
                     obj.put(qosField, qos);
                     list = Collections.singletonList(obj);
-                } else {
-                    return;
                 }
+                // TODO 未知影响
+                /*else {
+                    return;
+                }*/
             }
         }
-        list = mergeBeansWithTimestamp(list, definition, nowInMills);
+        if (list != null) {
+            list = mergeBeansWithTimestamp(list, definition, nowInMills);
+        }
+        // 如果文件类型是JSONB，则清除所有不需要的属性，只保留{"json", payload}
+        if (definition.getDataType() == Constants.JSONB_TYPE) {
+            list = list == null ? new ArrayList<>() : list;
+            if (definition.getLastMsg() == null) {
+                definition.setLastMsg(new HashMap<>());
+            }
+            definition.getLastMsg().put("json", JSON.parseObject(payload));
+            list.add(JSON.parseObject(payload, Map.class));
+        } else {
+            // 校验payload字段是否在文件属性列表中，不在则移除
+            if (list != null && !list.isEmpty()) {
+                list.get(0).entrySet().removeIf(entry -> !definition.getFieldDefines().getFieldsMap().containsKey(entry.getKey()));
+            }
+        }
         final long msgTimeMills;
         Long lastBeanTime = definition.getLastDateTime();
         if (lastBeanTime != null) {
@@ -770,7 +800,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         Integer dataType = info.getDataType();
 
         this.dataPublishExecutor.submit(() -> {
-            sendToRefreshLatestMsg(info.getId(),info.getDataType(), topic, rawData, definition.getLastDt(), dataToSend != null ? dataToSend.get(dataToSend.size() - 1) : null, errMsg);
+            sendToRefreshLatestMsg(info.getId(), info.getDataType(), topic, rawData, definition.getLastDt(), dataToSend != null ? dataToSend.get(dataToSend.size() - 1) : null, errMsg);
             sendToWebsocket(info.getId(), topic);
             if (definition.getDataType() == Constants.ALARM_RULE_TYPE) {
                 AlertEvent event = new AlertEvent(
@@ -853,12 +883,10 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                     Map<String, Object> last = mergedList.get(mergedList.size() - 1);
                     Map<String, Object> mm = new HashMap<>(last);
                     mm.putAll(bean);
-                    mm.put(Constants.MERGE_FLAG, 1);
                     mergedList.set(mergedList.size() - 1, mm);
                 } else {
                     Map<String, Object> mm = new HashMap<>(prevBean);
                     mm.putAll(bean);
-                    mm.put(Constants.MERGE_FLAG, 1);
                     mergedList.add(mm);
                 }
             } else {
@@ -1197,6 +1225,17 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         }
     }
 
+    @EventListener(classes = UnsLabelSubscribeEvent.class)
+    @Order
+    void onLabelSubscribeEvent(UnsLabelSubscribeEvent event) {
+        if (!CollectionUtils.isEmpty(event.labelList)) {
+            for (UnsLabelDto label : event.labelList) {
+                addScheduleTask4Label(label);
+            }
+        }
+    }
+
+
     private static String parseTopLevel(String topic) {
         int x = topic.indexOf('/', 1);
         if (x > 0) {
@@ -1214,6 +1253,35 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                 addTopicFields(dto);
             }
             reCalculateRefers();
+        }
+
+        if (ArrayUtil.isNotEmpty(event.folder)) {
+            for (CreateTopicDto folder : event.folder) {
+                if (folder.getFlags() != null && Constants.withSubscribeEnable(folder.getFlags())) {
+                    addScheduleCalcTask(folder);
+                } else {
+                    ConcurrentHashSet<Long> ids = scheduleSubscribeTopics.get(SubscribeTypeEnum.FOLDER);
+                    if (!CollectionUtils.isEmpty(ids)) {
+                        ids.remove(folder.getId());
+                    }
+
+                }
+            }
+        }
+
+        if (ArrayUtil.isNotEmpty(event.templates)) {
+            for (CreateTopicDto template : event.templates) {
+                if (template.getFlags() != null && Constants.withSubscribeEnable(template.getFlags())) {
+//                    addScheduleCalcTask(template);
+                    addTopicFields(template);
+                } else {
+                    addTopicFields(uds.getTopicDefinitionMap(), template);
+                    ConcurrentHashSet<Long> ids = scheduleSubscribeTopics.get(SubscribeTypeEnum.TEMPLATE);
+                    if (!CollectionUtils.isEmpty(ids)) {
+                        ids.remove(template.getId());
+                    }
+                }
+            }
         }
     }
 
@@ -1256,10 +1324,22 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
     }
 
     private void addScheduleCalcTask(CreateTopicDto dto) {
+        Long id = dto.getId();
+        // 聚合类型
         if (dto.getDataType() != null && dto.getDataType() == Constants.MERGE_TYPE) {
-            Long id = dto.getId();
             if (scheduleCalcTopics.add(id)) {
                 tryMergeTopics(id);
+            }
+        }
+        //数据订阅
+        if (dto.getFlags() != null && Constants.withSubscribeEnable(dto.getFlags())) {
+            SubscribeTypeEnum subscribeType = SubscribeTypeEnum.parse(dto.getPathType());
+            if (subscribeType != null) {
+                ConcurrentHashSet<Long> ids = scheduleSubscribeTopics.getOrDefault(subscribeType, new ConcurrentHashSet<>());
+                if (ids.add(id)) {
+                    tryMergeSubscribeTopics(id);
+                    scheduleSubscribeTopics.put(subscribeType,ids);
+                }
             }
         }
     }
@@ -1272,6 +1352,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             systemTimer.addTask(new TimerTask(new Runnable() {
                 @Override
                 public void run() {
+                    //开始聚合
                     mergeReferTopics(dto);
                     tryMergeTopics(id);
                 }
@@ -1281,12 +1362,71 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         }
     }
 
+    private void tryMergeSubscribeTopics(Long id) {
+        TopicDefinition definition = uds.getTopicDefinitionMap().get(id);
+        CreateTopicDto dto = definition != null ? definition.getCreateTopicDto() : null;
+        Long freq;
+        if (dto != null && dto.getFlags() != null && Constants.withSubscribeEnable(dto.getFlags()) && (freq = dto.getFrequencySeconds()) != null && freq > 0) {
+            systemTimer.addTask(new TimerTask(new Runnable() {
+                @Override
+                public void run() {
+                    //开始聚合
+                    mergeSubscribeTopics(dto);
+                    tryMergeSubscribeTopics(id);
+                }
+            }, freq * 1000));
+        } else {
+            log.warn("不是订阅的数据: id={}, dto={}", id, dto);
+        }
+    }
+
+    private void addScheduleTask4Label(UnsLabelDto labelDto) {
+        ConcurrentHashSet<Long> ids = scheduleSubscribeTopics.getOrDefault(SubscribeTypeEnum.LABEL, new ConcurrentHashSet<>());
+        Long labelId = labelDto.getId();
+        if (Constants.withSubscribeEnable(labelDto.getWithFlags())) {
+            if (ids.add(labelId)) {
+                tryMergeSubscribe4Label(labelDto);
+                scheduleSubscribeTopics.put(SubscribeTypeEnum.LABEL, ids);
+            }
+        } else {
+            ids.remove(labelId);
+        }
+    }
+
+    private void tryMergeSubscribe4Label(UnsLabelDto dto) {
+        UnsLabelDto dbRecord = iUnsLabelService.getLabelById(dto.getId());
+        if (dbRecord == null) {
+            return;
+        }
+        String frequency = dbRecord.getSubscribeFrequency();
+        List<Long> refUnsIds = dbRecord.getRefUnsIds();
+        if (dbRecord.getWithFlags() != null && Constants.withSubscribeEnable(dbRecord.getWithFlags())
+                && StringUtils.hasText(frequency) && !CollectionUtils.isEmpty(refUnsIds)) {
+            Long nano = TimeUnits.toNanoSecond(frequency);
+            if (nano != null) {
+                long frequencySeconds = nano / TimeUnits.Second.toNanoSecond(1);
+                systemTimer.addTask(new TimerTask(new Runnable() {
+                    @Override
+                    public void run() {
+                        //开始聚合
+                        mergeSubscribeTopics4Label(dbRecord);
+                        tryMergeSubscribe4Label(dbRecord);
+                    }
+                }, frequencySeconds * 1000));
+            }
+        } else {
+            log.warn("不是订阅的数据: id={}, label dto={}", dbRecord.getId(), dto);
+        }
+    }
+
     private void mergeReferTopics(CreateTopicDto dto) {
         StringBuilder sb = new StringBuilder(256);
+        //获取引用对象
         for (InstanceField field : dto.getRefers()) {
             Long refId = field.getId();
             TopicDefinition definition = uds.getTopicDefinitionMap().get(refId);
             Map<String, Object> lastMsg = definition.getLastMsg();
+            //把lastmsg 聚合
             if (lastMsg != null) {
                 if (sb.length() > 0) {
                     sb.append(',');
@@ -1308,13 +1448,86 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         final String dataJson = sb.toString();
         log.debug("发送合并值：{}: {}", mergeTopic, dataJson);
         try {
+            //推送  mqtt
             mqttPublisher.publishMessage(mergeTopic, dataJson.getBytes(StandardCharsets.UTF_8), 0);
             publishedMergeSize.incrementAndGet();
         } catch (MqttException e) {
             log.error("ErrPublishMergeMsg: topic={} , data={}", mergeTopic, dataJson, e);
         }
-
     }
+
+    private void mergeSubscribeTopics(CreateTopicDto dto) {
+        Integer pathType = dto.getPathType();
+        List<CreateTopicDto> publishTopics = new ArrayList<>();
+        String mergeTopic;
+        //文件夹
+        if (Constants.PATH_TYPE_DIR == pathType) {
+            mergeTopic = dto.getTopic();
+            publishTopics = uds.allDefinitions().stream()
+                    .filter(def -> def.getLayRec().startsWith(dto.getLayRec()) && Constants.PATH_TYPE_FILE == def.getPathType())
+                    .collect(Collectors.toList());
+            batchPublishByTree(mergeTopic, dto.getLayRec(), publishTopics);
+        } else if (Constants.PATH_TYPE_TEMPLATE == pathType) {
+            //模板
+            mergeTopic = SubscribeTypeEnum.TEMPLATE.getTopicPrefix() + dto.getName();
+            publishTopics = uds.allDefinitions().stream()
+                    .filter(def -> ObjectUtil.equal(def.getModelId(), dto.getId()) && Constants.PATH_TYPE_FILE == def.getPathType())
+                    .collect(Collectors.toList());
+            batchPublish(mergeTopic, publishTopics);
+        }
+    }
+
+    private void mergeSubscribeTopics4Label(UnsLabelDto dto) {
+        String mergeTopic = dto.getLabelName();
+        mergeTopic = SubscribeTypeEnum.LABEL.getTopicPrefix() + mergeTopic;
+        List<CreateTopicDto> publishTopics = dto.getRefUnsIds().stream().map(id -> uds.getDefinitionById(id)).collect(Collectors.toList());
+        batchPublish(mergeTopic, publishTopics);
+    }
+
+    /**
+     * 分批发送
+     *
+     * @param mergeTopic
+     * @param publishTopics
+     */
+    public void batchPublish(String mergeTopic, List<CreateTopicDto> publishTopics) {
+        List<List<CreateTopicDto>> partition = ListUtil.partition(publishTopics, BATCH_PUBLISH_SIZE);
+        for (List<CreateTopicDto> topicDtos : partition) {
+            String dataJson = buildListJson(topicDtos);
+            if (!StringUtils.hasText(dataJson)) {
+                log.trace("NO合并值：{}", mergeTopic);
+                return;
+            }
+            log.debug("发送合并值：{}: {}", mergeTopic, dataJson);
+            try {
+                //推送  mqtt
+                mqttPublisher.publishMessage(mergeTopic, dataJson.getBytes(StandardCharsets.UTF_8), 0);
+                publishedMergeSize.incrementAndGet();
+            } catch (MqttException e) {
+                log.error("ErrPublishMergeMsg: topic={} , data={}", mergeTopic, dataJson, e);
+            }
+        }
+    }
+
+    public void batchPublishByTree(String mergeTopic, String parentLayRec, List<CreateTopicDto> publishTopics) {
+        List<List<CreateTopicDto>> partition = ListUtil.partition(publishTopics, BATCH_PUBLISH_SIZE);
+        for (List<CreateTopicDto> topicDtos : partition) {
+            String dataJson = buildTreeJson(topicDtos, parentLayRec);
+            if (!StringUtils.hasText(dataJson)) {
+                log.trace("NO合并值：{}", mergeTopic);
+                return;
+            }
+            log.debug("发送合并值：{}: {}", mergeTopic, dataJson);
+            try {
+                //推送  mqtt
+                mqttPublisher.publishMessage(mergeTopic, dataJson.getBytes(StandardCharsets.UTF_8), 0);
+                publishedMergeSize.incrementAndGet();
+            } catch (MqttException e) {
+                log.error("ErrPublishMergeMsg: topic={} , data={}", mergeTopic, dataJson, e);
+            }
+        }
+    }
+
 
     static void add2Json(FieldDefines fieldDefines, Map<String, Object> bean, StringBuilder sb) {
         sb.append('{');
@@ -1381,7 +1594,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
             }
             TopicDefinition definition = initTopicDefinitionData(entry.getValue(), unsId);
             // 刷新位号内存最近的数据
-            sendToRefreshLatestMsg(unsId, definition.getDataType(),"", "", definition.getLastDt(), definition.getLastMsg(), "");
+            sendToRefreshLatestMsg(unsId, definition.getDataType(), "", "", definition.getLastDt(), definition.getLastMsg(), "");
             // 通知前端websocket显示
             sendToWebsocket(unsId, "");
             tms.add(new TopicMessage(unsId, new Map[]{definition.getLastMsg()}));
@@ -1399,7 +1612,7 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
         Map<String, Object> dataMap = JSONObject.parseObject(payload, Map.class);
         TopicDefinition definition = initTopicDefinitionData(dataMap, unsId);
         // 刷新位号内存最近的数据
-        sendToRefreshLatestMsg(unsId, definition.getDataType(),"", payload, definition.getLastDt(), definition.getLastMsg(), "");
+        sendToRefreshLatestMsg(unsId, definition.getDataType(), "", payload, definition.getLastDt(), definition.getLastMsg(), "");
         // 通知前端websocket显示
         sendToWebsocket(unsId, "");
 
@@ -1489,6 +1702,10 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
                 dataMap.put(entry.getKey(), entry.getValue());
             }
             dataMap.computeIfAbsent(Constants.SYS_FIELD_CREATE_TIME, k -> System.currentTimeMillis());
+            // 补充质量码字段
+            if (definition.getDataType() == Constants.TIME_SEQUENCE_TYPE && !dataMap.containsKey(Constants.QOS_FIELD)) {
+                dataMap.put(Constants.QOS_FIELD, 0);
+            }
             if (definition.getLastMsg() == null) {
                 sendFirstInsertEvent(definition.getCreateTopicDto());
             }
@@ -1594,5 +1811,134 @@ public class UnsMessageConsumer implements MessageConsumer, TopicMessageConsumer
     public double[] statisticsThroughput() {
         Snapshot snapshot = throughputHistogram.getSnapshot();
         return new double[]{snapshot.getMin(), snapshot.getMax(), snapshot.get75thPercentile(), snapshot.get95thPercentile(), snapshot.get999thPercentile()};
+    }
+
+    public String buildListJson(List<CreateTopicDto> list) {
+        JSONArray array = new JSONArray();
+        for (CreateTopicDto dto : list) {
+            Map<String, Object> lastMsg = null;
+            if (Constants.CITING_TYPE == dto.getDataType()) {
+                if (ArrayUtil.isEmpty(dto.getRefers())) {
+                    continue;
+                }
+                Long sourceId = dto.getRefers()[0].getId();
+                TopicDefinition source = uds.getTopicDefinitionMap().get(sourceId);
+                if (source != null) {
+                    lastMsg = source.getLastMsg();
+                }
+            } else {
+                lastMsg = uds.getTopicDefinitionMap().get(dto.getId()).getLastMsg();
+            }
+            if (MapUtil.isEmpty(lastMsg)) {
+                continue;
+            }
+            JSONObject dataObj = new JSONObject();
+            dataObj.put(dto.getAlias(), lastMsg);
+            array.add(dataObj);
+        }
+        if (CollectionUtils.isEmpty(array)) {
+            log.debug("构建Mqtt 消息体跳过：getLastMsg 为空");
+            return null;
+        }
+        return array.toJSONString();
+    }
+
+    /**
+     * 构建指定父级layRec下的树状JSON
+     *
+     * @param list          所有子孙节点（CreateTopicDto 列表）
+     * @param parentLayRec  指定父级layRec，例如 "1/4"
+     * @return JSON字符串
+     */
+    public String buildTreeJson(List<CreateTopicDto> list, String parentLayRec) {
+        // 1️⃣ 建立 id -> dto 映射
+        Map<String, CreateTopicDto> idDtoMap = new HashMap<>();
+        for (CreateTopicDto dto : list) {
+            String layRec = dto.getLayRec();
+            if (layRec.contains("/")) {
+                String[] ids = layRec.split("/");
+                for (String id : ids) {
+                    CreateTopicDto topic = uds.getDefinitionById(Long.valueOf(id));
+                    idDtoMap.putIfAbsent(id, topic);
+                }
+            }
+        }
+
+        // 2️⃣ 过滤出以 parentLayRec 开头的节点（包括自身）
+        List<CreateTopicDto> filtered = new ArrayList<>();
+        for (CreateTopicDto dto : list) {
+            if (dto.getLayRec().equals(parentLayRec) || dto.getLayRec().startsWith(parentLayRec + "/")) {
+                filtered.add(dto);
+            }
+        }
+        if (filtered.isEmpty()) {
+            return "{}"; // 没有匹配的节点
+        }
+
+        // 3️⃣ 拿到父节点的路径 ID 数组
+        String[] parentIds = parentLayRec.split("/");
+        String parentRootId = parentIds[parentIds.length - 1];
+
+        // 4️⃣ 找到父节点的名称（作为最外层 key）
+        CreateTopicDto parentNode = idDtoMap.get(parentRootId);
+        if (parentNode == null) {
+            return "{}";
+        }
+
+        // 5️⃣ 构建层级结构（从 parent 开始）
+        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Object> root = new LinkedHashMap<>();
+        result.put(parentNode.getName(), root);
+
+        for (CreateTopicDto dto : filtered) {
+            String[] ids = dto.getLayRec().split("/");
+            // 截取 parentLayRec 开始的部分，只构建子层级
+            if (ids.length < parentIds.length) {
+                continue;
+            }
+
+            Map<String, Object> lastMsg = null;
+            if (Constants.CITING_TYPE == dto.getDataType()) {
+                if (ArrayUtil.isEmpty(dto.getRefers())) {
+                    continue;
+                }
+                Long sourceId = dto.getRefers()[0].getId();
+                TopicDefinition source = uds.getTopicDefinitionMap().get(sourceId);
+                if (source != null) {
+                    lastMsg = source.getLastMsg();
+                }
+            } else {
+                lastMsg = uds.getTopicDefinitionMap().get(dto.getId()).getLastMsg();
+            }
+            if (MapUtil.isEmpty(lastMsg)) {
+                continue;
+            }
+            // 找到相对路径部分
+            String[] subIds = Arrays.copyOfRange(ids, parentIds.length, ids.length);
+            Map<String, Object> current = root;
+
+            // 遍历子节点路径
+            for (String id : subIds) {
+                CreateTopicDto node = idDtoMap.get(id);
+                if (node == null) continue;
+
+                String key = node.getAlias();
+
+                // 如果是文件 (pathType=2)，直接放一个空对象，不能继续向下
+                if (node.getPathType() == 2 && MapUtil.isNotEmpty(lastMsg)) {
+                    current.putIfAbsent(key, lastMsg);
+                    break; // 文件是叶子节点，终止
+                }
+
+                // 文件夹 (pathType=0) 可以继续深入
+                current.putIfAbsent(key, new LinkedHashMap<String, Object>());
+                current = (Map<String, Object>) current.get(key);
+            }
+        }
+        if (MapUtil.isEmpty(root)) {
+            log.debug("构建Mqtt 消息体跳过：getLastMsg 为空");
+            return null;
+        }
+        return JSON.toJSONString(result);
     }
 }

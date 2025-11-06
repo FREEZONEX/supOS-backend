@@ -12,12 +12,14 @@ import com.supos.common.enums.RoleEnum;
 import com.supos.common.utils.I18nUtils;
 import com.supos.uns.dao.mapper.UserManageMapper;
 import com.supos.uns.openapi.dto.RoleOpenDto;
+import com.supos.uns.openapi.dto.UserDetailDto;
 import com.supos.uns.openapi.dto.UserPageQueryDto;
 import com.supos.uns.openapi.vo.UserDetailVo;
 import com.supos.uns.service.RoleService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -33,8 +35,11 @@ public class UserOpenapiService {
 
     public PageResultDTO<UserDetailVo> userManageList(UserPageQueryDto params) {
         Page<UserDetailVo> page = new Page<>(params.getPageNo(), params.getPageSize());
-        IPage<UserDetailVo> iPage = userMapper.userOpenapiList(page, params);
-        iPage.getRecords().forEach(user -> {
+        IPage<UserDetailDto> iPage = userMapper.userOpenapiList(page, params);
+        List<UserDetailVo> userList = new ArrayList<>(iPage.getRecords().size());
+        iPage.getRecords().forEach(userDetail -> {
+            UserDetailVo user = BeanUtil.copyProperties(userDetail, UserDetailVo.class);
+            user.setEnable(userDetail.getEnabled());
             List<RoleDto> roleList = roleService.getRoleListByUserId(user.getId());
             List<UserAttributeDto> attrList = userMapper.getUserAttribute(user.getId());
             if (CollectionUtil.isNotEmpty(attrList)) {
@@ -56,10 +61,11 @@ public class UserOpenapiService {
                         }).collect(Collectors.toList());
                 user.setRoleList(roleOpenList);
             }
+            userList.add(user);
         });
         PageResultDTO.PageResultDTOBuilder<UserDetailVo> pageBuilder = PageResultDTO.<UserDetailVo>builder()
                 .total(iPage.getTotal()).pageNo(params.getPageNo()).pageSize(params.getPageSize());
-        return pageBuilder.code(200).data(iPage.getRecords()).build();
+        return pageBuilder.code(200).data(userList).build();
     }
 
 

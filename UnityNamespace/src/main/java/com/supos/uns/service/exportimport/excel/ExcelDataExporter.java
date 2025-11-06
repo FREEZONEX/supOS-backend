@@ -1,6 +1,7 @@
 package com.supos.uns.service.exportimport.excel;
 
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.system.SystemUtil;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
@@ -19,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.core.io.ClassPathResource;
 
 import java.io.File;
@@ -45,11 +47,22 @@ public class ExcelDataExporter extends DataExporter {
     @Override
     public String exportData(ExcelExportContext context) {
         try {
-            String templatePath = Constants.EXCEL_TEMPLATE_PATH;
-            String language = context.getLanguage();
-            if (language != null) {
-                if (StringUtils.containsIgnoreCase(language, "zh")) {
-                    templatePath = Constants.EXCEL_TEMPLATE_ZH_PATH;
+            String templatePath = null;
+            if (SystemUtil.getBoolean("SYS_OS_ENABLE_AUTO_CATEGORIZATION", false)) {
+                templatePath = Constants.EXCEL_TEMPLATE_PATH_CATEGORY;
+                Locale locale = LocaleContextHolder.getLocale();
+                if (locale != null) {
+                    if (StringUtils.containsIgnoreCase(locale.getLanguage(), "zh")) {
+                        templatePath = Constants.EXCEL_TEMPLATE_ZH_PATH_CATEGORY;
+                    }
+                }
+            } else {
+                templatePath = Constants.EXCEL_TEMPLATE_PATH;
+                String language = context.getLanguage();
+                if (language != null) {
+                    if (StringUtils.containsIgnoreCase(language, "zh")) {
+                        templatePath = Constants.EXCEL_TEMPLATE_ZH_PATH;
+                    }
                 }
             }
 

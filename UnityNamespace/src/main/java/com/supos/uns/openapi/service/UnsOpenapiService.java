@@ -11,8 +11,10 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
+import com.supos.common.config.SystemConfig;
 import com.supos.common.dto.*;
 import com.supos.common.enums.FieldType;
+import com.supos.common.enums.FolderDataType;
 import com.supos.common.exception.vo.ResultVO;
 import com.supos.common.utils.*;
 import com.supos.common.vo.LabelVo;
@@ -31,12 +33,12 @@ import com.supos.uns.util.UnsConverter;
 import com.supos.uns.vo.InstanceFieldVo;
 import com.supos.uns.vo.UnsDataResponseVo;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -57,6 +59,8 @@ public class UnsOpenapiService {
     UnsQueryService unsQueryService;
     @Autowired
     UnsLabelService unsLabelService;
+    @Autowired
+    SystemConfig systemConfig;
 
     private static final List<String> SYSTEM_KEY_WORDS = Arrays.asList("label","template");
 
@@ -89,6 +93,11 @@ public class UnsOpenapiService {
             return ResultVO.fail(I18nUtils.getMessage("uns.file.not.found"));
         }
         po2FileVo(fileVo, po);
+        List<LabelVo> labelList = unsLabelService.getLabelListByUnsId(po.getId());
+        if (CollectionUtils.isNotEmpty(labelList)) {
+            List<LabelOpenVo> labelVoList = labelList.stream().map(label -> BeanUtil.copyProperties(label, LabelOpenVo.class)).collect(Collectors.toList());
+            fileVo.setLabelList(labelVoList);
+        }
         return ResultVO.successWithData(fileVo);
     }
 
@@ -100,8 +109,12 @@ public class UnsOpenapiService {
         if (file == null) {
             return ResultVO.fail(I18nUtils.getMessage("uns.file.not.found"));
         }
-
         po2FileVo(fileVo, file);
+        List<LabelVo> labelList = unsLabelService.getLabelListByUnsId(file.getId());
+        if (CollectionUtils.isNotEmpty(labelList)) {
+            List<LabelOpenVo> labelVoList = labelList.stream().map(label -> BeanUtil.copyProperties(label, LabelOpenVo.class)).collect(Collectors.toList());
+            fileVo.setLabelList(labelVoList);
+        }
         return ResultVO.successWithData(fileVo);
     }
 
@@ -158,7 +171,7 @@ public class UnsOpenapiService {
         if (StringUtils.isBlank(dto.getAlias())) {
             createTopicDto.setAlias(PathUtil.generateAlias(dto.getName(), Constants.PATH_TYPE_DIR));
         }
-        JsonResult<String> jsonResult = unsAddService.createModelInstance(createTopicDto);
+        JsonResult jsonResult = unsAddService.createCategoryModelInstance(createTopicDto);
         if (jsonResult.getCode() != 0) {
             return ResultVO.fail(jsonResult.getMsg());
         }
@@ -189,6 +202,7 @@ public class UnsOpenapiService {
         }
         //没有引用模板  校验
         if (StringUtils.isBlank(templateAlias) && ArrayUtils.isNotEmpty(dto.getDefinition())) {
+            int pkCount = 0;
             for (FieldDefine fieldDefine : dto.getDefinition()) {
                 FieldType fieldType = fieldDefine.getType();
                 if (fieldType == null) {
@@ -204,6 +218,15 @@ public class UnsOpenapiService {
                 //96998 【UNS-openapi】创建文件夹，字段定义非string类型传了长度，建议忽略
                 if (fieldType != FieldType.STRING) {
                     fieldDefine.setMaxLen(null);
+                }
+                if (Boolean.TRUE.equals(fieldDefine.getUnique())) {
+                    if (!FieldType.enablePrimaryKeyFields.contains(fieldType)) {
+                        return ResultVO.fail(I18nUtils.getMessage("uns.relation.primary.key.illegality"));
+                    }
+                    pkCount++;
+                }
+                if (pkCount > 1) {
+                    return ResultVO.fail(I18nUtils.getMessage("uns.relation.primary.key.limit.exceed"));
                 }
             }
         }
@@ -243,7 +266,20 @@ public class UnsOpenapiService {
         if (StringUtils.isBlank(dto.getAlias())) {
             createTopicDto.setAlias(PathUtil.generateAlias(dto.getName(), Constants.PATH_TYPE_FILE));
         }
-        JsonResult<String> jsonResult = unsAddService.createModelInstance(createTopicDto);
+
+        Integer dataType = dto.getDataType();
+        //开启分类
+        if (systemConfig.getEnableAutoCategorization()) {
+            Integer parentDataType = dto.getParentDataType();
+            if (!FolderDataType.isTypeMatched(parentDataType,dataType)) {
+                parentDataType = FolderDataType.getDefaultParentType(dataType);
+                createTopicDto.setParentDataType(parentDataType);
+            }
+        }
+        if (Constants.JSONB_TYPE == dataType) {
+            createTopicDto.setFields(new FieldDefine[]{new FieldDefine("json", FieldType.STRING)});
+        }
+        JsonResult jsonResult = unsAddService.createCategoryModelInstance(createTopicDto);
         if (jsonResult.getCode() != 0) {
             return ResultVO.fail(jsonResult.getMsg());
         }
@@ -300,7 +336,7 @@ public class UnsOpenapiService {
         createTopicDto.setAlias(alias);
         createTopicDto.setExtend(dto.getExtendProperties());
         createTopicDto.setModelAlias(dto.getTemplateAlias());
-        JsonResult<String> jsonResult = unsAddService.createModelInstance(createTopicDto);
+        JsonResult jsonResult = unsAddService.createModelInstance(createTopicDto);
         if (jsonResult.getCode() != 0) {
             return ResultVO.fail(jsonResult.getMsg());
         }
@@ -374,7 +410,7 @@ public class UnsOpenapiService {
             fl = save2db ? (fl | Constants.UNS_FLAG_WITH_SAVE2DB) : (fl & ~Constants.UNS_FLAG_WITH_SAVE2DB);
             createTopicDto.setFlags(fl);
         }
-        JsonResult<String> jsonResult = unsAddService.createModelInstance(createTopicDto);
+        JsonResult jsonResult = unsAddService.createModelInstance(createTopicDto);
         if (jsonResult.getCode() != 0) {
             return ResultVO.fail(jsonResult.getMsg());
         }
@@ -572,6 +608,10 @@ public class UnsOpenapiService {
                 fileVo.setTemplateAlias(template.getAlias());
             }
         }
+        Integer parentDataType = file.getParentDataType();
+        if (parentDataType != null) {
+            fileVo.setParentDataType(parentDataType);
+        }
     }
 
     private static final Long getDatetime(Date date) {
@@ -610,7 +650,7 @@ public class UnsOpenapiService {
     }
 
     public ResultVO<LabelOpenVo> create(String name) {
-        ResultVO<UnsLabelPo> resultVO = unsLabelService.create(name);
+        ResultVO<LabelVo> resultVO = unsLabelService.create(name);
         if (resultVO.getCode() != 200) {
             return ResultVO.fail(resultVO.getMsg());
         }

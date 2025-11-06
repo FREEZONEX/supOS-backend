@@ -14,7 +14,7 @@ import java.util.List;
 public class TemplateVo {
 
     @Schema(description = "模板ID")
-    Long id;
+    String id;
 
     /**
      * 模板名称
@@ -44,4 +44,13 @@ public class TemplateVo {
      */
     @Schema(description = "模板描述")
     String description;
+
+    @Schema(description = "主题")
+    String topic;
+
+    @Schema(description = "是否订阅")
+    boolean subscribeEnable;
+
+    @Schema(description = "订阅频率")
+    String subscribeFrequency;
 }

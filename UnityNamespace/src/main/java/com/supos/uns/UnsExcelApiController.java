@@ -11,6 +11,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StreamUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -110,9 +111,11 @@ public class UnsExcelApiController {
      */
     @PostMapping("/data/import/test")
     public void dataImport(@RequestParam("path") String path) {
-        //path = "./export/xx.json";
-        path = "d:/namespace-20250926143245.xlsx";
-        //path = "d:/all-namespace.json";
+        if (!StringUtils.hasText(path)) {
+            //path = "./export/xx.json";
+            path = "d:/all-namespace-category-zh-CN.xlsx";
+            //path = "d:/all-namespace.json";
+        }
         unsExcelService.asyncImport(new File(path), new LogWrapperConsumer(runningStatus -> {
         }), false, "zh");
     }

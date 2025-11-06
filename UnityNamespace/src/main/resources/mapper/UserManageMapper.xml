@@ -73,7 +73,7 @@
         )
     </select>
 
-    <select id="userOpenapiList" resultType="com.supos.uns.openapi.vo.UserDetailVo">
+    <select id="userOpenapiList" resultType="com.supos.uns.openapi.dto.UserDetailDto">
 
         SELECT * from (
         SELECT u.*,u.first_name as displayName,

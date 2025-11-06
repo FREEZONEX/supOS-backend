@@ -36,6 +36,9 @@ public class FileCalculateData implements ExportImportData {
     @ExcelProperty(index = 9)
     private String label;
 
+    @ExcelProperty(index = 10)
+    private String parentDataType;
+
     @ExcelIgnore
     private String error;
 }

@@ -157,10 +157,15 @@ public class CreateTopicDto implements SimpleUnsInfo {
     @Hidden
     String tbFieldName;//当前uns别名对应目标表的字段名
 
+    /**
+     * see com.supos.common.enums.FolderDataType
+     */
+    @Schema(description = "父级文件夹类型")
+    Integer parentDataType;
+
     @DataTypeValidator
     @Schema(description = "数据类型：1--时序库 2--关系库")
-    @Min(value = Constants.TIME_SEQUENCE_TYPE, message = "uns.file.dataType.invalid")
-    @Max(value = Constants.CITING_TYPE, message = "uns.file.dataType.invalid")
+    @Max(value = Constants.JSONB_TYPE, message = "uns.file.dataType.invalid")
     Integer dataType;// 数据类型：1--时序库 2--关系库
 
     @Hidden
@@ -260,7 +265,10 @@ public class CreateTopicDto implements SimpleUnsInfo {
     @Schema(description = "当valueType=STRING时，可以设置该参数。默认512字符")
     Integer strMaxLen;//当valueType=STRING时，可以设置该参数。默认512字符
 
-    @Schema(description = "北向访问级别。READ_ONLY-只读，READ_WRITE-读写")
+    /**
+     * 读写模式：北向访问级别。READ_ONLY-只读，READ_WRITE-读写
+     * @see com.supos.common.enums.FileReadWriteMode
+     */
     String accessLevel;
 
     @JsonIgnore
@@ -272,7 +280,19 @@ public class CreateTopicDto implements SimpleUnsInfo {
     @Hidden
     Boolean fieldsChanged;// Update时字段有没有修改
 
+    /**
+     * 挂载方式 1-采集器 2-消息队列 3-IT 接口 4-数据库
+     */
+    Integer mountType;
+
+    /**
+     * 挂载源
+     */
+    String mountSource;
+
     Date updateAt;
+
+    Date subscribeAt;
 
     public void setFrequency(String frequency) {
         this.frequency = frequency;

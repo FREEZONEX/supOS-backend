@@ -232,6 +232,7 @@ public abstract class DefaultHistoryQueryService {
             FieldsAndData data = new FieldsAndData();
             data.setTable(select.getTable());
             data.setFunction(select.getFunction());
+            data.setColumn(select.getColumn());
             data.setHasNext(hasNext);
             data.setFields(fields);
             data.setDatas(datas);

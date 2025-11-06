@@ -5,8 +5,10 @@ import com.supos.uns.dao.po.UnsLabelRefPo;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * @author sunlifang
@@ -22,4 +24,9 @@ public interface UnsLabelRefMapper extends BaseMapper<UnsLabelRefPo> {
             " </foreach> ON CONFLICT (label_id,uns_id) DO NOTHING; " +
             "</script>")
     void saveOrIgnore(@Param("beans") Collection<UnsLabelRefPo> pos);
+
+
+    @Select("select uns_id from uns_label_ref where label_id =#{labelId}")
+    List<Long> listByLabelId(@Param("labelId") Long labelId);
+
 }

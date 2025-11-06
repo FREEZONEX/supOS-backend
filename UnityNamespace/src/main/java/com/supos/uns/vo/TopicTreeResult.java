@@ -41,6 +41,10 @@ public class TopicTreeResult {
      * 0--保留（模板），1--时序，2--关系，3--计算型, 5--告警 6--聚合 7--引用
      */
     Integer dataType;
+    /**
+     * 0-3 see com.supos.common.enums.FolderDataType
+     */
+    Integer parentDataType;
     @Schema(description = "名称")
     String name;//名称
     @Schema(description = "显示名称")
@@ -67,6 +71,8 @@ public class TopicTreeResult {
     Date createAt;
     @Schema(description = "更新时间")
     Date updateAt;
+    @Schema(description = "挂载信息")
+    MountDetailVo mount;
 
     public TopicTreeResult(String name, String path) {
         this.name = name;

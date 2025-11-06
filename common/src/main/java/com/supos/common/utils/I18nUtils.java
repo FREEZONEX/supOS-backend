@@ -1,7 +1,9 @@
 package com.supos.common.utils;
 
 import cn.hutool.core.util.ArrayUtil;
+import com.supos.common.vo.UserInfoVo;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.User;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.MessageSource;
 import org.springframework.context.NoSuchMessageException;
@@ -27,7 +29,7 @@ public class I18nUtils {
     }
 
     public static String getMessageWithSysLang(String code, Object... args) {
-        LocaleContextHolder.setLocaleContext(new SimpleLocaleContext(new Locale(transformLanguage(SYS_OS_LANG))),  true);
+        LocaleContextHolder.setLocaleContext(new SimpleLocaleContext(Locale.forLanguageTag(SYS_OS_LANG)),  true);
         return getMessage(code, args);
     }
 
@@ -61,15 +63,18 @@ public class I18nUtils {
         if (msgSrc == null) {
             return ArrayUtil.isNotEmpty(args) ? "#" + code + Arrays.toString(args) : "#" + code;//用来区分单元测试环境（不带spring的）
         }
+        UserInfoVo userInfo = UserContext.get();
         Locale locale = LocaleContextHolder.getLocale();
-        if (StringUtils.isBlank(locale.getLanguage())) {
-            locale = new Locale(transformLanguage(SYS_OS_LANG));
+        if (userInfo != null && StringUtils.isNotEmpty(userInfo.getMainLanguage())) {
+            locale = Locale.forLanguageTag(userInfo.getMainLanguage());//new Locale(transformLanguage(userInfo.getMainLanguage()));
+        } else  if (StringUtils.isNotEmpty(SYS_OS_LANG)) {
+            locale = Locale.forLanguageTag(SYS_OS_LANG);;
         }
         String message = null;
         try {
             message = msgSrc.getMessage(code, args, locale);
         } catch (NoSuchMessageException e) {
-            log.error("can not find message for code:{}, in {}", code, locale != null ? locale.getLanguage():"null");
+            log.error("can not find message for code:{}, in {}", code, locale.getLanguage());
             if (defaultMsg) {
                 return defaultMsg(code, args);
             }

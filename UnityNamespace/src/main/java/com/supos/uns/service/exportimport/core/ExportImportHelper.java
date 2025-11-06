@@ -2,6 +2,7 @@ package com.supos.uns.service.exportimport.core;
 
 import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.LocalDateTimeUtil;
+import cn.hutool.core.util.StrUtil;
 import com.alibaba.excel.annotation.ExcelProperty;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
@@ -10,6 +11,8 @@ import com.supos.common.Constants;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.InstanceField;
 import com.supos.common.enums.ExcelTypeEnum;
+import com.supos.common.enums.FieldType;
+import com.supos.common.enums.FolderDataType;
 import com.supos.common.utils.JsonUtil;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsPo;
@@ -44,6 +47,7 @@ public class ExportImportHelper {
     private static List<String> FILE_CALCULATE_INDEX = new LinkedList<>();
     private static List<String> FILE_AGGREGATION_INDEX = new LinkedList<>();
     private static List<String> FILE_REFERENCE_INDEX = new LinkedList<>();
+    private static List<String> FILE_JSONB_INDEX = new LinkedList<>();
 
     public static List<String> EXPLANATION = new LinkedList<>();
 
@@ -63,6 +67,7 @@ public class ExportImportHelper {
         FILE_CALCULATE_INDEX.addAll(getFields(ExcelTypeEnum.FILE_CALCULATE));
         FILE_AGGREGATION_INDEX.addAll(getFields(ExcelTypeEnum.FILE_AGGREGATION));
         FILE_REFERENCE_INDEX.addAll(getFields(ExcelTypeEnum.FILE_REFERENCE));
+        FILE_JSONB_INDEX.addAll(getFields(ExcelTypeEnum.FILE_JSONB));
 
 
         EXPLANATION.add("uns.excel.explanation.template.alias");
@@ -113,6 +118,9 @@ public class ExportImportHelper {
             case FILE_REFERENCE:
                 clazz = FileReferenceData.class;
                 break;
+            case FILE_JSONB:
+                clazz = FileJsonbData.class;
+                break;
         }
 
         return Arrays.stream(clazz.getDeclaredFields()).filter(field -> {
@@ -159,6 +167,9 @@ public class ExportImportHelper {
             case FILE_REFERENCE:
                 needHeads = FILE_REFERENCE_INDEX;
                 break;
+            case FILE_JSONB:
+                needHeads = FILE_JSONB_INDEX;
+                break;
         }
 
         for (String needHead : needHeads) {
@@ -201,6 +212,9 @@ public class ExportImportHelper {
                 break;
             case FILE_REFERENCE:
                 exportDataWrapper = wrapFileReferenceData(unsPo, context);
+                break;
+            case FILE_JSONB:
+                exportDataWrapper = wrapFileJsonbData(unsPo, context);
                 break;
         }
 
@@ -276,7 +290,7 @@ public class ExportImportHelper {
 
         data.setFields(field(unsPo.getFields()));
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
-
+        data.setDataType(StrUtil.toString(unsPo.getDataType()));
         data.setType(TYPE_FOLDER);
         return data;
     }
@@ -339,6 +353,8 @@ public class ExportImportHelper {
         data.setFields(field(unsPo.getFields()));
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
 
+        data.setParentDataType(StrUtil.toStringOrNull(unsPo.getParentDataType()));
+
         if (unsPo.getDataType() == Constants.CALCULATION_REAL_TYPE
                 || unsPo.getDataType() == Constants.MERGE_TYPE
                 || unsPo.getDataType() == Constants.CITING_TYPE) {
@@ -377,7 +393,7 @@ public class ExportImportHelper {
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
         data.setMockData(gainFlagValue(unsPo.getWithFlags(), "mockData"));
-
+        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
         Set<String> labels = unsLabelNamesMap.get(unsPo.getId());
         if (CollectionUtils.isNotEmpty(labels)) {
             data.setLabel(StringUtils.join(labels, ','));
@@ -415,7 +431,7 @@ public class ExportImportHelper {
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
         data.setMockData(gainFlagValue(unsPo.getWithFlags(), "mockData"));
-
+        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
         Set<String> labels = unsLabelNamesMap.get(unsPo.getId());
         if (CollectionUtils.isNotEmpty(labels)) {
             data.setLabel(StringUtils.join(labels, ','));
@@ -446,7 +462,6 @@ public class ExportImportHelper {
         data.setNamespace(replaceBlank(unsPo.getPath(), ""));
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
-
         if (StringUtils.isNotBlank(unsPo.getExpression())) {
             data.setExpression(unsPo.getExpression());
         } else {
@@ -464,7 +479,7 @@ public class ExportImportHelper {
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
 
         data.setRefers(handleRefer(context, unsPo.getRefers(), unsPo.getDataType()));
-
+        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
         return data;
     }
 
@@ -484,7 +499,7 @@ public class ExportImportHelper {
         data.setNamespace(replaceBlank(unsPo.getPath(), ""));
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
-
+        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
         Set<String> labels = unsLabelNamesMap.get(unsPo.getId());
         if (CollectionUtils.isNotEmpty(labels)) {
             data.setLabel(StringUtils.join(labels, ','));
@@ -524,8 +539,8 @@ public class ExportImportHelper {
         data.setAlias(replaceBlank(unsPo.getAlias(), ""));
         data.setDisplayName(replaceBlank(unsPo.getDisplayName(), ""));
         data.setNamespace(replaceBlank(unsPo.getPath(), ""));
-        data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
-        data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
+//        data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
+//        data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
 
         Set<String> labels = unsLabelNamesMap.get(unsPo.getId());
         if (CollectionUtils.isNotEmpty(labels)) {
@@ -537,6 +552,38 @@ public class ExportImportHelper {
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
 
         data.setRefers(handleRefer(context, unsPo.getRefers(), unsPo.getDataType()));
+        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
+        return data;
+    }
+
+    /**
+     * JSONB文件
+     * @param unsPo
+     * @param context
+     * @return
+     */
+    private static ExportImportData wrapFileJsonbData(UnsPo unsPo, ExcelExportContext context) {
+        Map<Long, Set<String>> unsLabelNamesMap = context.getUnsLabelNamesMap();
+
+        FileJsonbData data = new FileJsonbData();
+
+        data.setAlias(replaceBlank(unsPo.getAlias(), ""));
+        data.setDisplayName(replaceBlank(unsPo.getDisplayName(), ""));
+        data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+
+        data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
+        data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
+//        data.setMockData("FALSE");
+        data.setParentDataType(StrUtil.toStringOrNull(unsPo.getParentDataType()));
+        Set<String> labels = unsLabelNamesMap.get(unsPo.getId());
+        if (CollectionUtils.isNotEmpty(labels)) {
+            data.setLabel(StringUtils.join(labels, ','));
+        } else {
+            data.setLabel("");
+        }
+
+//        data.setFields(field(new FieldDefine[]{new FieldDefine("json", FieldType.STRING)}));
+        data.setDescription(replaceBlank(unsPo.getDescription(), ""));
 
         return data;
     }
@@ -574,9 +621,9 @@ public class ExportImportHelper {
                         jsonObject.put("path", ref.getPath());
                         jsonObject.put("alias", ref.getAlias());
                     }
-                    if (field.getUts() != null) {
-                        jsonObject.put("uts", field.getUts());
-                    }
+//                    if (field.getUts() != null) {
+//                        jsonObject.put("uts", field.getUts());
+//                    }
 
                     jsonArray.add(jsonObject);
                 }

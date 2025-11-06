@@ -141,6 +141,15 @@ public class PathUtil {
         return aliasPath;
     }
 
+    public static String generateAliasWithRandom(String name, int pathType) {
+        String alias = generateAlias(name, pathType);
+        if (pathType == 2) {
+            String uuid = UUID.randomUUID().toString(true).substring(0, 20);
+            alias = alias + "_" + uuid;
+        }
+        return alias;
+    }
+
     public static String generateAlias(String path, int pathType) {
         if (pathType == 2) {
             return generateFileAlias(path);

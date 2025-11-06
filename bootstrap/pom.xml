@@ -47,11 +47,6 @@
     </dependency>
     <dependency>
       <groupId>com.supos</groupId>
-      <artifactId>adpter-eventflow</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.supos</groupId>
       <artifactId>adpter-postgresql</artifactId>
       <version>${project.version}</version>
     </dependency>

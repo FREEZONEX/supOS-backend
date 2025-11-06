@@ -34,6 +34,18 @@ public class FieldDefine implements Cloneable {
     @Hidden
     private String tbValueName;
 
+    @Schema(description = "位号单位")
+    private String unit;
+
+    @Schema(description = "原始上限")
+    private Double upperLimit;
+
+    @Schema(description = "原始下限")
+    private Double lowerLimit;
+
+    @Schema(description = "小数精度位数")
+    private Integer decimal;
+
     public boolean isUnique() {
         return unique != null && unique;
     }

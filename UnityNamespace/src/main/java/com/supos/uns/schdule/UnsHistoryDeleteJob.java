@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 @Slf4j
@@ -186,11 +187,13 @@ public class UnsHistoryDeleteJob {
             po.setTableName(simpleUns.getTableName());
             deleteUns.add(po);
             if (deleteUns.size() >= 500) {
+                unsHistoryDeleteJobMapper.deleteByAliases(deleteUns.stream().map(UnsHistoryDeleteJobPo::getAlias).collect(Collectors.toList()));
                 unsHistoryDeleteJobMapper.batchInsert(deleteUns);
                 deleteUns.clear();
             }
         }
         if (!deleteUns.isEmpty()) {
+            unsHistoryDeleteJobMapper.deleteByAliases(deleteUns.stream().map(UnsHistoryDeleteJobPo::getAlias).collect(Collectors.toList()));
             unsHistoryDeleteJobMapper.batchInsert(deleteUns);
             deleteUns.clear();
         }

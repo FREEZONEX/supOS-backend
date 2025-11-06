@@ -72,6 +72,7 @@ public abstract class DataImporter {
             parserMap.put(ExcelTypeEnum.FILE_CALCULATE, new FileCalculateParser());
             parserMap.put(ExcelTypeEnum.FILE_AGGREGATION, new FileAggregationParser());
             parserMap.put(ExcelTypeEnum.FILE_REFERENCE, new FileReferenceParser());
+            parserMap.put(ExcelTypeEnum.FILE_JSONB, new FileJsonbParser());
 
             parserMap.put(ExcelTypeEnum.UNS, new UnsParser());
             parserMap.put(ExcelTypeEnum.File, new FileParser());
@@ -204,6 +205,8 @@ public abstract class DataImporter {
             fileList = context.getFileAggregationMap().values();
         }else if (dataType == Constants.CITING_TYPE) {
             fileList = context.getFileReferenceMap().values();
+        }else if (dataType == Constants.JSONB_TYPE) {
+            fileList = context.getFileJsonbMap().values();
         }
 
         if (CollectionUtils.isNotEmpty(fileList)) {
@@ -278,6 +281,7 @@ public abstract class DataImporter {
                             context.addError(wrapDto.getFlagNo(), I18nUtils.getMessage("uns.template.not.exists"));
                         } else {
                             wrapDto.getUns().setModelId(template.getId());
+                            wrapDto.getUns().setFields(template.getFields());
                         }
                     }
                 }

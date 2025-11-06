@@ -1169,16 +1169,6 @@ public class PluginJarService {
         }
 
         @Override
-        public URL findResource(String name) {
-            return super.findResource(name);
-        }
-
-        @Override
-        public Enumeration<URL> findResources(String name) throws IOException {
-            return super.findResources(name);
-        }
-
-        @Override
         protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
             if (!name.startsWith(basePackage) && depends.length > 0) {
                 PackageClassLoaderInfo bestMatch = null;

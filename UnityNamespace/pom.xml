@@ -22,6 +22,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.mongodb</groupId>
+            <artifactId>bson</artifactId>
+            <version>4.11.1</version>
+        </dependency>
+        <dependency>
             <groupId>com.supos</groupId>
             <artifactId>common</artifactId>
             <version>${project.version}</version>
@@ -63,11 +68,6 @@
         <dependency>
             <groupId>com.supos</groupId>
             <artifactId>supos-websocket</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.supos</groupId>
-            <artifactId>adpter-eventflow</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -196,6 +196,11 @@
         <dependency>
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>4.0.0</version>
         </dependency>
     </dependencies>
 

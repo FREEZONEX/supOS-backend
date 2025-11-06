@@ -32,8 +32,15 @@ public class DashboardPo {
      */
     private Integer type;
 
+    /**
+     * 是否需要初始化
+     */
+    private Boolean needInit;
+
     private String description;
     private String jsonContent;
+
+    private String creator;
 
     private Date updateTime;
 

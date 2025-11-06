@@ -23,6 +23,13 @@ public class DashboardDto {
 
     private String description;
 
+    /**
+     * 1表示置顶
+     */
+    private Integer mark;
+
+    private String creator;
+
     private Date updateTime;
 
     private Date createTime;

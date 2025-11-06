@@ -1006,7 +1006,9 @@ public class PluginManager implements EnvironmentAware {
 
                 PlugInfoYml.PlugRoute plugRoute = plugInfoYml.getRoute();
                 menuService.deleteMenu(plugRoute.getName());
-                iResourceService.deleteBySource(plugInfoYml.getName());
+
+                String sourceCode = Constants.generateCodeByPrefix(Constants.PLUG_PREFIX, plugInfo.getName());
+                iResourceService.deleteBySource(sourceCode);
             }
         } catch (Exception e) {
             log.error("deleteRoute error", e);

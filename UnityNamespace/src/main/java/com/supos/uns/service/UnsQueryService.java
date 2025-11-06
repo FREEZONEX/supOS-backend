@@ -1,10 +1,8 @@
 package com.supos.uns.service;
 
-import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.net.URLEncodeUtil;
 import cn.hutool.core.util.ObjectUtil;
-import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
@@ -80,6 +78,7 @@ public class UnsQueryService implements UnsQueryApi {
     IUnsDefinitionService unsDefinitionService;
     @Autowired
     private WebsocketSessionManager wssm;
+
 
     @Autowired
     UnsCountCache unsCountCache;
@@ -157,6 +156,7 @@ public class UnsQueryService implements UnsQueryApi {
 
     private static OuterStructureVo map2fields(FindDataListUtils.ListResult rs) {
         LinkedHashMap<String, FieldType> fieldTypes = new LinkedHashMap<>();
+        LinkedHashMap<String, Object> values = new LinkedHashMap<>();
         for (Map<String, Object> data : rs.list) {
             for (Map.Entry<String, Object> m : data.entrySet()) {
                 String k = m.getKey();
@@ -165,6 +165,7 @@ public class UnsQueryService implements UnsQueryApi {
                 FieldType guessType = guessType(v);
                 if (fieldType == null || guessType.ordinal() > fieldType.ordinal()) {
                     fieldTypes.put(k, guessType);
+                    values.put(k, v);
                 }
             }
         }
@@ -174,7 +175,7 @@ public class UnsQueryService implements UnsQueryApi {
         List<FieldDefine> fields = fieldTypes.entrySet().stream()
                 .map(e -> new FieldDefine(e.getKey(), e.getValue()))
                 .toList();
-        return new OuterStructureVo(rs.dataPath, fields);
+        return new OuterStructureVo(rs.dataPath, fields, values);
     }
 
     public static FieldType guessType(Object o) {
@@ -285,6 +286,7 @@ public class UnsQueryService implements UnsQueryApi {
                         srs.setPath(po.getPath());
                         srs.setFields(fields);
                         srs.setDataType(po.getDataType());
+                        srs.setParentDataType(po.getParentDataType());
                         rs.add(srs);
                     }
                 }
@@ -333,6 +335,7 @@ public class UnsQueryService implements UnsQueryApi {
                         srs.setName(po.getName());
                         srs.setPath(po.getPath());
                         srs.setFields(fields);
+                        srs.setParentDataType(po.getParentDataType());
                         rs.add(srs);
                     }
                 }
@@ -395,6 +398,7 @@ public class UnsQueryService implements UnsQueryApi {
                     AlarmRuleDefine ruleDefine = JsonUtil.fromJson(po.getProtocol(), AlarmRuleDefine.class);
                     ruleDefine.parseExpression(po.getExpression());
                     srs.setAlarmRuleDefine(ruleDefine);
+                    srs.setParentDataType(po.getParentDataType());
                     rs.add(srs);
                 }
                 List objList = rs;
@@ -424,8 +428,11 @@ public class UnsQueryService implements UnsQueryApi {
             result.setId(String.valueOf(uns.getId()));
             result.setPathType(2);
             result.setProtocol(uns.getProtocolType());
+            result.setDataType(uns.getDataType());
+            result.setParentDataType(uns.getParentDataType());
             result.setPath(uns.getPath());
             result.setName(PathUtil.getName(uns.getPath()));
+            result.setMount(parseMountDetail(uns, true));
             return result;
         }).collect(Collectors.toList());
         return new JsonResult<>(0, "ok", treeResults);
@@ -450,6 +457,9 @@ public class UnsQueryService implements UnsQueryApi {
                 result.setProtocol(uns.getProtocolType());
                 result.setPath(uns.getPath());
                 result.setName(name);
+                result.setMount(parseMountDetail(uns, true));
+                result.setDataType(uns.getDataType());
+                result.setParentDataType(uns.getParentDataType());
                 treeResults.add(result);
             }
         }
@@ -609,6 +619,7 @@ public class UnsQueryService implements UnsQueryApi {
         result.setExtend(uns.getExtend());
         result.setCreateAt(uns.getCreateAt());
         result.setUpdateAt(uns.getUpdateAt());
+        result.setMount(parseMountDetail(uns, true));
 
         //从缓存中获取count
         if (fromCache) {
@@ -738,6 +749,7 @@ public class UnsQueryService implements UnsQueryApi {
         Long fileId = file.getId();
         dto.setId(fileId.toString());
         dto.setDataType(file.getDataType());
+        dto.setParentDataType(file.getParentDataType());
         UnsPo unsPo = origPo != null ? origPo : file;
         if (unsPo.getFields() != null) {
             FieldDefine[] fields = unsPo.getFields();
@@ -762,7 +774,7 @@ public class UnsQueryService implements UnsQueryApi {
                 }
                 fieldDefines = fsList.toArray(new FieldDefine[0]);
             } else {
-                    SrcJdbcType jdbcType = SrcJdbcType.getById(unsPo.getDataSrcId());
+                SrcJdbcType jdbcType = SrcJdbcType.getById(unsPo.getDataSrcId());
                 if (jdbcType != null) {
                     FieldDefine ct = FieldUtils.getTimestampField(fields), qos = FieldUtils.getQualityField(fields, jdbcType.typeCode);
                     fieldDefines = Arrays.stream(fields)
@@ -787,6 +799,7 @@ public class UnsQueryService implements UnsQueryApi {
         dto.setDisplayName(file.getDisplayName());
         dto.setPathName(PathUtil.getName(file.getPath()));
         dto.setExtend(file.getExtend());
+        dto.setPathType(file.getPathType());
 
         Integer flagsN = file.getWithFlags();
         if (flagsN != null) {
@@ -795,6 +808,8 @@ public class UnsQueryService implements UnsQueryApi {
             dto.setWithDashboard(Constants.withDashBoard(flags));
             dto.setWithSave2db(Constants.withSave2db(flags));
             dto.setSave2db(Constants.withSave2db(flags));
+            dto.setAccessLevel(Constants.withReadOnly(flags));//北向访问级别。READ_ONLY-只读，READ_WRITE-读写
+            dto.setSubscribeEnable(Constants.withSubscribeEnable(flags));
         }
         dto.setLabelList(unsLabelService.getLabelListByUnsId(fileId));
 
@@ -807,6 +822,13 @@ public class UnsQueryService implements UnsQueryApi {
                 dto.setTemplateName(template.getName());
                 dto.setTemplateAlias(template.getAlias());
             }
+        }
+
+        dto.setMount(parseMountDetail(file, false));
+        CreateTopicDto def = unsDefinitionService.getDefinitionById(id);
+        if (def != null) {
+            dto.setTable(def.getTable());
+            dto.setTbFieldName(def.getTbFieldName());
         }
         return new JsonResult<>(0, "ok", dto);
     }
@@ -824,6 +846,22 @@ public class UnsQueryService implements UnsQueryApi {
         if (po == null) {
             return new JsonResult<>(0, I18nUtils.getMessage("uns.model.not.found"), dto);
         }
+
+        Integer flagsN = po.getWithFlags();
+        if (flagsN != null) {
+            int flags = flagsN.intValue();
+            dto.setSubscribeEnable(Constants.withSubscribeEnable(flags));
+        }
+
+        String protocol = po.getProtocol();
+        if (dto.isSubscribeEnable() && protocol != null && protocol.startsWith("{")) {
+            Map<String, String> map = JsonUtil.fromJson(protocol, Map.class);
+            String frequency = map.get("frequency");
+            if (frequency != null) {
+                dto.setSubscribeFrequency(frequency);
+            }
+        }
+
         dto.setId(po.getId().toString());
         dto.setName(po.getName());
         dto.setDisplayName(po.getDisplayName());
@@ -837,6 +875,7 @@ public class UnsQueryService implements UnsQueryApi {
         dto.setDescription(po.getDescription());
         dto.setParentAlias(po.getParentAlias());
         dto.setExtend(po.getExtend());
+        dto.setPathType(po.getPathType());
         FieldDefine[] fs = po.getFields();
         if (fs != null) {
             for (FieldDefine f : fs) {
@@ -854,6 +893,8 @@ public class UnsQueryService implements UnsQueryApi {
                 dto.setTemplateAlias(template.getAlias());
             }
         }
+
+        dto.setMount(parseMountDetail(po, false));
         return new JsonResult<>(0, "ok", dto);
     }
 
@@ -922,19 +963,24 @@ public class UnsQueryService implements UnsQueryApi {
             }
             Map<String, Object> lastMessage = event.getLastMessage();
             if (lastMessage != null) {
-                lastMessage.remove(Constants.SYS_SAVE_TIME);
                 String topic = def.getTopic();
                 Integer dataType = def.getDataType();
-                String rawData = JsonUtil.toJson(lastMessage);
                 Map<String, Long> lastDataTime = new HashMap<>(lastMessage.size());
-                Long CT = event.getMsgCreateTime();
-                for (String k : lastMessage.keySet()) {
-                    lastDataTime.put(k, CT);
+                if (dataType == Constants.JSONB_TYPE) {
+                    Object json = lastMessage.getOrDefault("json", "{}");
+                    lastMessage = JSON.parseObject(json.toString(), Map.class);
+                } else {
+                    lastMessage.remove(Constants.SYS_SAVE_TIME);
+                    Long CT = event.getMsgCreateTime();
+                    for (String k : lastMessage.keySet()) {
+                        lastDataTime.put(k, CT);
+                    }
+                    String ctField = def.getTimestampField();
+                    if (ctField != null) {
+                        lastMessage.replace(ctField, CT);
+                    }
                 }
-                String ctField = def.getTimestampField();
-                if (ctField != null) {
-                    lastMessage.replace(ctField, CT);
-                }
+                String rawData = JsonUtil.toJson(lastMessage);
                 TopicMessageEvent topicMessageEvent = new TopicMessageEvent(
                         this, def,
                         id,
@@ -946,7 +992,7 @@ public class UnsQueryService implements UnsQueryApi {
                         lastMessage,
                         lastDataTime,
                         rawData,
-                        CT,
+                        event.getMsgCreateTime(),
                         null);
                 onTopicMessageEvent(topicMessageEvent);
                 msgInfo = topicLastMessages.get(id);
@@ -958,7 +1004,7 @@ public class UnsQueryService implements UnsQueryApi {
         if (msgInfo != null) {
             Integer dataType = def.getDataType();
             SerializeFilter filter = dataType != null && dataType == Constants.RELATION_TYPE ?
-                (PropertyFilter) (object, name, value) -> !Constants.SYS_FIELD_CREATE_TIME.equals(name) : null;
+                    (PropertyFilter) (object, name, value) -> !Constants.SYS_FIELD_CREATE_TIME.equals(name) : null;
             msg = JSON.toJSONString(msgInfo.jsonObject, filter);
             if (includeBlob) {
                 msg = DataUtils.handleBolb(msg, def);
@@ -987,10 +1033,15 @@ public class UnsQueryService implements UnsQueryApi {
                     dataJsonObj = new JSONObject();
                 }
                 dataJsonObj.remove(Constants.SYSTEM_SEQ_TAG);
-                dataJsonObj.remove(Constants.MERGE_FLAG);
+                dataJsonObj.remove(Constants.SYS_FIELD_ID);
                 dataJsonObj.putAll(data);
                 jsonObject.put("data", dataJsonObj);
-                jsonObject.put("dt", dt);
+                JSONObject dtJsonObj = jsonObject.getJSONObject("dt");
+                if (dtJsonObj == null) {
+                    dtJsonObj = new JSONObject();
+                }
+                dtJsonObj.putAll(dt);
+                jsonObject.put("dt", dtJsonObj);
                 jsonObject.put("payload", dataJsonObj.toJSONString());
             } else {
                 jsonObject.remove("data");
@@ -1007,6 +1058,17 @@ public class UnsQueryService implements UnsQueryApi {
 //            SerializeFilter filter = dataType != null && dataType == Constants.RELATION_TYPE ?
 //                    (PropertyFilter) (object, name, value) -> !Constants.SYS_FIELD_CREATE_TIME.equals(name) : null;
 //            newestMessage = JSON.toJSONString(jsonObject, filter);
+            messageCount++;
+            this.lastUpdateTime = lastUpdateTime;
+        }
+
+        synchronized void refresh(String payload, Map<String, Object> data) {
+            if (data != null) {
+                data.remove(Constants.SYSTEM_SEQ_TAG);
+                jsonObject.put("data", data);
+                jsonObject.put("dt", dt);
+                jsonObject.put("payload", payload);
+            }
             messageCount++;
             this.lastUpdateTime = lastUpdateTime;
         }
@@ -1052,7 +1114,44 @@ public class UnsQueryService implements UnsQueryApi {
         return externTopicLastMessages.computeIfAbsent(path, k -> new TopicMessageInfo());
     }
 
-    //    @EventListener(classes = TopicMessageEvent.class)
+    public void refreshLatestMsg(Long id) {
+        CreateTopicDto def = unsDefinitionService.getDefinitionById(id);
+        if (def == null) {
+            return;
+        }
+        QueryLastMsgEvent event = new QueryLastMsgEvent(this, def);
+            try {
+                EventBus.publishEvent(event);
+            } catch (Exception ex) {
+                log.warn("查询最新消息失败", ex);
+            }
+            Map<String, Object> lastMessage = event.getLastMessage();
+            if (lastMessage != null) {
+                lastMessage.remove(Constants.SYS_SAVE_TIME);
+                String payload = JsonUtil.toJson(lastMessage);
+                Map<String, Long> lastDataTime = new HashMap<>(lastMessage.size());
+                Long CT = event.getMsgCreateTime();
+                for (String k : lastMessage.keySet()) {
+                    lastDataTime.put(k, CT);
+                }
+                String ctField = def.getTimestampField();
+                if (ctField != null) {
+                    lastMessage.replace(ctField, CT);
+                }
+
+                TopicMessageInfo msgInfo = topicLastMessages.computeIfAbsent(id, k -> new TopicMessageInfo());
+                msgInfo.refresh(payload, lastMessage);
+
+                UpdateFileDTO data = new UpdateFileDTO();
+                data.setAlias(def.getAlias());
+                data.setData(lastMessage);
+                List<UpdateFileDTO> dataList = List.of(data);
+                UnsMessageEvent unsMessageEvent = new UnsMessageEvent(this, dataList);
+                EventBus.publishEvent(unsMessageEvent);
+            }
+    }
+
+//    @EventListener(classes = TopicMessageEvent.class)
 //    @Order(9)
     void onTopicMessageEvent(TopicMessageEvent event) {
         TopicMessageInfo msgInfo;
@@ -1068,6 +1167,12 @@ public class UnsQueryService implements UnsQueryApi {
             Map<String, Object> bean = event.lastData != null ? event.lastData : event.data;
             JSONObject data = new JSONObject(Math.max(bean.size(), 8));
             CreateTopicDto info = event.def;
+
+            // JSONB类型文件，不需要做任何处理，直接展示原始内容
+            if (info.getDataType() == Constants.JSONB_TYPE) {
+                msgInfo.update(event.nowInMills, event.dataType, event.payload, event.data, event.lastDataTime, event.err);
+                return;
+            }
 
             Map<String, FieldDefine> fieldsMap = info.getFieldDefines().getFieldsMap();
             for (Map.Entry<String, Object> entry : bean.entrySet()) {
@@ -1186,7 +1291,7 @@ public class UnsQueryService implements UnsQueryApi {
      * @param fuzzyTopic
      * @return
      */
-    public List<TopicTreeResult>  searchExternalTopics(String fuzzyTopic) {
+    public List<TopicTreeResult> searchExternalTopics(String fuzzyTopic) {
         List<UnsPo> externalTopics = new ArrayList<>();
         EXTERNAL_TOPIC_CACHE.forEach((topic, date) -> {
             UnsPo uns = new UnsPo();
@@ -1208,7 +1313,7 @@ public class UnsQueryService implements UnsQueryApi {
         wssm.sendMessageBroadcastSync("refresh_notify", 2000);
     }
 
-    static List<TopicTreeResult> getTopicTreeResults(List<UnsPo> all, List<UnsPo> list, boolean showRec) {
+    private List<TopicTreeResult> getTopicTreeResults(List<UnsPo> all, List<UnsPo> list, boolean showRec) {
         if (CollectionUtils.isEmpty(list)) {
             return Collections.emptyList();
         }
@@ -1221,6 +1326,7 @@ public class UnsQueryService implements UnsQueryApi {
             int type = po.getPathType();
             String name = po.getName();
             TopicTreeResult rs = new TopicTreeResult(name, path).setPathType(po.getPathType()).setProtocol(po.getProtocolType());
+            rs.setParentDataType(po.getParentDataType());
             rs.setId(po.getId().toString());
             rs.setAlias(po.getAlias());
             if (po.getParentId() != null) {
@@ -1247,6 +1353,8 @@ public class UnsQueryService implements UnsQueryApi {
                 }
             }
             rs.setFields(fs);
+            rs.setDataType(po.getDataType());
+            rs.setMount(parseMountDetail(po, true));
 
             nodeMap.put(path, rs);
         }
@@ -1481,17 +1589,13 @@ public class UnsQueryService implements UnsQueryApi {
     }
 
     public PageResultDTO<TemplateSearchResult> templatePageList(TemplateQueryVo params) {
-        Page<UnsPo> page = new Page<>(params.getPageNo(), params.getPageSize());
-        LambdaQueryWrapper<UnsPo> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(UnsPo::getPathType, 1).eq(UnsPo::getDataType, 0);
-        queryWrapper.like(StrUtil.isNotBlank(params.getKey()), UnsPo::getPath, SqlUtil.escapeForLike(params.getKey()));
-        IPage<UnsPo> iPage = unsMapper.selectPage(page, queryWrapper);
-        PageResultDTO.PageResultDTOBuilder<TemplateSearchResult> pageBuilder = PageResultDTO.<TemplateSearchResult>builder()
-                .total(iPage.getTotal()).pageNo(params.getPageNo()).pageSize(params.getPageSize());
-        List<TemplateSearchResult> list = iPage.getRecords().stream()
-                .map(uns -> BeanUtil.copyProperties(uns, TemplateSearchResult.class))
-                .collect(Collectors.toList());
-        return pageBuilder.code(200).data(list).build();
+        Page<UnsPo> pageParams = new Page<>(params.getPageNo(), params.getPageSize());
+        IPage<TemplateSearchResult> page = unsMapper.pageListTemplates(pageParams, params);
+        List<TemplateSearchResult> list = page.getRecords();
+        if (CollectionUtils.isEmpty(list)) {
+            return PageUtil.build(page, Collections.emptyList());
+        }
+        return PageUtil.build(page, list);
     }
 
     public TemplateVo getTemplateByAlias(String alias) {
@@ -1513,7 +1617,7 @@ public class UnsQueryService implements UnsQueryApi {
     @NotNull
     private TemplateVo getTemplateVoByUnsPo(UnsPo po) {
         TemplateVo dto = new TemplateVo();
-        dto.setId(po.getId());
+        dto.setId(po.getId().toString());
         dto.setAlias(po.getAlias());
         dto.setName(po.getName());
         dto.setCreateTime(getDatetime(po.getCreateAt()));
@@ -1525,6 +1629,23 @@ public class UnsQueryService implements UnsQueryApi {
             }
         }
         dto.setFields(fs);
+
+        dto.setTopic("template/" + dto.getName());
+
+        Integer flagsN = po.getWithFlags();
+        if (flagsN != null) {
+            int flags = flagsN.intValue();
+            dto.setSubscribeEnable(Constants.withSubscribeEnable(flags));
+        }
+        String protocol = po.getProtocol();
+        if (dto.isSubscribeEnable() && protocol != null && protocol.startsWith("{")) {
+            Map<String, String> map = JsonUtil.fromJson(protocol, Map.class);
+            String frequency = map.get("frequency");
+            if (frequency != null) {
+                dto.setSubscribeFrequency(frequency);
+            }
+        }
+
         return dto;
     }
 
@@ -1560,7 +1681,7 @@ public class UnsQueryService implements UnsQueryApi {
     public void standardizingData(String alias, Map<String, Object> data) {
         CreateTopicDto def = unsDefinitionService.getDefinitionByAlias(alias);
         if (def != null) {
-            if (def.getDataType() == Constants.CITING_TYPE) {
+            if (def.getDataType() == Constants.CITING_TYPE && ArrayUtils.isNotEmpty(def.getRefers())) {
                 def = unsDefinitionService.getDefinitionById(def.getRefers()[0].getId());
             }
             Map<String, FieldDefine> fieldsMap = def.getFieldDefines().getFieldsMap();
@@ -1630,5 +1751,89 @@ public class UnsQueryService implements UnsQueryApi {
             return ResponseEntity.ok(resultVO);
         }
         return ResponseEntity.ok(ResultVO.successWithData("ok", resultData));
+    }
+
+    public List<UnsPo> listAllEmptyFolder() {
+        return unsMapper.listAllEmptyFolder();
+    }
+
+    public MountDetailVo parseMountDetail(UnsPo po, boolean simple) {
+        if (po.getMountType() == null || po.getMountType() == 0) {
+            return null;
+        }
+        MountDetailVo mountDetailVo = new MountDetailVo();
+        mountDetailVo.setMountType(po.getMountType());
+        mountDetailVo.setMountSource(po.getMountSource());
+        if (simple) {
+            return mountDetailVo;
+        }
+        List<String> name = new ArrayList<>();
+        name.add(po.getMountSource());
+
+        String parentAlias = po.getParentAlias();
+        while (parentAlias != null) {
+            CreateTopicDto parent = unsDefinitionService.getDefinitionByAlias(parentAlias);
+            if (parent != null) {
+                if (parent.getMountType() != null && parent.getMountType() != 0) {
+                    name.add(parent.getMountSource());
+                    parentAlias = parent.getParentAlias();
+                } else {
+                    parentAlias = null;
+                }
+            } else {
+                parentAlias = null;
+            }
+        }
+
+        if (name.size() > 1) {
+            Collections.reverse(name);
+            mountDetailVo.setDisplayName(String.join(".", name));
+        }
+        return mountDetailVo;
+    }
+
+    private String fileQuerySqlDemo(Long unsId){
+        StringBuilder builder = new StringBuilder("SELECT ");
+        CreateTopicDto dto = unsDefinitionService.getDefinitionById(unsId);
+        if (dto == null || Constants.PATH_TYPE_FILE != dto.getPathType()) {
+            return null;
+        }
+
+        //0--保留（模板），1--时序，2--关系，3--计算型, 5--告警 6--聚合 7--引用
+        Integer dataType = dto.getDataType();
+
+        try {
+            if (Constants.CITING_TYPE == dataType && ArrayUtils.isNotEmpty(dto.getRefers())) {
+                Long sourceId = dto.getRefers()[0].getId();
+                CreateTopicDto source = unsDefinitionService.getDefinitionById(sourceId);
+                if (source == null) {
+                    return null;
+                } else {
+                    dto = source;
+                }
+            }
+
+            SrcJdbcType jdbcType = dataType == Constants.RELATION_TYPE ? SrcJdbcType.Postgresql : SrcJdbcType.TimeScaleDB;
+            String columns = GrafanaUtils.fields2Columns(jdbcType, dto.getFields());
+            String table = dto.getTable();
+            String tbValue = dto.getTbFieldName();
+            String tagNameCondition = "";
+            int dot = table.indexOf('.');
+            if (dot > 0) {
+                table = table.substring(dot + 1);
+            }
+            builder.append(columns);
+            builder.append(" FROM ").append("\\\" ");
+            builder.append(table).append("\\\" ");
+            if (StringUtils.hasText(tbValue)) {
+                tagNameCondition = " WHERE " + Constants.SYSTEM_SEQ_TAG + "='" + dto.getId() + "' ";
+                builder.append(tagNameCondition);
+            }
+            builder.append("LIMIT 10");
+            return builder.toString();
+        } catch (Exception e) {
+            log.debug("", e);
+            return null;
+        }
     }
 }

@@ -7,8 +7,8 @@ import com.fasterxml.jackson.core.JsonEncoding;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.supos.adpter.eventflow.dao.po.NodeFlowModelPO;
-import com.supos.adpter.eventflow.dao.po.NodeFlowPO;
+import com.supos.adpter.nodered.dao.po.NodeFlowModelPO;
+import com.supos.adpter.nodered.dao.po.NodeFlowPO;
 import com.supos.common.Constants;
 import com.supos.common.enums.GlobalExportModuleEnum;
 import com.supos.common.utils.FileUtils;
@@ -33,7 +33,8 @@ public class EventFlowExporter {
             JsonFactory factory = new JsonMapper().getFactory();
             JsonGenerator jsonGenerator = factory.createGenerator(exportJsonFile, JsonEncoding.UTF8);
             jsonGenerator.useDefaultPrettyPrinter();
-            jsonGenerator.writeStartObject();
+            jsonGenerator.writePOJO(context.getReqDto());
+/*            jsonGenerator.writeStartObject();
             // 导出模板
             jsonGenerator.writeFieldName("flows");
             jsonGenerator.writeStartArray();
@@ -51,7 +52,7 @@ public class EventFlowExporter {
                 }
             }
             jsonGenerator.writeEndArray();
-            jsonGenerator.writeEndObject();
+            jsonGenerator.writeEndObject();*/
             jsonGenerator.close();
             log.info("eventFlow export success:{}", targetPath);
             return path;

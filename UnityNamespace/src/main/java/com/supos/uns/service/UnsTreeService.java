@@ -171,12 +171,10 @@ public class UnsTreeService {
                 }
             }
         }
-        long t2 = System.currentTimeMillis();
         List<CreateTopicDto> filtered = allDefinitions.stream()
                 .filter(dto -> nextNodeMap.containsKey(dto.getId()))
                 .sorted(Comparator.comparing(CreateTopicDto::getName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .collect(Collectors.toList());
-        long t3 = System.currentTimeMillis();
         //手动分页
         List<CreateTopicDto> pageResult = ListUtil.page(pageNo.intValue() - 1, pageSize.intValue(), filtered);
         List<TopicTreeResult> treeResultList = pageResult.stream().map(dto -> {

@@ -149,7 +149,7 @@ public class ImportNodeFlowController {
                     break;
                 }
                 case STRING: {
-                    sb.append("\n'").append(field.getName()).append("'").append(":randomString(20),");
+                    sb.append("\n'").append(field.getName()).append("'").append(":randomString(),");
                     break;
                 }
                 case DATETIME: {
@@ -161,7 +161,7 @@ public class ImportNodeFlowController {
                 }
             }
         }
-        if (sb.length() > 0) {
+        if (!sb.isEmpty()) {
             return sb.substring(0, sb.length() - 1);
         }
         return sb.toString();

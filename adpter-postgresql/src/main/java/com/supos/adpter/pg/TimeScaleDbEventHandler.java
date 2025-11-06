@@ -19,6 +19,7 @@ import com.supos.common.utils.DbTableNameUtils;
 import com.supos.common.utils.JsonUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.postgresql.core.BaseConnection;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
@@ -235,11 +236,11 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
     void onSaveData(SaveDataEvent event) {
         if (SrcJdbcType.TimeScaleDB == event.jdbcType && ArrayUtils.isNotEmpty(event.topicData) && event.getSource() != this) {
             switch (sinkVersion) {
-                case 1:
-                    saveBatchV1(event);
-                    break;
                 case 2:
                     saveBatchV2(event);
+                    break;
+                case 1:
+                    saveBatchV1(event);
                     break;
             }
         }
@@ -399,10 +400,13 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
     @EventListener(classes = UpdateInstanceEvent.class)
     @Order(9)
     void onUpdateInstanceEvent(UpdateInstanceEvent event) {
-        CreateTopicDto[] topics = event.topics.stream().filter(t -> Boolean.TRUE.equals(t.getFieldsChanged()) && t.getDataSrcId() == SrcJdbcType.TimeScaleDB).toArray(CreateTopicDto[]::new);
-        if (event.getSource() != this && ArrayUtils.isNotEmpty(topics)) {
-            Map<String, TableInfo> tableInfoMap = listTableInfos(topics);
-            super.doTx(() -> batchCreateTables(topics, tableInfoMap));
+        List<CreateTopicDto> topicList = event.topics;
+        if (!CollectionUtils.isEmpty(topicList)) {
+            CreateTopicDto[] topics = topicList.stream().filter(t -> Boolean.TRUE.equals(t.getFieldsChanged()) && t.getDataSrcId() == SrcJdbcType.TimeScaleDB).toArray(CreateTopicDto[]::new);
+            if (event.getSource() != this && ArrayUtils.isNotEmpty(topics)) {
+                Map<String, TableInfo> tableInfoMap = listTableInfos(topics);
+                super.doTx(() -> batchCreateTables(topics, tableInfoMap));
+            }
         }
     }
 
@@ -519,6 +523,24 @@ public class TimeScaleDbEventHandler extends PostgresqlBase implements TimeSeque
                 }
             }
         }
+    }
+
+    @EventListener(classes = BatchQueryLastMsgVqtEvent.class)
+    void onBatchQueryLastMsgVqtEvent(BatchQueryLastMsgVqtEvent event) {
+        List<Long> ids = event.unsIds;
+        StringBuilder sql = new StringBuilder(256);
+        final String ct = Constants.SYS_FIELD_CREATE_TIME;
+        sql.append("SELECT DISTINCT ON (tag) tag ,")
+                .append(" \"").append(ct).append("\",")
+                .append(" \"").append("quality").append("\",")
+                .append(" \"").append("value").append("\"")
+                .append(" FROM ").append("public").append(".\"").append(event.tableName).append("\"")
+                .append(" WHERE tag in (").append(StringUtils.join(ids,",")).append(")")
+                .append(" ORDER BY tag, \"").append(ct).append("\"")
+                .append(" DESC");
+
+        List<Map<String, Object>> values = jdbcTemplate.queryForList(sql.toString());
+        event.setValues(values);
     }
 }
 

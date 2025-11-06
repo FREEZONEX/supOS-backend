@@ -56,6 +56,11 @@ public class UnsPo implements Cloneable {
      */
     Integer dataType;
 
+    /**
+     * 0-3 see com.supos.common.enums.FolderDataType
+     */
+    Integer parentDataType;
+
     String dataPath;
     @TableField(typeHandler = FieldsTypeHandler.class)
     FieldDefine[] fields;
@@ -71,6 +76,8 @@ public class UnsPo implements Cloneable {
     Date createAt;
 
     Date updateAt;
+
+    Date subscribeAt;
 
     String protocolType;
 
@@ -91,6 +98,16 @@ public class UnsPo implements Cloneable {
     String labels;
     @TableField(typeHandler = JsonMapTypeHandler.class)
     TreeMap<Long, String> labelIds;
+
+    /**
+     * 挂载方式 1-采集器 2-消息队列 3-IT 接口 4-数据库 5-视频采集器
+     */
+    Integer mountType;
+
+    /**
+     * 挂载源
+     */
+    String mountSource;
 
     public UnsPo(String path) {
         this.path = path;

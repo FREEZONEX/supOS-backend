@@ -67,6 +67,15 @@ public class UnsTemplateApiController {
         return unsTemplateService.updateTemplate(id, name, description);
     }
 
+    @Operation(summary = "修改模板订阅", tags = "openapi.tag.template.management")
+    @PutMapping(path = {"/inter-api/supos/uns/template/subscribe"})
+    @Valid
+    public ResultVO subscribeTemplate(@RequestParam(name = "id") @Parameter(description = "模板ID") Long id,
+                                      @RequestParam(name = "enable") @Parameter(description = "是否开启") Boolean enable,
+                                      @RequestParam(name = "frequency", required = false) @Parameter(description = "订阅频率") String frequency) {
+        return unsTemplateService.subscribeModel(id, enable, frequency);
+    }
+
     @Operation(summary = "修改模板字段（只支持删除和新增）和描述", tags = "openapi.tag.folder.management")
     @PutMapping(path = {"/inter-api/supos/uns/model"})
     @Valid

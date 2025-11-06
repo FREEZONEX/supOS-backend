@@ -21,4 +21,10 @@ public class BatchRemoveUnsDto {
 
     @Hidden
     Boolean removeRefer = false;
+
+    @Hidden
+    Boolean checkMount;
+
+    @Hidden
+    Boolean onlyRemoveChild;
 }

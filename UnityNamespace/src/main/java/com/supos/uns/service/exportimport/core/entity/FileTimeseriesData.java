@@ -37,6 +37,6 @@ public class FileTimeseriesData implements ExportImportData {
     @ExcelProperty(index = 9)
     private String label;
 
-    @ExcelIgnore
-    private String error;
+    @ExcelProperty(index = 10)
+    private String parentDataType;
 }

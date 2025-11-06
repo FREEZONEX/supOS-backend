@@ -33,7 +33,8 @@ public class SourceFlowExporter {
             JsonFactory factory = new JsonMapper().getFactory();
             JsonGenerator jsonGenerator = factory.createGenerator(exportJsonFile, JsonEncoding.UTF8);
             jsonGenerator.useDefaultPrettyPrinter();
-            jsonGenerator.writeStartObject();
+            jsonGenerator.writePOJO(context.getReqDto());
+/*            jsonGenerator.writeStartObject();
             // 导出模板
             jsonGenerator.writeFieldName("flows");
             jsonGenerator.writeStartArray();
@@ -51,7 +52,7 @@ public class SourceFlowExporter {
                 }
             }
             jsonGenerator.writeEndArray();
-            jsonGenerator.writeEndObject();
+            jsonGenerator.writeEndObject();*/
             jsonGenerator.close();
             log.info("sourceFlow export success:{}", targetPath);
             return path;

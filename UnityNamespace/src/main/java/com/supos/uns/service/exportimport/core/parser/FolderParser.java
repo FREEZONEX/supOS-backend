@@ -135,6 +135,9 @@ public class FolderParser extends AbstractParser {
         }
 
         createTopicDto.setPathType(0);
+        if (StringUtils.isNotBlank(folderDto.getDataType())) {
+            createTopicDto.setDataType(Integer.parseInt(folderDto.getDataType()));
+        }
         return wrapDto;
     }
 
@@ -152,6 +155,7 @@ public class FolderParser extends AbstractParser {
         folderDto.setTemplateAlias(getValueFromDataMap(dataMap, "templateAlias"));
         folderDto.setDescription(getValueFromDataMap(dataMap, "description"));
         folderDto.setFields(getValueFromDataMap(dataMap, "fields"));
+        folderDto.setDataType(getValueFromDataMap(dataMap, "dataType"));
         folderDto.trim();
 
 

@@ -7,9 +7,11 @@ import com.alibaba.fastjson.JSONObject;
 import com.supos.common.Constants;
 import com.supos.common.dto.BaseResult;
 import com.supos.common.event.InitTopicsEvent;
+import com.supos.common.service.IPersonConfigService;
 import com.supos.common.utils.JsonUtil;
 import com.supos.common.utils.ServletUtil;
 import com.supos.common.utils.UserContext;
+import com.supos.common.vo.PersonConfigVo;
 import com.supos.common.vo.UserInfoVo;
 import jakarta.annotation.Resource;
 import jakarta.servlet.*;
@@ -17,6 +19,8 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.catalina.connector.ClientAbortException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -34,7 +38,11 @@ public class UserContextFilter implements Filter {
 
     @Resource
     private TimedCache<String, UserInfoVo> userInfoCache;
+    @Autowired
+    private IPersonConfigService personConfigService;
 
+    @Value("${SYS_OS_LANG:zh-CN}")
+    private String systemLocale;
 
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
@@ -61,6 +69,13 @@ public class UserContextFilter implements Filter {
                     JWT jwt = JWT.of(accessToken);
                     String sub = jwt.getPayloads().getStr("sub");
                     UserInfoVo userInfoVo = userInfoCache.get(sub);
+
+                    PersonConfigVo personConfig = personConfigService.getByUserId(sub);
+                    if (personConfig != null) {
+                        userInfoVo.setMainLanguage(personConfig.getMainLanguage());
+                    } else {
+                        userInfoVo.setMainLanguage(systemLocale);
+                    }
                     UserContext.set(userInfoVo);
                     log.debug("set user content success!");
                 }/*else{

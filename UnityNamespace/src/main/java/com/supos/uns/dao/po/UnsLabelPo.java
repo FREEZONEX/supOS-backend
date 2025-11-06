@@ -23,7 +23,16 @@ public class UnsLabelPo {
     @Schema(description = "标签名称")
     private String labelName;
 
+    private Integer withFlags;
+
+    @Schema(description = "订阅频率")
+    private String subscribeFrequency;
+
+    @Schema(description = "订阅时间")
+    private Date subscribeAt;
+
     private Date createAt;
+    private Date updateAt;
 
     public UnsLabelPo(String labelName) {
         this.labelName = labelName;

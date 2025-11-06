@@ -23,4 +23,10 @@ public class NodeFlowVO implements Serializable {
 
     private String template;
 
+    private Integer mark;
+
+    private String creator;
+
+    private long createTime;
+
 }

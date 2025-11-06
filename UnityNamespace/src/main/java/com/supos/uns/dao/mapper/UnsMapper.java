@@ -10,6 +10,8 @@ import com.supos.common.vo.FieldDefineVo;
 import com.supos.uns.dao.po.AlarmPo;
 import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.vo.SimpleUns;
+import com.supos.uns.vo.TemplateQueryVo;
+import com.supos.uns.vo.TemplateSearchResult;
 import org.apache.ibatis.annotations.*;
 
 import java.util.*;
@@ -30,6 +32,8 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
     @ResultMap("unsResultMap")
     List<UnsPo> listByAlias(@Param("alias") Collection<String> alias);
 
+    @Select("select * from " + UnsPo.TABLE_NAME + " where parent_alias is null and data_type>0 and path_type=0")
+    List<UnsPo> listRootCategoryFolders();
 
     @Select("select alias from " + UnsPo.TABLE_NAME + " where path = #{path}")
     String selectAliasByPath(@Param("path") String path);
@@ -48,13 +52,42 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
     @Select("<script> select count(1) from " + UnsPo.TABLE_NAME + filterPaths + "</script>")
     int countPaths(@Param("modelId") String modelId, @Param("k") String key, @Param("pathType") int pathType, @Param("dataTypes") Collection<Integer> dataTypes);
 
-    @Select("<script> select id,alias,path,data_type as dataType from " + UnsPo.TABLE_NAME + filterPaths + " order by path asc, create_at desc limit #{size} offset #{offset} </script>")
+    @Select("<script> select id,alias,path,data_type as dataType, parent_data_type as parentDataType from " + UnsPo.TABLE_NAME + filterPaths + " order by path asc, create_at desc limit #{size} offset #{offset} </script>")
     ArrayList<SimpleUns> listPaths(@Param("modelId") String modelId, @Param("k") String key, @Param("pathType") int pathType, @Param("dataTypes") Collection<Integer> dataTypes, @Param("offset") int offset, @Param("size") int size);
 
     @Select("<script> select * from " + UnsPo.TABLE_NAME + " where data_type=#{dataType} and path_type=2 <if test=\"k!=null\"> and path like #{k} </if> " +
             "and status=1 order by create_at desc limit #{size} offset #{offset} </script>")
     @ResultMap("unsResultMap")
     ArrayList<UnsPo> listByDataType(@Param("k") String key, @Param("dataType") int dataType, @Param("offset") int offset, @Param("size") int size);
+
+    @Select("<script>select id, alias, parent_alias, data_type from "
+            + UnsPo.TABLE_NAME + " where parent_alias in "
+            + "  <foreach collection=\"parentAliasList\" item=\"a\" index=\"index\" open=\"(\" close=\")\" separator=\",\"> "
+            + "      #{a}"
+            + "  </foreach>"
+            + " and data_type > 0 and path_type = 0 " +
+            "</script>")
+    @ResultMap("unsResultMap")
+    List<UnsPo> listCategoryFolders(@Param("parentAliasList") Collection<String> parentAliasList);
+
+    @Select("<script>" +
+            "select * from " +  UnsPo.TABLE_NAME +
+            " where " +
+            "<if test=\"parentAlias!=null\"> parent_alias=#{parentAlias} </if>" +
+            "<if test=\"parentAlias==null\"> parent_alias is null </if>" +
+            "and data_type=#{dataType} " +
+            "and path_type=0 limit 1" +
+            "</script>")
+    UnsPo getFixedCategoryFolder(@Param("parentAlias") String parentAlias, @Param("dataType") int dataType);
+
+    @Select("<script>" +
+            "select name from " +  UnsPo.TABLE_NAME +
+            " where " +
+            "<if test=\"fatherId!=null\"> parent_id=#{fatherId} </if>" +
+            "<if test=\"fatherId==null\"> parent_id is null </if>" +
+            " and data_type != " + Constants.ALARM_RULE_TYPE +
+            "</script>")
+    Set<String> listBrotherFileName(@Param("fatherId") Long fatherId);
 
     @Select("<script> select count(*) from " + UnsPo.TABLE_NAME + " where data_type=#{dataType} and path_type=2 <if test=\"k!=null\"> and path like #{k} </if> " +
             "and status=1" +
@@ -69,7 +102,7 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
             "</script>")
     Set<Long> listInstanceIds(@Param("ids") Collection<Long> instanceIds);
 
-    @Select("<script> select id,alias,path from " + UnsPo.TABLE_NAME +
+    @Select("<script> select id,alias,path, path_type from " + UnsPo.TABLE_NAME +
             " where id in " +
             "  <foreach collection=\"ids\" item=\"id\" index=\"index\" open=\"(\" close=\")\" separator=\",\"> " +
             "      #{id}" +
@@ -189,8 +222,22 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
 
     IPage<UnsPo> pageListByLazy(Page<?> page, @Param("params") UnsSearchCondition params);
 
+    IPage<TemplateSearchResult> pageListTemplates(Page<?> page, @Param("params") TemplateQueryVo params);
+
     @Select("SELECT COUNT(*) FROM uns_namespace WHERE path_type = 2 AND lay_rec LIKE CONCAT(#{layRec}, '/%')")
     int countAllChildrenByLayRec(@Param("layRec") String layRec);
+
+    @Select("SELECT * FROM uns_namespace " +
+            "WHERE path_type in (0,2) " +
+            "AND lay_rec LIKE CONCAT('%', #{layRec}, '%') " +
+            "limit 5000")
+    List<UnsPo> selectAllByLayRec(@Param("layRec") String layRec);
+
+    @Select("SELECT count(*) FROM uns_namespace " +
+            "WHERE path_type in (0,2) " +
+            " AND data_type != " + Constants.ALARM_RULE_TYPE +
+            " AND lay_rec LIKE CONCAT('%', #{layRec}, '%') ")
+    int countAllByLayRec(@Param("layRec") String layRec);
 
     @Select("SELECT COUNT(*) FROM uns_namespace WHERE parent_id = #{parentId}")
     int countDirectChildrenByParentId(@Param("parentId") Long parentId);
@@ -211,6 +258,19 @@ public interface UnsMapper extends BaseMapper<UnsPo> {
 
     @Update("UPDATE " + UnsPo.TABLE_NAME + " SET label_ids = jsonb_set(label_ids,  '{\"${labelId}\"}', '\"${labelName}\"') WHERE label_ids ?? '${labelId}' ")
     void updateUnsLabelNames(@Param("labelId") Long labelId, @Param("labelName") String labelName);
+
+    @Select("<script> SELECT * " +
+            "FROM " + UnsPo.TABLE_NAME +
+            " WHERE path_type = 0 and status=1 and (mount_type=0 or mount_type is null) and alias not in ('_alarm_folder', '_alarm_model', '__templates__') " +
+            " and id NOT IN (" +
+            "    SELECT DISTINCT parent_id " +
+            "    FROM " + UnsPo.TABLE_NAME +
+            "    WHERE parent_id IS NOT NULL  AND status=1 " +
+            ");</script>")
+    ArrayList<UnsPo> listAllEmptyFolder();
+
+    @Select("SELECT a.id FROM " + UnsPo.TABLE_NAME + " a LEFT JOIN uns_label_ref b on a.id = b.uns_id LEFT JOIN uns_label c on b.label_id = c.id where c.with_flags != 0 and c.subscribe_frequency is not null")
+    List<Long> listSubscribeLabel();
 
     class UnsRefUpdateProvider {
         public static String updateRefUns(@Param("id") Long id, @Param("ids") Map<Long, Integer> idDataTypes, @Param("ut") Date updateAt) {

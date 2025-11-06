@@ -11,6 +11,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @NoArgsConstructor
@@ -77,7 +78,12 @@ public class FileDetailVo {
     @Schema(description = "修改时间--单位：毫秒")
     Long updateTime;
 
+    @Schema(description = "父级文件夹类型")
+    Integer parentDataType;
+
     @Hidden
     @Schema(description = "协议")
     Map<String, Object> protocol;
+
+    List<LabelOpenVo> labelList;
 }

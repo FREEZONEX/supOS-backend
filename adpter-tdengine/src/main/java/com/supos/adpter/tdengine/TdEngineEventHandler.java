@@ -179,9 +179,12 @@ public class TdEngineEventHandler implements TimeSequenceDataStorageAdapter {
     @EventListener(classes = UpdateInstanceEvent.class)
     @Order(5)
     void onUpdateInstanceEvent(UpdateInstanceEvent event) {
-        CreateTopicDto[] topics = event.topics.stream().filter(t -> Boolean.TRUE.equals(t.getFieldsChanged()) && t.getDataSrcId() == SrcJdbcType.TdEngine).toArray(CreateTopicDto[]::new);
-        if (event.getSource() != this && ArrayUtils.isNotEmpty(topics)) {
-            batchCreateTables(topics, true);
+        List<CreateTopicDto> topicList = event.topics;
+        if (!CollectionUtils.isEmpty(topicList)) {
+            CreateTopicDto[] topics = topicList.stream().filter(t -> Boolean.TRUE.equals(t.getFieldsChanged()) && t.getDataSrcId() == SrcJdbcType.TdEngine).toArray(CreateTopicDto[]::new);
+            if (event.getSource() != this && ArrayUtils.isNotEmpty(topics)) {
+                batchCreateTables(topics, true);
+            }
         }
     }
 

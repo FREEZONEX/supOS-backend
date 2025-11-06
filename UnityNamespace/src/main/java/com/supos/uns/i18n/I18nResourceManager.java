@@ -3,13 +3,12 @@ package com.supos.uns.i18n;
 import cn.hutool.core.util.StrUtil;
 import com.supos.common.utils.I18nUtils;
 import com.supos.uns.service.PersonConfigService;
-import com.supos.uns.vo.PersonConfigVo;
+import com.supos.common.vo.PersonConfigVo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 import org.springframework.context.support.ReloadableResourceBundleMessageSource;
 import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.i18n.SessionLocaleResolver;
 
 import java.util.HashMap;
 import java.util.Locale;

@@ -3,6 +3,7 @@ package com.supos.uns.dao.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.supos.common.dto.UnsLabelDto;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsLabelRefPo;
 import com.supos.uns.dao.po.UnsPo;
@@ -50,4 +51,7 @@ public interface UnsLabelMapper extends BaseMapper<UnsLabelPo> {
     int saveRef(@Param("ref") UnsLabelRefPo ref);
 
     void deleteRefByUnsIdLabelNames(@Param("unsId") Long unsId, List<String> labelNames);
+
+    @Select("SELECT * FROM " + UnsLabelPo.TABLE_NAME + " where with_flags != 0 and subscribe_frequency is not null")
+    List<UnsLabelDto> listSubscribe();
 }
