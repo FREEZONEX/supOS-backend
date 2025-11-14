@@ -2,6 +2,7 @@ package com.supos.common.enums;
 
 import com.supos.common.Constants;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
 
 @Getter
 public enum FolderDataType {
@@ -12,7 +13,7 @@ public enum FolderDataType {
 
     ACTION(2, "uns.folder.type.action"),//JSONB
 
-    METRICS(3, "uns.folder.type.metrics");//时序 计算 聚合 引用
+    METRIC(3, "uns.folder.type.metrics");//时序 计算 聚合 引用
 
     private int typeIndex;
 
@@ -23,7 +24,10 @@ public enum FolderDataType {
         this.i18nName = showName;
     }
 
-    public static FolderDataType getFolderDataType(int index) {
+    public static FolderDataType getFolderDataType(Integer index) {
+        if (index == null){
+            return NORMAL;
+        }
         for (FolderDataType fdt : FolderDataType.values()) {
             if (fdt.getTypeIndex() == index) {
                 return fdt;
@@ -61,8 +65,20 @@ public enum FolderDataType {
         }
 
         if (Constants.TIME_SEQUENCE_TYPE == fileDataType || Constants.CALCULATION_REAL_TYPE == fileDataType || Constants.CALCULATION_HIST_TYPE == fileDataType) {
-            return METRICS.typeIndex;
+            return METRIC.typeIndex;
         }
         return STATE.typeIndex;
+    }
+
+    public static FolderDataType getFolderDataTypeByName(String name) {
+        if (StringUtils.isBlank(name)){
+            return null;
+        }
+        for (FolderDataType fdt : FolderDataType.values()) {
+            if (fdt.name().equals(name.toUpperCase())) {
+                return fdt;
+            }
+        }
+        return null;
     }
 }

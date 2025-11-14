@@ -2,6 +2,9 @@ package com.supos.uns.service.exportimport.core.entity;
 
 import com.alibaba.excel.annotation.ExcelIgnore;
 import com.alibaba.excel.annotation.ExcelProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.supos.common.dto.FieldDefine;
+import com.supos.common.vo.FieldDefineVo;
 import lombok.Data;
 
 import java.util.LinkedList;
@@ -25,14 +28,17 @@ public class FolderData implements ExportImportData {
     @ExcelProperty(index = 3)
     private String templateAlias;
     @ExcelProperty(index = 4)
-    private String fields;
+    private FieldDefineVo[] fields;
     @ExcelProperty(index = 5)
     private String description;
     @ExcelProperty(index = 6)
+    @JsonProperty("topicType")
     private String dataType;
 
     @ExcelIgnore
     private String type;
+    @ExcelIgnore
+    private String name;
     @ExcelIgnore
     private List<ExportImportData> children;
 

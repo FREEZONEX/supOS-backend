@@ -2,11 +2,8 @@ package com.supos.uns.service.exportimport.core.entity;
 
 import com.alibaba.excel.annotation.ExcelIgnore;
 import com.alibaba.excel.annotation.ExcelProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
-
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * @author sunlifang
@@ -40,8 +37,12 @@ public class FileAggregationData implements ExportImportData {
     private String label;
 
     @ExcelProperty(index = 9)
+    @JsonProperty("topicType")
     private String parentDataType;
 
     @ExcelIgnore
     private String error;
+
+    @ExcelIgnore
+    private String name;
 }

@@ -1,161 +1,223 @@
 {
-  "Template" : [ {
-    "name" : "template2",
-    "alias" : "template2_6bfcc3ab582442a889df",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
-    "description" : ""
-  }, {
-    "name" : "template1",
-    "alias" : "template1_ea5ef2be45724a57b1a5",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
-    "description" : ""
-  } ],
-  "Label" : [ {
-    "name" : "label1"
-  }, {
-    "name" : "label2"
-  } ],
   "UNS" : [ {
-    "namespace" : "folder1",
     "alias" : "folder1_f59c16d609e744c5a546",
+    "topicType" : "STATE",
     "displayName" : "",
     "templateAlias" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : [ {
+      "name" : "t0",
+      "type" : "DOUBLE"
+    }, {
+      "name" : "t1",
+      "type" : "LONG"
+    } ],
     "description" : "",
     "type" : "folder",
     "children": [{
-      "namespace" : "folder1/tag2",
       "alias" : "tag2_xxx",
+      "topicType" : "STATE",
       "displayName" : "",
       "templateAlias" : "",
-      "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+      "fields" : [ {
+        "name" : "t0",
+        "type" : "DOUBLE"
+      }, {
+        "name" : "t1",
+        "type" : "LONG"
+      } ],
       "description" : "",
-      "dataType" : "1",
+      "dataType" : "TIME_SEQUENCE_TYPE",
       "generateDashboard" : "FALSE",
       "enableHistory" : "TRUE",
       "mockData" : "FALSE",
       "type" : "file",
       "label" : "label1,label2"
     }, {
-    "namespace" : "folder1/tag1",
     "alias" : "tag1_xxx",
+      "topicType" : "STATE",
     "displayName" : "",
     "templateAlias" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+      "fields" : [ {
+        "name" : "t0",
+        "type" : "DOUBLE"
+      }, {
+        "name" : "t1",
+        "type" : "LONG"
+      } ],
     "description" : "",
-    "dataType" : "1",
+    "dataType" : "TIME_SEQUENCE_TYPE",
     "generateDashboard" : "FALSE",
     "enableHistory" : "TRUE",
     "mockData" : "FALSE",
     "type" : "file",
     "label" : ""
   },{
-      "namespace" : "folder1/rel1",
       "alias" : "rel1_xxx",
+      "topicType" : "STATE",
       "displayName" : "",
       "templateAlias" : "",
-      "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+      "fields" : [ {
+        "name" : "t0",
+        "type" : "DOUBLE"
+      }, {
+        "name" : "t1",
+        "type" : "LONG"
+      } ],
       "description" : "",
-      "dataType" : "2",
+      "dataType" : "RELATION_TYPE",
       "generateDashboard" : "FALSE",
       "enableHistory" : "TRUE",
       "mockData" : "FALSE",
       "type" : "file",
       "label" : "label1,label2"
     }, {
-      "namespace" : "folder1/rel2",
       "alias" : "rel2_xxx",
+      "topicType" : "STATE",
       "displayName" : "",
       "templateAlias" : "",
-      "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+      "fields" : [ {
+        "name" : "t0",
+        "type" : "DOUBLE"
+      }, {
+        "name" : "t1",
+        "type" : "LONG"
+      } ],
       "description" : "",
-      "dataType" : "2",
+      "dataType" : "RELATION_TYPE",
       "generateDashboard" : "FALSE",
       "enableHistory" : "TRUE",
       "mockData" : "FALSE",
       "type" : "file",
       "label" : "label1,label2"
     },{
-      "namespace" : "folder1/cal2",
       "alias" : "cal2_xxx",
+      "topicType" : "STATE",
       "displayName" : "",
-      "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"}]",
+      "fields" : [ {
+        "name" : "t0",
+        "type" : "DOUBLE"
+      } ],
       "refers" : "[{\"path\":\"folder1/tag1\",\"field\":\"t0\",\"alias\":\"tag1_xxx\",\"uts\":true},{\"path\":\"folder1/tag2\",\"field\":\"t1\",\"alias\":\"tag2_xxx\"}]",
       "expression" : "a1+a2",
       "description" : "",
-      "dataType" : "3",
+      "dataType" : "CALCULATION_REAL_TYPE",
       "generateDashboard" : "FALSE",
       "enableHistory" : "TRUE",
       "type" : "file",
       "label" : "label1,label2"
     }, {
-      "namespace" : "folder1/cal1",
       "alias" : "cal1_xxx",
+      "topicType" : "STATE",
       "displayName" : "",
-      "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"}]",
+      "fields" : [ {
+        "name" : "t0",
+        "type" : "DOUBLE"
+      }],
       "refers" : "[{\"path\":\"folder1/tag1\",\"field\":\"t0\",\"alias\":\"tag1_xxx\"},{\"path\":\"folder1/tag2\",\"field\":\"t1\",\"alias\":\"tag2_xxx\"}]",
       "expression" : "a1+a2",
       "description" : "",
-      "dataType" : "3",
+      "dataType" : "CALCULATION_REAL_TYPE",
       "generateDashboard" : "FALSE",
       "enableHistory" : "TRUE",
       "type" : "file",
       "label" : "label1,label2"
     },{
-      "namespace" : "folder1/agg1",
       "alias" : "agg1_xxx",
+      "topicType" : "STATE",
       "displayName" : "",
       "refers" : "[{\"path\":\"folder1/tag1\",\"alias\":\"tag1_xxx\"},{\"path\":\"folder1/tag2\",\"alias\":\"tag2_xxx\"}]",
       "frequency" : "5m",
       "description" : "",
-      "dataType" : "6",
+      "dataType" : "MERGE_TYPE",
       "generateDashboard" : "FALSE",
       "enableHistory" : "TRUE",
       "type" : "file",
       "label" : "label1,label2"
     }, {
-      "namespace" : "folder1/agg2",
       "alias" : "agg2_xxx",
+      "topicType" : "STATE",
       "displayName" : "",
       "refers" : "[{\"path\":\"folder1/tag1\",\"alias\":\"tag1_xxx\"},{\"path\":\"folder1/tag2\",\"alias\":\"tag2_xxx\"}]",
       "frequency" : "5m",
       "description" : "",
-      "dataType" : "6",
+      "dataType" : "MERGE_TYPE",
       "generateDashboard" : "FALSE",
       "enableHistory" : "TRUE",
       "type" : "file",
       "label" : "label1,label2"
     },{
-      "namespace" : "folder1/ref1",
       "alias" : "ref1_xxx",
+      "topicType" : "STATE",
       "displayName" : "",
       "refers" : "[{\"path\":\"folder1/tag1\",\"alias\":\"tag1_xxx\"}]",
       "description" : "",
-      "dataType" : "7",
+      "dataType" : "CITING_TYPE",
       "generateDashboard" : "FALSE",
       "enableHistory" : "TRUE",
       "type" : "file",
       "label" : "label1,label2"
     }, {
-      "namespace" : "folder1/ref2",
       "alias" : "ref2_xxx",
+      "topicType" : "STATE",
       "displayName" : "",
       "refers" : "[{\"path\":\"folder1/tag1\",\"alias\":\"tag1_xxx\"}]",
       "description" : "",
-      "dataType" : "7",
+      "dataType" : "CITING_TYPE",
       "generateDashboard" : "FALSE",
       "enableHistory" : "TRUE",
       "type" : "file",
       "label" : "label1,label2"
-    }]
+    }, {
+      "alias" : "_Jsonb1_4aed5fffb300471ea745",
+      "dataType" : "JSONB_TYPE",
+      "generateDashboard" : "TRUE",
+      "enableHistory" : "FALSE",
+      "mockData" : "FALSE",
+      "type" : "file",
+      "name" : "Jsonb1",
+      "topicType" : "STATE"
+      ]
   },
   {
-    "namespace" : "folder2",
     "alias" : "folder2_f59c16d609e744c5a546",
+    "topicType" : "STATE",
     "displayName" : "",
     "templateAlias" : "",
-    "fields" : "[{\"name\":\"t0\",\"type\":\"INTEGER\"},{\"name\":\"t1\",\"type\":\"LONG\"}]",
+    "fields" : [ {
+      "name" : "t0",
+      "type" : "DOUBLE"
+    }, {
+      "name" : "t1",
+      "type" : "LONG"
+    } ],
     "description" : "",
     "type" : "folder"
-  }]
+  }],  "Template" : [ {
+  "name" : "template2",
+  "alias" : "template2_6bfcc3ab582442a889df",
+      "fields" : [ {
+        "name" : "t0",
+        "type" : "DOUBLE"
+      }, {
+        "name" : "t1",
+        "type" : "LONG"
+      } ],
+  "description" : ""
+}, {
+  "name" : "template1",
+  "alias" : "template1_ea5ef2be45724a57b1a5",
+      "fields" : [ {
+        "name" : "t0",
+        "type" : "DOUBLE"
+      }, {
+        "name" : "t1",
+        "type" : "LONG"
+      } ],
+  "description" : ""
+} ],
+  "Label" : [ {
+    "name" : "label1"
+  }, {
+    "name" : "label2"
+  } ]
 }

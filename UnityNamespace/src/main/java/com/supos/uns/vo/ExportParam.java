@@ -1,6 +1,8 @@
 package com.supos.uns.vo;
 
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.List;
 
@@ -11,6 +13,8 @@ import java.util.List;
  * @date 2025/1/13 9:08
  */
 @Data
+@Getter
+@Setter
 public class ExportParam {
 
     public final static String EXPORT_TYPE_ALL = "ALL";
@@ -24,4 +28,6 @@ public class ExportParam {
     private List<String> instances;
 
     private String fileFlag;
+
+    Boolean async = true;
 }

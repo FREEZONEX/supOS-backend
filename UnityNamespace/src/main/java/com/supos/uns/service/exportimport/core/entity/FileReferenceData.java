@@ -2,6 +2,7 @@ package com.supos.uns.service.exportimport.core.entity;
 
 import com.alibaba.excel.annotation.ExcelIgnore;
 import com.alibaba.excel.annotation.ExcelProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 /**
@@ -30,8 +31,12 @@ public class FileReferenceData implements ExportImportData {
     private String label;
 
     @ExcelProperty(index = 6)
+    @JsonProperty("topicType")
     private String parentDataType;
 
     @ExcelIgnore
     private String error;
+
+    @ExcelIgnore
+    private String name;
 }

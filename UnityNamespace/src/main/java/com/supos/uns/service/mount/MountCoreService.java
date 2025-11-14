@@ -31,13 +31,10 @@ import com.supos.uns.service.UnsQueryService;
 import com.supos.uns.service.UnsRemoveService;
 import com.supos.uns.service.mount.adpter.MountAdpter;
 import com.supos.uns.service.mount.collector.CollectorMountAdpter;
-import com.supos.uns.service.mount.kafka.KafkaAdapter;
 import com.supos.uns.service.mount.kafka.KafkaMountAdpter;
-import com.supos.uns.service.mount.mqtt.MqttAdpter;
 import com.supos.uns.service.mount.mqtt.MqttMountAdpter;
 import com.supos.uns.util.UnsConverter;
 import com.supos.uns.vo.OuterStructureVo;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -340,7 +337,7 @@ public class MountCoreService {
             topicDto.setAddDashBoard(MountFlag.withDashBoard(flag));
             topicDto.setAddFlow(false);
             // 设置metrics\时序类型文件
-            topicDto.setParentDataType(FolderDataType.METRICS.getTypeIndex());
+            topicDto.setParentDataType(FolderDataType.METRIC.getTypeIndex());
             topicDto.setDataType(Constants.TIME_SEQUENCE_TYPE);
 
             topicDto.setMountType(mountSourceType.getTypeValue());

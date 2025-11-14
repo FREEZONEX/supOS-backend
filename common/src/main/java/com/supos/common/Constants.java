@@ -125,6 +125,7 @@ public class Constants {
 
     /**
      * 时序类型
+     * @see com.supos.common.enums.DataTypeEnum
      */
     public static final int TIME_SEQUENCE_TYPE = 1;
     /**

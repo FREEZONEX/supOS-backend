@@ -53,6 +53,7 @@ public class UnsPo implements Cloneable {
     Integer dataSrcId;
     /**
      * 0--保留（模板），1--时序，2--关系，3--计算型, 5--告警 6--聚合 7--引用
+     * @see com.supos.common.enums.DataTypeEnum
      */
     Integer dataType;
 

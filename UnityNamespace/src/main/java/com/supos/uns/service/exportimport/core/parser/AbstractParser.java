@@ -197,6 +197,14 @@ public abstract class AbstractParser implements ParserAble {
         return null;
     }
 
+    protected String getValueFromJsonNodeArray(JsonNode jsonNode, String field) {
+        JsonNode valueNode = jsonNode.get(field);
+        if (valueNode != null && valueNode.isArray()) {
+            return valueNode.toString();
+        }
+        return null;
+    }
+
     protected String getValueFromDataMap(Map<String, Object> dataMap, String field) {
         Object value = dataMap.get(field);
         if (value != null) {

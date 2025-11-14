@@ -29,9 +29,12 @@ public class ValidateFolder {
     private String flagNo;
 
     /**namespace*/
-    @NotEmpty(message = "uns.topic.empty")
-    @TopicNameValidator(message = "uns.folder.format.invalid")
-    String path;
+//    @NotEmpty(message = "uns.topic.empty")
+//    @TopicNameValidator(message = "uns.folder.format.invalid")
+//    String path;
+
+    @NotEmpty(message = "uns.name.empty")
+    String name;
 
     /**别名*/
     @AliasValidator
@@ -62,8 +65,9 @@ public class ValidateFolder {
     public CreateTopicDto createTopic() {
         CreateTopicDto topicDto = new CreateTopicDto();
         topicDto.setFlagNo(flagNo);
-        topicDto.setPath(path);
-        topicDto.setName(PathUtil.getName(path));
+//        topicDto.setPath(path);
+//        topicDto.setName(PathUtil.getName(path));
+        topicDto.setName(name);
         topicDto.setAlias(alias);
         topicDto.setDisplayName(displayName);
         topicDto.setDescription(description);
@@ -71,9 +75,9 @@ public class ValidateFolder {
     }
 
     public void trim() {
-        if (StringUtils.isNotBlank(path)) {
-            path = path.trim();
-        }
+//        if (StringUtils.isNotBlank(path)) {
+//            path = path.trim();
+//        }
         if (StringUtils.isNotBlank(alias)) {
             alias = alias.trim();
         }

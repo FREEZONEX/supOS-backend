@@ -28,9 +28,12 @@ public class ValidateFile {
     private String flagNo;
 
     /**namespace*/
-    @NotEmpty(message = "uns.topic.empty")
-    @TopicNameValidator
-    String path;
+//    @NotEmpty(message = "uns.topic.empty")
+//    @TopicNameValidator
+//    String path;
+
+    @NotEmpty(message = "uns.name.empty")
+    String name;
 
     /**别名*/
     @AliasValidator
@@ -70,18 +73,19 @@ public class ValidateFile {
     Integer parentDataType;
 
 
-    public void setPath(String path) {
-        if (path != null && !path.isEmpty()) {
-            path = path.trim();
-        }
-        this.path = path;
-    }
+//    public void setPath(String path) {
+//        if (path != null && !path.isEmpty()) {
+//            path = path.trim();
+//        }
+//        this.path = path;
+//    }
 
     public CreateTopicDto createTopic() {
         CreateTopicDto topicDto = new CreateTopicDto();
         topicDto.setFlagNo(flagNo);
-        topicDto.setPath(path);
-        topicDto.setName(PathUtil.getName(path));
+//        topicDto.setPath(path);
+//        topicDto.setName(PathUtil.getName(path));
+        topicDto.setName(name);
         topicDto.setAlias(alias);
         topicDto.setDisplayName(displayName);
         topicDto.setDescription(description);

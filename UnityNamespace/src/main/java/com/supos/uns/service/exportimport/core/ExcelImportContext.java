@@ -136,26 +136,26 @@ public class ExcelImportContext {
     public void addUns(ExcelUnsWrapDto uns) {
         Integer pathType = uns.getPathType();
         if (pathType == Constants.PATH_TYPE_DIR) {
-            folderMap.put(uns.getPath(), uns);
+            folderMap.put(uns.getAlias(), uns);
             folderAliasMapInImportFile.put(uns.getAlias(), uns);
         } else {
             Integer dataType = uns.getDataType();
             if (dataType == Constants.TIME_SEQUENCE_TYPE) {
-                fileTimeseriesMap.put(uns.getPath(), uns);
+                fileTimeseriesMap.put(uns.getAlias(), uns);
             } else if (dataType == Constants.RELATION_TYPE) {
-                fileRelationMap.put(uns.getPath(), uns);
+                fileRelationMap.put(uns.getAlias(), uns);
             } else if (dataType == Constants.CALCULATION_REAL_TYPE) {
-                fileCalculateMap.put(uns.getPath(), uns);
+                fileCalculateMap.put(uns.getAlias(), uns);
             } else if (dataType == Constants.MERGE_TYPE) {
-                fileAggregationMap.put(uns.getPath(), uns);
+                fileAggregationMap.put(uns.getAlias(), uns);
             } else if (dataType == Constants.CITING_TYPE) {
-                fileReferenceMap.put(uns.getPath(), uns);
+                fileReferenceMap.put(uns.getAlias(), uns);
             } else if (dataType == Constants.JSONB_TYPE) {
-                fileJsonbMap.put(uns.getPath(), uns);
+                fileJsonbMap.put(uns.getAlias(), uns);
             }
         }
         aliasInImportFile.add(uns.getAlias());
-        pathInImportFile.add(uns.getPath());
+        pathInImportFile.add(uns.getAlias());
 
     }
 

@@ -188,7 +188,7 @@ CREATE TABLE if not exists "supos"."uns_alarms_handler" (
 alter table supos_todo add if not exists "process_id" int8 NULL;
 alter table supos_todo add if not exists "process_instance_id" varchar(64) NULL;
 
-CREATE DATABASE camunda;
+-- CREATE DATABASE camunda;
 
 CREATE TABLE if not exists "supos"."supos_workflow_process" (
 "id" BIGSERIAL PRIMARY KEY,

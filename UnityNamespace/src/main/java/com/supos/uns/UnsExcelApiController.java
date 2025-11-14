@@ -76,7 +76,7 @@ public class UnsExcelApiController {
     public JsonResult<String> dataExport(@RequestBody ExportParam exportParam) {
         String sub = UserContext.get().getSub();
         exportParam.setUserId(sub);
-        return unsExcelService.dataExport(exportParam, true);
+        return unsExcelService.dataExport(exportParam, exportParam.getAsync());
     }
 
     /**

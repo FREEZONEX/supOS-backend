@@ -121,7 +121,7 @@ public class TemplateParser extends AbstractParser {
         templateDto.setFlagNo(flagNo);
         templateDto.setName(getValueFromJsonNode(data, "name"));
         templateDto.setAlias(getValueFromJsonNode(data, "alias"));
-        templateDto.setFields(getValueFromJsonNode(data, "fields"));
+        templateDto.setFields(getValueFromJsonNodeArray(data, "fields"));
         templateDto.setDescription(getValueFromJsonNode(data, "description"));
 
         CreateTemplateVo templateVo = check(templateDto, context);

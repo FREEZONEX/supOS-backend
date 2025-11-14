@@ -1,7 +1,5 @@
 package com.supos.uns.service.exportimport.core.parser;
 
-import cn.hutool.core.util.NumberUtil;
-import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.system.SystemUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -49,18 +47,18 @@ public class FileTimeseriesParser extends AbstractParser {
             return null;
         }
 
-        fileDto.setAlias(StringUtils.isNotBlank(fileDto.getAlias()) ? fileDto.getAlias() : PathUtil.generateAlias(fileDto.getPath(),2));
+        fileDto.setAlias(StringUtils.isNotBlank(fileDto.getAlias()) ? fileDto.getAlias() : PathUtil.generateAlias(fileDto.getName(),2));
         CreateTopicDto createTopicDto = fileDto.createTopic();
         createTopicDto.setPathType(Constants.PATH_TYPE_FILE);
         createTopicDto.setDataType(Constants.TIME_SEQUENCE_TYPE);
         ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(createTopicDto);
 
         // 校验path是否重复
-        if (context.containPathInImportFile(fileDto.getPath())) {
-            // excel 中存在重复的topic
-            context.addError(flagNo, I18nUtils.getMessage("uns.import.exist", "namespace", fileDto.getPath()));
-            return null;
-        }
+//        if (context.containPathInImportFile(fileDto.getPath())) {
+//            // excel 中存在重复的topic
+//            context.addError(flagNo, I18nUtils.getMessage("uns.import.exist", "namespace", fileDto.getPath()));
+//            return null;
+//        }
 
         // 校验别名是否重复
         if (context.containAliasInImportFile(fileDto.getAlias())) {
@@ -104,7 +102,7 @@ public class FileTimeseriesParser extends AbstractParser {
                 context.addError(flagNo, I18nUtils.getMessage("uns.excel.parentDataType.is.blank"));
                 return null;
             } else {
-                createTopicDto.setParentDataType(FolderDataType.METRICS.getTypeIndex());
+                createTopicDto.setParentDataType(FolderDataType.METRIC.getTypeIndex());
             }
         }
 
@@ -138,7 +136,8 @@ public class FileTimeseriesParser extends AbstractParser {
         }
         ValidateFile fileDto = new ValidateFile();
         fileDto.setFlagNo(flagNo);
-        fileDto.setPath(getValueFromDataMap(dataMap, "namespace"));
+//        fileDto.setPath(getValueFromDataMap(dataMap, "namespace"));
+        fileDto.setName(getValueFromDataMap(dataMap, "name"));
         fileDto.setAlias(getValueFromDataMap(dataMap, "alias"));
         fileDto.setDisplayName(getValueFromDataMap(dataMap, "displayName"));
         fileDto.setTemplateAlias(getValueFromDataMap(dataMap, "templateAlias"));
@@ -148,8 +147,9 @@ public class FileTimeseriesParser extends AbstractParser {
         fileDto.setAutoDashboard(getValueFromDataMap(dataMap, "generateDashboard"));
         fileDto.setMockData(getValueFromDataMap(dataMap, "mockData"));
         fileDto.setLabel(getValueFromDataMap(dataMap, "label"));
-        Object parentDataType = dataMap.get("parentDataType");
-        Integer pDataType = ObjectUtil.isEmpty(parentDataType) ? null : Integer.parseInt(parentDataType.toString());
+        String parentDataType =(getValueFromDataMap(dataMap, "topicType"));
+        FolderDataType folderDataType = FolderDataType.getFolderDataTypeByName(parentDataType);
+        Integer pDataType = folderDataType != null ? folderDataType.getTypeIndex() : null;
         fileDto.setParentDataType(pDataType);
 
 
@@ -169,11 +169,12 @@ public class FileTimeseriesParser extends AbstractParser {
 
         ValidateFile fileDto = new ValidateFile();
         fileDto.setFlagNo(flagNo);
-        fileDto.setPath(getValueFromJsonNode(data, "namespace"));
+        fileDto.setName(getValueFromJsonNode(data, "name"));
+//        fileDto.setPath(getValueFromJsonNode(data, "namespace"));
         fileDto.setAlias(getValueFromJsonNode(data, "alias"));
         fileDto.setDisplayName(getValueFromJsonNode(data, "displayName"));
         fileDto.setTemplateAlias(getValueFromJsonNode(data, "templateAlias"));
-        fileDto.setFields(getValueFromJsonNode(data, "fields"));
+        fileDto.setFields(getValueFromJsonNodeArray(data, "fields"));
         fileDto.setDescription(getValueFromJsonNode(data, "description"));
         fileDto.setPersistence(getValueFromJsonNode(data, "enableHistory"));
         fileDto.setAutoDashboard(getValueFromJsonNode(data, "generateDashboard"));

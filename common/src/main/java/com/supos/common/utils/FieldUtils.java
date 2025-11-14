@@ -1,18 +1,22 @@
 package com.supos.common.utils;
 
+import cn.hutool.core.bean.BeanUtil;
 import com.supos.common.Constants;
 import com.supos.common.SrcJdbcType;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.FieldDefines;
 import com.supos.common.enums.FieldType;
+import com.supos.common.vo.FieldDefineVo;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static com.supos.common.Constants.*;
+import static com.supos.common.Constants.SYS_FIELD_CREATE_TIME;
+import static com.supos.common.Constants.systemFields;
 
 /**
  * @author sunlifang
@@ -230,5 +234,13 @@ public class FieldUtils {
 
     public static String[] getExtendFieldUsed() {
         return extendField;
+    }
+
+    public static FieldDefineVo[] filterSystemField(FieldDefine[] fields){
+        if (ArrayUtils.isEmpty(fields)) {
+            return null;
+        }
+       return Arrays.stream(fields).filter(fieldDefine -> !fieldDefine.isSystemField() && !Constants.QOS_FIELD.equals(fieldDefine.getName()))
+               .map(f -> BeanUtil.copyProperties(f, FieldDefineVo.class)).toArray(FieldDefineVo[]::new);
     }
 }

@@ -1,6 +1,8 @@
 package com.supos.uns.service.exportimport.core.entity;
 
+import com.alibaba.excel.annotation.ExcelIgnore;
 import com.alibaba.excel.annotation.ExcelProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 @Data
@@ -21,5 +23,9 @@ public class FileJsonbData implements ExportImportData {
     @ExcelProperty(index = 6)
     private String generateDashboard;
     @ExcelProperty(index = 7)
+    @JsonProperty("topicType")
     private String parentDataType;
+
+    @ExcelIgnore
+    private String name;
 }

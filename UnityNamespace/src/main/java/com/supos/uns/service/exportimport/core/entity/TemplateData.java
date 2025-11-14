@@ -2,6 +2,8 @@ package com.supos.uns.service.exportimport.core.entity;
 
 import com.alibaba.excel.annotation.ExcelIgnore;
 import com.alibaba.excel.annotation.ExcelProperty;
+import com.supos.common.dto.FieldDefine;
+import com.supos.common.vo.FieldDefineVo;
 import lombok.Data;
 
 /**
@@ -18,7 +20,7 @@ public class TemplateData implements ExportImportData {
     @ExcelProperty(index = 1)
     private String alias;
     @ExcelProperty(index = 2)
-    private String fields;
+    private FieldDefineVo[] fields;
     @ExcelProperty(index = 3)
     private String description;
 

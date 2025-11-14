@@ -2,6 +2,9 @@ package com.supos.uns.service.exportimport.core.entity;
 
 import com.alibaba.excel.annotation.ExcelIgnore;
 import com.alibaba.excel.annotation.ExcelProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.supos.common.dto.FieldDefine;
+import com.supos.common.vo.FieldDefineVo;
 import lombok.Data;
 
 /**
@@ -21,7 +24,7 @@ public class FileCalculateData implements ExportImportData {
     private String displayName;
 
     @ExcelProperty(index = 3)
-    private String fields;
+    private FieldDefineVo[] fields;
 
     @ExcelProperty(index = 4)
     private String refers;
@@ -37,8 +40,12 @@ public class FileCalculateData implements ExportImportData {
     private String label;
 
     @ExcelProperty(index = 10)
+    @JsonProperty("topicType")
     private String parentDataType;
 
     @ExcelIgnore
     private String error;
+
+    @ExcelIgnore
+    private String name;
 }

@@ -1,6 +1,7 @@
 package com.supos.uns.service.exportimport.core.parser;
 
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.json.JSONUtil;
 import cn.hutool.system.SystemUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -9,8 +10,12 @@ import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.InstanceField;
 import com.supos.common.dto.excel.ExcelUnsWrapDto;
+import com.supos.common.enums.DataTypeEnum;
+import com.supos.common.enums.FieldType;
+import com.supos.common.enums.FolderDataType;
 import com.supos.common.utils.FieldUtils;
 import com.supos.common.utils.I18nUtils;
+import com.supos.common.utils.JsonUtil;
 import com.supos.common.utils.PathUtil;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
 import com.supos.uns.service.exportimport.core.parser.data.ValidateFile;
@@ -39,24 +44,25 @@ public class FileParser extends AbstractParser {
 
     private Integer checkDataType(ValidateFile fileDto, ExcelImportContext context) {
         String dataTypeStr = fileDto.getDataType();
-        if (StringUtils.isBlank(dataTypeStr)) {
+        DataTypeEnum dataTypeEnum = DataTypeEnum.parseByName(dataTypeStr);
+        if (StringUtils.isBlank(dataTypeStr) || dataTypeEnum == null) {
             context.addError(fileDto.getFlagNo(), I18nUtils.getMessage("uns.import.dataType.error"));
             return null;
         }
-        Integer dataType = null;
-        if (NumberUtils.isDigits(dataTypeStr)) {
-            try {
-                dataType = Integer.valueOf(dataTypeStr);
-            } catch (Throwable e) {
-                dataType = null;
-            }
-        }
-
-        if (dataType == null || !FILE_TYPE.contains(dataType)) {
-            context.addError(fileDto.getFlagNo(), I18nUtils.getMessage("uns.import.dataType.error"));
-            return null;
-        }
-        return dataType;
+//        Integer dataType = null;
+//        if (NumberUtils.isDigits(dataTypeStr)) {
+//            try {
+//                dataType = Integer.valueOf(dataTypeStr);
+//            } catch (Throwable e) {
+//                dataType = null;
+//            }
+//        }
+//
+//        if (dataType == null || !FILE_TYPE.contains(dataType)) {
+//            context.addError(fileDto.getFlagNo(), I18nUtils.getMessage("uns.import.dataType.error"));
+//            return null;
+//        }
+        return dataTypeEnum.getType();
     }
 
     private ExcelUnsWrapDto check(ValidateFile fileDto, ExcelImportContext context, Object parent) {
@@ -81,7 +87,7 @@ public class FileParser extends AbstractParser {
             return null;
         }
 
-        fileDto.setAlias(StringUtils.isNotBlank(fileDto.getAlias()) ? fileDto.getAlias() : PathUtil.generateAlias(fileDto.getPath(),2));
+        fileDto.setAlias(StringUtils.isNotBlank(fileDto.getAlias()) ? fileDto.getAlias() : PathUtil.generateAlias(fileDto.getName(),2));
         CreateTopicDto createTopicDto = fileDto.createTopic();
         createTopicDto.setPathType(Constants.PATH_TYPE_FILE);
         createTopicDto.setDataType(dataType);
@@ -89,11 +95,11 @@ public class FileParser extends AbstractParser {
         ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(createTopicDto);
 
         // 校验path是否重复
-        if (context.containPathInImportFile(fileDto.getPath())) {
-            // excel 中存在重复的topic
-            context.addError(flagNo, I18nUtils.getMessage("uns.import.exist", "namespace", fileDto.getPath()));
-            return null;
-        }
+//        if (context.containPathInImportFile(fileDto.getPath())) {
+//            // excel 中存在重复的topic
+//            context.addError(flagNo, I18nUtils.getMessage("uns.import.exist", "namespace", fileDto.getPath()));
+//            return null;
+//        }
 
         // 校验别名是否重复
         if (context.containAliasInImportFile(fileDto.getAlias())) {
@@ -103,10 +109,10 @@ public class FileParser extends AbstractParser {
 
         if (parent != null) {
             ExcelUnsWrapDto parentWrap = (ExcelUnsWrapDto) parent;
-            if (!fileDto.getPath().startsWith(parentWrap.getPath())) {
-                context.addError(flagNo, I18nUtils.getMessage("uns.import.formate.invalid1", "namespace"));
-                return null;
-            }
+//            if (!fileDto.getPath().startsWith(parentWrap.getPath())) {
+//                context.addError(flagNo, I18nUtils.getMessage("uns.import.formate.invalid1", "namespace"));
+//                return null;
+//            }
             createTopicDto.setParentAlias(parentWrap.getAlias());
         }
 
@@ -244,7 +250,8 @@ public class FileParser extends AbstractParser {
         }
         ValidateFile fileDto = new ValidateFile();
         fileDto.setFlagNo(flagNo);
-        fileDto.setPath(getValueFromDataMap(dataMap, "namespace"));
+//        fileDto.setPath(getValueFromDataMap(dataMap, "namespace"));
+        fileDto.setName(getValueFromDataMap(dataMap, "name"));
         fileDto.setAlias(getValueFromDataMap(dataMap, "alias"));
         fileDto.setDisplayName(getValueFromDataMap(dataMap, "displayName"));
         fileDto.setTemplateAlias(getValueFromDataMap(dataMap, "templateAlias"));
@@ -258,8 +265,9 @@ public class FileParser extends AbstractParser {
         fileDto.setPersistence(getValueFromDataMap(dataMap, "enableHistory"));
         fileDto.setAutoDashboard(getValueFromDataMap(dataMap, "generateDashboard"));
         fileDto.setMockData(getValueFromDataMap(dataMap, "mockData"));
-        Object parentDataType = dataMap.get("parentDataType");
-        Integer pDataType = ObjectUtil.isEmpty(parentDataType) ? null : Integer.parseInt(parentDataType.toString());
+        String parentDataType =(getValueFromDataMap(dataMap, "topicType"));
+        FolderDataType folderDataType = FolderDataType.getFolderDataTypeByName(parentDataType);
+        Integer pDataType = folderDataType != null ? folderDataType.getTypeIndex() : null;
         fileDto.setParentDataType(pDataType);
 
         ExcelUnsWrapDto wrapDto = check(fileDto, context, null);
@@ -278,12 +286,13 @@ public class FileParser extends AbstractParser {
 
         ValidateFile fileDto = new ValidateFile();
         fileDto.setFlagNo(flagNo);
-        fileDto.setPath(getValueFromJsonNode(data, "namespace"));
+//        fileDto.setPath(getValueFromJsonNode(data, "namespace"));
+        fileDto.setName(getValueFromJsonNode(data, "name"));
         fileDto.setAlias(getValueFromJsonNode(data, "alias"));
         fileDto.setDisplayName(getValueFromJsonNode(data, "displayName"));
         fileDto.setTemplateAlias(getValueFromJsonNode(data, "templateAlias"));
         fileDto.setDescription(getValueFromJsonNode(data, "description"));
-        fileDto.setFields(getValueFromJsonNode(data, "fields"));
+        fileDto.setFields(getValueFromJsonNodeArray(data, "fields"));
         fileDto.setDataType(getValueFromJsonNode(data, "dataType"));
         fileDto.setRefers(getValueFromJsonNode(data, "refers"));
         fileDto.setExpression(getValueFromJsonNode(data, "expression"));
@@ -292,9 +301,16 @@ public class FileParser extends AbstractParser {
         fileDto.setPersistence(getValueFromJsonNode(data, "enableHistory"));
         fileDto.setAutoDashboard(getValueFromJsonNode(data, "generateDashboard"));
         fileDto.setMockData(getValueFromJsonNode(data, "mockData"));
-        String parentDataType = getValueFromJsonNode(data, "parentDataType");
-        Integer pDataType = ObjectUtil.isEmpty(parentDataType) ? null : Integer.parseInt(parentDataType);
+        String parentDataType = getValueFromJsonNode(data, "topicType");
+        FolderDataType folderDataType = FolderDataType.getFolderDataTypeByName(parentDataType);
+        Integer pDataType = folderDataType != null ? folderDataType.getTypeIndex() : null;
         fileDto.setParentDataType(pDataType);
+
+        if (DataTypeEnum.JSONB_TYPE.name().equals(fileDto.getDataType())) {
+            FieldDefine[] fieldDefines = {new FieldDefine("json", FieldType.STRING)};
+            fileDto.setFields(JSONUtil.toJsonStr(fieldDefines));
+        }
+
         ExcelUnsWrapDto wrapDto = check(fileDto, context, parent);
         if (wrapDto != null) {
             context.addUns(wrapDto);

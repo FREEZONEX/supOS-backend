@@ -1,24 +1,21 @@
 package com.supos.uns.service.exportimport.core;
 
-import cn.hutool.core.date.DatePattern;
-import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.excel.annotation.ExcelProperty;
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.supos.common.Constants;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.InstanceField;
+import com.supos.common.enums.DataTypeEnum;
 import com.supos.common.enums.ExcelTypeEnum;
-import com.supos.common.enums.FieldType;
 import com.supos.common.enums.FolderDataType;
+import com.supos.common.utils.FieldUtils;
 import com.supos.common.utils.JsonUtil;
 import com.supos.uns.dao.po.UnsLabelPo;
 import com.supos.uns.dao.po.UnsPo;
 import com.supos.uns.service.exportimport.core.entity.*;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -217,7 +214,6 @@ public class ExportImportHelper {
                 exportDataWrapper = wrapFileJsonbData(unsPo, context);
                 break;
         }
-
         return exportDataWrapper;
     }
 
@@ -248,7 +244,7 @@ public class ExportImportHelper {
         TemplateData data = new TemplateData();
         data.setAlias(replaceBlank(unsPo.getAlias(), ""));
         data.setName(replaceBlank(unsPo.getName(), ""));
-        data.setFields(field(unsPo.getFields()));
+        data.setFields(FieldUtils.filterSystemField(unsPo.getFields()));
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
         return data;
     }
@@ -286,11 +282,11 @@ public class ExportImportHelper {
         } else {
             data.setTemplateAlias("");
         }
-        data.setNamespace(replaceBlank(unsPo.getPath(), ""));
-
-        data.setFields(field(unsPo.getFields()));
+        //data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        data.setName(replaceBlank(unsPo.getName(), ""));
+        data.setFields(FieldUtils.filterSystemField(unsPo.getFields()));
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
-        data.setDataType(StrUtil.toString(unsPo.getDataType()));
+        data.setDataType(FolderDataType.getFolderDataType(unsPo.getDataType()).name());
         data.setType(TYPE_FOLDER);
         return data;
     }
@@ -315,8 +311,9 @@ public class ExportImportHelper {
         } else {
             data.setTemplateAlias("");
         }
-        data.setNamespace(replaceBlank(unsPo.getPath(), ""));
-        data.setDataType(String.valueOf(unsPo.getDataType()));
+        //data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        data.setName(replaceBlank(unsPo.getName(), ""));
+        data.setDataType(String.valueOf(DataTypeEnum.parse(unsPo.getDataType()).name()));
 
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
@@ -349,11 +346,12 @@ public class ExportImportHelper {
         } else {
             data.setFrequency("");
         }
-
-        data.setFields(field(unsPo.getFields()));
+        if (unsPo.getDataType() != Constants.JSONB_TYPE) {
+            data.setFields(FieldUtils.filterSystemField(unsPo.getFields()));
+        }
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
 
-        data.setParentDataType(StrUtil.toStringOrNull(unsPo.getParentDataType()));
+        data.setParentDataType(FolderDataType.getFolderDataType(unsPo.getParentDataType()).name());
 
         if (unsPo.getDataType() == Constants.CALCULATION_REAL_TYPE
                 || unsPo.getDataType() == Constants.MERGE_TYPE
@@ -362,7 +360,7 @@ public class ExportImportHelper {
         }
 
         if (unsPo.getDataType() == Constants.MERGE_TYPE || unsPo.getDataType() == Constants.CITING_TYPE) {
-            data.setFields("");
+            data.setFields(null);
         }
         data.setType(TYPE_FILE);
         return data;
@@ -388,12 +386,13 @@ public class ExportImportHelper {
         } else {
             data.setTemplateAlias("");
         }
-        data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        //data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        data.setName(replaceBlank(unsPo.getName(), ""));
 
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
         data.setMockData(gainFlagValue(unsPo.getWithFlags(), "mockData"));
-        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
+        data.setParentDataType(FolderDataType.getFolderDataType(unsPo.getParentDataType()).name());
         Set<String> labels = unsLabelNamesMap.get(unsPo.getId());
         if (CollectionUtils.isNotEmpty(labels)) {
             data.setLabel(StringUtils.join(labels, ','));
@@ -401,7 +400,7 @@ public class ExportImportHelper {
             data.setLabel("");
         }
 
-        data.setFields(field(unsPo.getFields()));
+        data.setFields(FieldUtils.filterSystemField(unsPo.getFields()));
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
 
         return data;
@@ -427,11 +426,12 @@ public class ExportImportHelper {
         } else {
             data.setTemplateAlias("");
         }
-        data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        //data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        data.setName(replaceBlank(unsPo.getName(), ""));
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
         data.setMockData(gainFlagValue(unsPo.getWithFlags(), "mockData"));
-        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
+        data.setParentDataType(FolderDataType.getFolderDataType(unsPo.getParentDataType()).name());
         Set<String> labels = unsLabelNamesMap.get(unsPo.getId());
         if (CollectionUtils.isNotEmpty(labels)) {
             data.setLabel(StringUtils.join(labels, ','));
@@ -439,7 +439,7 @@ public class ExportImportHelper {
             data.setLabel("");
         }
 
-        data.setFields(field(unsPo.getFields()));
+        data.setFields(FieldUtils.filterSystemField(unsPo.getFields()));
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
 
         return data;
@@ -459,7 +459,8 @@ public class ExportImportHelper {
 
         data.setAlias(replaceBlank(unsPo.getAlias(), ""));
         data.setDisplayName(replaceBlank(unsPo.getDisplayName(), ""));
-        data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        //data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        data.setName(replaceBlank(unsPo.getName(), ""));
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
         if (StringUtils.isNotBlank(unsPo.getExpression())) {
@@ -475,11 +476,11 @@ public class ExportImportHelper {
             data.setLabel("");
         }
 
-        data.setFields(field(unsPo.getFields()));
+        data.setFields(FieldUtils.filterSystemField(unsPo.getFields()));
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
 
         data.setRefers(handleRefer(context, unsPo.getRefers(), unsPo.getDataType()));
-        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
+        data.setParentDataType(FolderDataType.getFolderDataType(unsPo.getParentDataType()).name());
         return data;
     }
 
@@ -496,10 +497,11 @@ public class ExportImportHelper {
 
         data.setAlias(replaceBlank(unsPo.getAlias(), ""));
         data.setDisplayName(replaceBlank(unsPo.getDisplayName(), ""));
-        data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        //data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        data.setName(replaceBlank(unsPo.getName(), ""));
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
-        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
+        data.setParentDataType(FolderDataType.getFolderDataType(unsPo.getParentDataType()).name());
         Set<String> labels = unsLabelNamesMap.get(unsPo.getId());
         if (CollectionUtils.isNotEmpty(labels)) {
             data.setLabel(StringUtils.join(labels, ','));
@@ -538,7 +540,8 @@ public class ExportImportHelper {
 
         data.setAlias(replaceBlank(unsPo.getAlias(), ""));
         data.setDisplayName(replaceBlank(unsPo.getDisplayName(), ""));
-        data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        //data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        data.setName(replaceBlank(unsPo.getName(), ""));
 //        data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
 //        data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
 
@@ -552,7 +555,7 @@ public class ExportImportHelper {
         data.setDescription(replaceBlank(unsPo.getDescription(), ""));
 
         data.setRefers(handleRefer(context, unsPo.getRefers(), unsPo.getDataType()));
-        data.setParentDataType(StrUtil.toString(unsPo.getParentDataType()));
+        data.setParentDataType(FolderDataType.getFolderDataType(unsPo.getParentDataType()).name());
         return data;
     }
 
@@ -569,12 +572,13 @@ public class ExportImportHelper {
 
         data.setAlias(replaceBlank(unsPo.getAlias(), ""));
         data.setDisplayName(replaceBlank(unsPo.getDisplayName(), ""));
-        data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        //data.setNamespace(replaceBlank(unsPo.getPath(), ""));
+        data.setName(replaceBlank(unsPo.getName(), ""));
 
         data.setEnableHistory(gainFlagValue(unsPo.getWithFlags(), "persistence"));
         data.setGenerateDashboard(gainFlagValue(unsPo.getWithFlags(), "dashboard"));
 //        data.setMockData("FALSE");
-        data.setParentDataType(StrUtil.toStringOrNull(unsPo.getParentDataType()));
+        data.setParentDataType(FolderDataType.getFolderDataType(unsPo.getParentDataType()).name());
         Set<String> labels = unsLabelNamesMap.get(unsPo.getId());
         if (CollectionUtils.isNotEmpty(labels)) {
             data.setLabel(StringUtils.join(labels, ','));

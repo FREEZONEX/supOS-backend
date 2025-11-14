@@ -9,6 +9,7 @@ import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.FieldDefine;
 import com.supos.common.dto.excel.ExcelUnsWrapDto;
 import com.supos.common.enums.ExcelTypeEnum;
+import com.supos.common.enums.FolderDataType;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
@@ -52,7 +53,7 @@ public class FolderParser extends AbstractParser {
             context.addError(flagNo, er.toString());
             return null;
         }
-        folderDto.setAlias(StringUtils.isNotBlank(folderDto.getAlias()) ? folderDto.getAlias() : PathUtil.generateAlias(folderDto.getPath(),0));
+        folderDto.setAlias(StringUtils.isNotBlank(folderDto.getAlias()) ? folderDto.getAlias() : PathUtil.generateAlias(folderDto.getName(),0));
         CreateTopicDto createTopicDto = folderDto.createTopic();
         if (StringUtils.length(createTopicDto.getName()) > 63) {
             context.addError(flagNo, I18nUtils.getMessage("uns.folder.length.limit.exceed", 63));
@@ -67,11 +68,11 @@ public class FolderParser extends AbstractParser {
 
 
         // 校验path是否重复
-        if (context.containPathInImportFile(folderDto.getPath())) {
-            // excel 中存在重复的path
-            context.addError(flagNo, I18nUtils.getMessage("uns.import.exist", "namespace", folderDto.getPath()));
-            return null;
-        }
+//        if (context.containPathInImportFile(folderDto.getPath())) {
+//            // excel 中存在重复的path
+//            context.addError(flagNo, I18nUtils.getMessage("uns.import.exist", "namespace", folderDto.getPath()));
+//            return null;
+//        }
 
         // 校验别名是否重复
         if (context.containAliasInImportFile(folderDto.getAlias())) {
@@ -81,10 +82,10 @@ public class FolderParser extends AbstractParser {
 
         if (parent != null) {
             ExcelUnsWrapDto parentWrap = (ExcelUnsWrapDto) parent;
-            if (!folderDto.getPath().startsWith(parentWrap.getPath())) {
-                context.addError(flagNo, I18nUtils.getMessage("uns.import.formate.invalid1", "namespace"));
-                return null;
-            }
+//            if (!folderDto.getPath().startsWith(parentWrap.getPath())) {
+//                context.addError(flagNo, I18nUtils.getMessage("uns.import.formate.invalid1", "namespace"));
+//                return null;
+//            }
             createTopicDto.setParentAlias(parentWrap.getAlias());
         }
 
@@ -149,7 +150,7 @@ public class FolderParser extends AbstractParser {
 
         ValidateFolder folderDto = new ValidateFolder();
         folderDto.setFlagNo(flagNo);
-        folderDto.setPath(getValueFromDataMap(dataMap, "namespace"));
+//        folderDto.setPath(getValueFromDataMap(dataMap, "namespace"));
         folderDto.setAlias(getValueFromDataMap(dataMap, "alias"));
         folderDto.setDisplayName(getValueFromDataMap(dataMap, "displayName"));
         folderDto.setTemplateAlias(getValueFromDataMap(dataMap, "templateAlias"));
@@ -176,14 +177,19 @@ public class FolderParser extends AbstractParser {
 
         ValidateFolder folderDto = new ValidateFolder();
         folderDto.setFlagNo(flagNo);
-        folderDto.setPath(getValueFromJsonNode(data, "namespace"));
+//        folderDto.setPath(getValueFromJsonNode(data, "namespace"));
+        folderDto.setName(getValueFromJsonNode(data, "name"));
         folderDto.setAlias(getValueFromJsonNode(data, "alias"));
         folderDto.setDisplayName(getValueFromJsonNode(data, "displayName"));
         folderDto.setTemplateAlias(getValueFromJsonNode(data, "templateAlias"));
         folderDto.setDescription(getValueFromJsonNode(data, "description"));
-        folderDto.setFields(getValueFromJsonNode(data, "fields"));
+        folderDto.setFields(getValueFromJsonNodeArray(data, "fields"));
         folderDto.trim();
-
+        String topicTypeStr = getValueFromJsonNode(data, "topicType");
+        FolderDataType folderDataType = FolderDataType.getFolderDataTypeByName(topicTypeStr);
+        if (folderDataType != null) {
+            folderDto.setDataType(folderDataType.getTypeIndex() + "");
+        }
         ExcelUnsWrapDto wrapDto = check(folderDto, context, parent);
 
         if (wrapDto != null) {

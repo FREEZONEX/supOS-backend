@@ -88,7 +88,7 @@ public class UnsAlarmService extends ServiceImpl<UnsMapper, UnsPo> {
         createTopicDto.setBatch(0);
         createTopicDto.setIndex(1);
         createTopicDto.setModelId(ALARM_MODEL_ID);
-        createTopicDto.setParentDataType(FolderDataType.METRICS.getTypeIndex());
+        createTopicDto.setParentDataType(FolderDataType.METRIC.getTypeIndex());
         JsonResult<String> rs = unsAddService.createModelInstance(createTopicDto);
 
         //16人员  32工作流

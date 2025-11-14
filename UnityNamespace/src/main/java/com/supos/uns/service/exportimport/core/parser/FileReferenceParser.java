@@ -8,6 +8,7 @@ import com.supos.common.Constants;
 import com.supos.common.dto.CreateTopicDto;
 import com.supos.common.dto.InstanceField;
 import com.supos.common.dto.excel.ExcelUnsWrapDto;
+import com.supos.common.enums.FolderDataType;
 import com.supos.common.utils.I18nUtils;
 import com.supos.common.utils.PathUtil;
 import com.supos.uns.service.exportimport.core.ExcelImportContext;
@@ -47,18 +48,18 @@ public class FileReferenceParser extends AbstractParser {
             return null;
         }
 
-        fileDto.setAlias(StringUtils.isNotBlank(fileDto.getAlias()) ? fileDto.getAlias() : PathUtil.generateAlias(fileDto.getPath(),2));
+        fileDto.setAlias(StringUtils.isNotBlank(fileDto.getAlias()) ? fileDto.getAlias() : PathUtil.generateAlias(fileDto.getName(),2));
         CreateTopicDto createTopicDto = fileDto.createTopic();
         createTopicDto.setPathType(Constants.PATH_TYPE_FILE);
         createTopicDto.setDataType(Constants.CITING_TYPE);
         ExcelUnsWrapDto wrapDto = new ExcelUnsWrapDto(createTopicDto);
 
         // 校验path是否重复
-        if (context.containPathInImportFile(fileDto.getPath())) {
-            // excel 中存在重复的topic
-            context.addError(flagNo, I18nUtils.getMessage("uns.import.exist", "namespace", fileDto.getPath()));
-            return null;
-        }
+//        if (context.containPathInImportFile(fileDto.getPath())) {
+//            // excel 中存在重复的topic
+//            context.addError(flagNo, I18nUtils.getMessage("uns.import.exist", "namespace", fileDto.getPath()));
+//            return null;
+//        }
 
         // 校验别名是否重复
         if (context.containAliasInImportFile(fileDto.getAlias())) {
@@ -150,7 +151,8 @@ public class FileReferenceParser extends AbstractParser {
         }
         ValidateFile fileDto = new ValidateFile();
         fileDto.setFlagNo(flagNo);
-        fileDto.setPath(getValueFromDataMap(dataMap, "namespace"));
+//        fileDto.setPath(getValueFromDataMap(dataMap, "namespace"));
+        fileDto.setName(getValueFromDataMap(dataMap, "name"));
         fileDto.setAlias(getValueFromDataMap(dataMap, "alias"));
         fileDto.setDisplayName(getValueFromDataMap(dataMap, "displayName"));
         fileDto.setRefers(getValueFromDataMap(dataMap, "refers"));
@@ -158,8 +160,9 @@ public class FileReferenceParser extends AbstractParser {
         fileDto.setPersistence(getValueFromDataMap(dataMap, "enableHistory"));
         fileDto.setAutoDashboard(getValueFromDataMap(dataMap, "generateDashboard"));
         fileDto.setLabel(getValueFromDataMap(dataMap, "label"));
-        Object parentDataType = dataMap.get("parentDataType");
-        Integer pDataType = ObjectUtil.isEmpty(parentDataType) ? null : Integer.parseInt(parentDataType.toString());
+        String parentDataType =(getValueFromDataMap(dataMap, "topicType"));
+        FolderDataType folderDataType = FolderDataType.getFolderDataTypeByName(parentDataType);
+        Integer pDataType = folderDataType != null ? folderDataType.getTypeIndex() : null;
         fileDto.setParentDataType(pDataType);
 
         ExcelUnsWrapDto wrapDto = check(fileDto, context, null);
@@ -178,7 +181,7 @@ public class FileReferenceParser extends AbstractParser {
 
         ValidateFile fileDto = new ValidateFile();
         fileDto.setFlagNo(flagNo);
-        fileDto.setPath(getValueFromJsonNode(data, "namespace"));
+//        fileDto.setPath(getValueFromJsonNode(data, "namespace"));
         fileDto.setAlias(getValueFromJsonNode(data, "alias"));
         fileDto.setDisplayName(getValueFromJsonNode(data, "displayName"));
         fileDto.setRefers(getValueFromJsonNode(data, "refers"));

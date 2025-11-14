@@ -80,6 +80,9 @@ public class ComplexJsonDataImporter extends DataImporter {
             for (Map.Entry<String, String> e : getContext().getExcelCheckErrorMap().entrySet()) {
                 String errorIndex[] = e.getKey().split("-");
                 JsonNode errorNode = jsonNode;
+                if (errorNode == null) {
+                    continue;
+                }
                 for (String index : errorIndex) {
                     if (NumberUtils.isDigits(index)) {
                         errorNode = errorNode.get(Integer.valueOf(index));
