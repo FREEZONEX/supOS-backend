@@ -75,10 +75,10 @@ public class FolderParser extends AbstractParser {
 //        }
 
         // 校验别名是否重复
-        if (context.containAliasInImportFile(folderDto.getAlias())) {
-            context.addError(flagNo, I18nUtils.getMessage("uns.alias.has.exist"));
-            return null;
-        }
+//        if (context.containAliasInImportFile(folderDto.getAlias())) {
+//            context.addError(flagNo, I18nUtils.getMessage("uns.alias.has.exist"));
+//            return null;
+//        }
 
         if (parent != null) {
             ExcelUnsWrapDto parentWrap = (ExcelUnsWrapDto) parent;

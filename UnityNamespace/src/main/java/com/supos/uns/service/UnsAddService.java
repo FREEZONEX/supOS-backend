@@ -92,7 +92,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
         boolean isParentFolderCategory = false;
         UnsPo parentFolder = null;
         if (dto.getParentId() != null || dto.getParentAlias() != null) {
-            parentFolder = dto.getParentId() != null ? baseMapper.selectById(dto.getParentId()) : baseMapper.getByAlias(dto.getParentAlias());
+            parentFolder = dto.getParentAlias() != null ? baseMapper.getByAlias(dto.getParentAlias()) : baseMapper.selectById(dto.getParentId());
             if (parentFolder == null) {
                 return new JsonResult<>(400, I18nUtils.getMessage("uns.folder.not.found"));
             }
@@ -650,6 +650,7 @@ public class UnsAddService extends ServiceImpl<UnsMapper, UnsPo> implements IUns
                 if (StringUtils.hasText(targetParentId)) {
                     UnsPo newParent = unsMapper.getById(Long.parseLong(targetParentId));
                     topicDto.setParentAlias(newParent.getAlias());
+                    topicDto.setParentId(newParent.getId());
                 } else {
                     topicDto.setParentAlias(null);
                 }

@@ -66,10 +66,10 @@ public class FileCalculateParser extends AbstractParser {
 //        }
 
         // 校验别名是否重复
-        if (context.containAliasInImportFile(fileDto.getAlias())) {
-            context.addError(flagNo, I18nUtils.getMessage("uns.alias.has.exist"));
-            return null;
-        }
+//        if (context.containAliasInImportFile(fileDto.getAlias())) {
+//            context.addError(flagNo, I18nUtils.getMessage("uns.alias.has.exist"));
+//            return null;
+//        }
 
         Boolean autoDashboard = parseBoolean(fileDto.getAutoDashboard(), false);
         if (autoDashboard == null) {

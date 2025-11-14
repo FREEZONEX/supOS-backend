@@ -542,12 +542,12 @@ public abstract class DataImporter {
         List<ExcelUnsWrapDto> firstCheckSuccessUnsList = wrapDtoList.stream().filter(wrapDto -> wrapDto.isCheckSuccess()).collect(Collectors.toList());
         List<ExcelUnsWrapDto> secondCheckSuccessUnsList = new ArrayList<>(firstCheckSuccessUnsList.size());
         for (ExcelUnsWrapDto wrapDto : firstCheckSuccessUnsList) {
-            if (tempAliasFromDb.contains(wrapDto.getUns().getAlias())) {
-                wrapDto.setCheckSuccess(false);
-                context.addError(wrapDto.getFlagNo(), I18nUtils.getMessage("uns.alias.has.exist"));
-            } else {
+//            if (tempAliasFromDb.contains(wrapDto.getUns().getAlias())) {
+//                wrapDto.setCheckSuccess(false);
+//                context.addError(wrapDto.getFlagNo(), I18nUtils.getMessage("uns.alias.has.exist"));
+//            } else {
                 secondCheckSuccessUnsList.add(wrapDto);
-            }
+//            }
         }
 
         if (CollectionUtils.isNotEmpty(secondCheckSuccessUnsList)) {
@@ -560,12 +560,12 @@ public abstract class DataImporter {
                 Set<String> existAliasSet = unsPos.stream().map(UnsPo::getAlias).collect(Collectors.toSet());
                 tempAliasFromDb.addAll(existAliasSet);
 
-                for (ExcelUnsWrapDto wrapDto : secondCheckSuccessUnsList) {
-                    if (tempAliasFromDb.contains(wrapDto.getUns().getAlias())) {
-                        wrapDto.setCheckSuccess(false);
-                        context.addError(wrapDto.getFlagNo(), I18nUtils.getMessage("uns.alias.has.exist"));
-                    }
-                }
+//                for (ExcelUnsWrapDto wrapDto : secondCheckSuccessUnsList) {
+//                    if (tempAliasFromDb.contains(wrapDto.getUns().getAlias())) {
+//                        wrapDto.setCheckSuccess(false);
+//                        context.addError(wrapDto.getFlagNo(), I18nUtils.getMessage("uns.alias.has.exist"));
+//                    }
+//                }
             }
         }
     }
